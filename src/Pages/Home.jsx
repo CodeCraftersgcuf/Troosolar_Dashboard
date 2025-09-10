@@ -207,7 +207,7 @@ const Home = ({}) => {
               </div>
               <img
                 src={assets.sale}
-                className="hidden lg:block min-w-full min-h-full rounded-lg"
+               className="hidden lg:block min-w-full h-[243px] rounded-lg"
                 alt="Sale banner"
               />
             </div>

@@ -41,16 +41,10 @@
 
 // export default TopNavbar;
 import React, { useEffect, useMemo, useState } from "react";
-import { Bell } from "lucide-react";
-import { useLocation } from "react-router-dom";
+import { Bell, ShoppingCart } from "lucide-react"; // NEW
+import { useLocation, Link } from "react-router-dom"; // NEW
 
-const CANDIDATE_KEYS = [
-  "user",
-  "auth_user",
-  "current_user",
-  "profile",
-  "logged_in_user",
-];
+const CANDIDATE_KEYS = ["user","auth_user","current_user","profile","logged_in_user"];
 
 const readStoredUser = () => {
   for (const k of CANDIDATE_KEYS) {
@@ -59,9 +53,7 @@ const readStoredUser = () => {
       if (!raw) continue;
       const obj = JSON.parse(raw);
       if (obj && typeof obj === "object") return obj;
-    } catch {
-      /* ignore bad JSON */
-    }
+    } catch { /* ignore bad JSON */ }
   }
   return null;
 };
@@ -89,10 +81,7 @@ const getAvatarUrl = (u) => {
 };
 
 const getInitials = (name) => {
-  const parts = String(name || "")
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2);
+  const parts = String(name || "").trim().split(/\s+/).slice(0, 2);
   return parts.map((p) => p[0]?.toUpperCase() || "").join("") || "U";
 };
 
@@ -108,12 +97,26 @@ const TopNavbar = () => {
   const avatar = useMemo(() => getAvatarUrl(user), [user]);
   const initials = useMemo(() => getInitials(name), [name]);
 
-  // Make navbar blue on these pages (added /product/:id)
+  // Keep your existing background rule
   const changeBg =
     location.pathname.includes("/tools") ||
     location.pathname.includes("/solar-bundles") ||
     location.pathname.includes("/homePage") ||
     location.pathname.includes("/product/"); // covers /product/:id
+
+  // Pages where the Cart icon should be visible (EDIT THIS LIST as needed)
+  const CART_PATH_PATTERNS = [
+    "/product/",       // product detail pages
+    "/homePage",       // home page
+    "/solar-bundles",  // bundles
+    // "/tools",        // add/remove as you wish
+    // "/shop", "/catalog", "/category/"
+  ];
+
+  const showCart = useMemo(
+    () => CART_PATH_PATTERNS.some((p) => location.pathname.includes(p)),
+    [location.pathname]
+  );
 
   return (
     <div>
@@ -122,6 +125,7 @@ const TopNavbar = () => {
           changeBg ? "bg-[#273e8e]" : "bg-white"
         }`}
       >
+        {/* Notifications */}
         <button
           className={`rounded-lg flex justify-center items-center shadow-md h-10 w-10 transition-colors ${
             changeBg ? "bg-[#ffffff]" : "bg-white"
@@ -131,6 +135,20 @@ const TopNavbar = () => {
         >
           <Bell size={24} />
         </button>
+
+        {/* Cart (only on selected pages) */}
+        {showCart && (
+          <Link
+            to="/cart"
+            className={`rounded-lg flex justify-center items-center shadow-md h-10 w-10 transition-colors ${
+              changeBg ? "bg-[#ffffff]" : "bg-white"
+            }`}
+            aria-label="Cart"
+            title="Cart"
+          >
+            <ShoppingCart size={24} />
+          </Link>
+        )}
 
         {/* Avatar */}
         <div className="bg-[#e9e9e9] h-16 w-16 rounded-full overflow-hidden flex items-center justify-center">

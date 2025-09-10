@@ -470,13 +470,13 @@ export default function ProductDetails() {
                       <div className="grid grid-cols-2 gap-4">
                         <button
                           onClick={handleAddToCart}
-                          className="py-3 border border-[#273e8e] rounded-full hover:bg-[#273e8e]/10 transition"
+                          className="py-4 border border-[#273e8e] rounded-full hover:bg-[#273e8e]/10 transition"
                         >
                           Add To Cart
                         </button>
                         <Link
                           to="/cart"
-                          className="py-3 bg-[#273e8e] text-white rounded-full text-center hover:bg-[#273e8e]/90 transition"
+                          className="py-4 bg-[#273e8e] text-white rounded-full text-center hover:bg-[#273e8e]/90 transition"
                         >
                           Buy Now
                         </Link>
@@ -499,7 +499,7 @@ export default function ProductDetails() {
 
               {/* Right */}
               <div className="w-full lg:w-1/2">
-                <div className="border-2 border-[#273e8e] p-4 rounded-xl">
+                <div className="border-2 border-[#273e8e] bg-white p-4 rounded-xl">
                   <h1 className="text-lg sm:text-xl font-medium">
                     {product.heading}
                   </h1>
@@ -543,12 +543,12 @@ export default function ProductDetails() {
                   </div>
                 </div>
 
-                <div className="bg-white border mt-4 rounded-full w/full sm:w-[60%] flex py-1 px-1">
+                <div className="bg-white border mt-4 rounded-full w-[167px] h-[57px] sm:w-[60%] flex py-1 px-1">
                   {["Details", "Reviews"].map((tab, i) => (
                     <button
                       key={tab}
                       onClick={() => setShowReview(i === 0)}
-                      className={`flex-1 py-2 rounded-full text-sm ${
+                      className={`flex-1 w-[66] h-[55] rounded-[100px] text-sm ${
                         (showReview && i === 0) || (!showReview && i === 1)
                           ? "bg-[#273e8e] text-white"
                           : "text-gray-500"
@@ -565,7 +565,7 @@ export default function ProductDetails() {
 
                 <div className="mt-4">
                   {showReview ? (
-                    <div className="border p-4 rounded-xl space-y-3">
+                    <div className="border border-[#ccc] bg-white p-4 rounded-xl space-y-3">
                       {[...Array(6)].map((_, i) => (
                         <React.Fragment key={i}>
                           <div className="flex items-center gap-3">
@@ -649,7 +649,7 @@ export default function ProductDetails() {
                 </div>
 
                 {/* Quantity Control */}
-                <div className="h-[70px] p-4 border mt-4 rounded-2xl flex justify-between items-center">
+                <div className="h-[70px] p-4 border bg-white border-[#ccc] mt-4 rounded-2xl flex justify-between items-center">
                   Quantity
                   <div className="flex gap-4 items-center">
                     <button
@@ -658,7 +658,9 @@ export default function ProductDetails() {
                     >
                       <Minus size={20} color="white" />
                     </button>
+                    <div className="px-7">
                     {qtyInCart}
+                    </div>
                     <button
                       onClick={handleAddToCart}
                       className="h-10 flex justify-center items-center w-10 bg-[#273e8e] rounded-md text-white"
