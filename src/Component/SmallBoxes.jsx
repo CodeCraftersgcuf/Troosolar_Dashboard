@@ -2,7 +2,7 @@ import React from "react";
 import { assets } from "../assets/data";
 import { Link } from "react-router-dom";
 
-const SmallBoxes = ({text}) => {
+const SmallBoxes = () => {
   const boxItems = [
     {
       id: 1,
@@ -57,28 +57,31 @@ const SmallBoxes = ({text}) => {
       ))}
     </div>
 
-    {/* Mobile View  */}
-
-    <div className="gap-5 grid grid-cols-1  sm:hidden">
+    {/* Mobile View - 4 horizontal cards matching the photo */}
+    <div className="gap-3 grid grid-cols-4 sm:hidden">
       {boxItems.map((item) => (
         <Link
           to={item.link}
           key={item.id}
-          className="flex  rounded-xl items-center py-4 px-2 shadow-xl bg-white hover:shadow-lg h-[140px] transition-shadow duration-300 justify-center gap-6"
+          className="flex flex-col rounded-xl items-center py-3 px-2 shadow-lg bg-white hover:shadow-xl transition-shadow duration-300 justify-center gap-2"
         >
           <div 
-            className={`bg-[${item.color}]/20 min-h-[70px] min-w-[70px] rounded-full flex justify-center items-center`}
-            style={{ backgroundColor: `${item.color}20` }} // Fallback for Tailwind dynamic colors
+            className="h-[50px] w-[50px] rounded-full flex justify-center items-center"
+            style={{ backgroundColor: `${item.color}20` }} // Light background color
           >
-            <img src={item.icon} className="h-[40px] w-[40px]" alt={item.title} />
+            <img 
+              src={item.icon} 
+              className="h-[24px] w-[24px]" 
+              alt={item.title}
+              style={{ filter: `brightness(0) saturate(100%) ${item.color === '#0000ff' ? 'invert(27%) sepia(51%) saturate(2878%) hue-rotate(224deg) brightness(89%) contrast(97%)' : item.color === '#ff0000' ? 'invert(13%) sepia(94%) saturate(7151%) hue-rotate(360deg) brightness(91%) contrast(118%)' : item.color === '#800080' ? 'invert(20%) sepia(100%) saturate(7500%) hue-rotate(300deg) brightness(101%) contrast(102%)' : 'invert(25%) sepia(100%) saturate(7500%) hue-rotate(120deg) brightness(101%) contrast(102%)'}` }}
+            />
           </div>
-          <div>
-
-          <p className={`text-[${item.color}]`} style={{ color: item.color }}>
+          <p 
+            className="text-[8px] font-medium text-center leading-tight"
+            style={{ color: item.color }}
+          >
             {item.title}
           </p>
-          <p className="text-xs text-gray-400">{text}</p>
-          </div>
         </Link>
       ))}
     </div>
