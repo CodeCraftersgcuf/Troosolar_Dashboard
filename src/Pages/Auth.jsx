@@ -110,7 +110,7 @@ const Auth = () => {
         if (user) localStorage.setItem("user", JSON.stringify(user));
 
         // Go somewhere after login
-        navigate("/homePage");
+        navigate("/");
       }
     } catch (err) {
       const msg =

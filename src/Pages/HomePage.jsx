@@ -61,8 +61,7 @@ const mapApiProductToCard = (p) => {
 };
 
 const HomePage = () => {
-  const { filteredResults } = useContext(ContextApi);
-    const { registerProducts } = useContext(ContextApi);
+  const { registerProducts } = useContext(ContextApi);
 
 
   const [categories, setCategories] = useState([]);
@@ -128,7 +127,7 @@ const HomePage = () => {
       }
     };
     fetchProducts();
-  }, []);
+  }, [registerProducts]);
 
   // what to render in the grid: prefer API products
   const gridProducts = useMemo(() => apiProducts, [apiProducts]);
@@ -188,7 +187,7 @@ const HomePage = () => {
 
       {/* Mobile View */}
       <div className="flex sm:hidden w-full min-h-screen bg-gray-100">
-        <div className="flex-1 flex flex-col overflow-y-auto">
+        <div className="flex-1 flex flex-col overflow-y-auto pb-20">
           <div className="bg-[#273e8e] border-l-2 pt-12 rounded-bl-2xl rounded-br-2xl border-gray-500 px-6 py-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
               <div className="flex justify-between items-center w-full">
@@ -239,6 +238,9 @@ const HomePage = () => {
             </div>
           </div>
         </div>
+        
+        {/* Mobile Bottom Navigation */}
+        <SideBar />
       </div>
     </>
   );

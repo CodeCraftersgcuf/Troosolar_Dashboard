@@ -232,7 +232,7 @@ const More = () => {
       </div>
 
       {/* Mobile */}
-      <div className="flex sm:hidden min-h-screen w-full bg-[#F5F7FF]">
+      <div className="flex sm:hidden min-h-screen w-full bg-[#F5F7FF] pb-20">
         {mobileViewSection === "sidebar" ? (
           <div className="w-full">
             {/* Header + User Info */}
@@ -362,6 +362,9 @@ const More = () => {
             )}
           </div>
         )}
+        
+        {/* Mobile Bottom Navigation */}
+        <SideBar />
       </div>
     </>
   );

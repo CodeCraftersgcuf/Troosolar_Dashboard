@@ -68,13 +68,23 @@ import connector from "../assets/connector.svg";
 import product from "../assets/product.png";
 
 
-export const assets = {product,star1,star2,uploadArea, LoanBox,creditNeedle,house1,house2,house3,house4,
-  battery,solar,bulb,inverter,mttp,solarfan,surge,connector,light,kwc,support,
-    insta, smLogo, sale, vec1, vec2, vec3, vec4, greenTick, b1, b2,line,stars,solarProject,
-    loginImage, logout, logo, store, loans, userGear, window,userImage,
-    shopping, GearSix, sidebar, twitter, whatsApp, yt, loginImageForSm,telegram,
-    dashboard, usermgt, creditMgt, Loanmgt, loansDisbursement, Transactions,
-    balance, ShopMgt, referral, analytics, settings, UserGear1,cart,rePayIcon,solarInverted,solar1
+//Mobile Related 
+import dashboard_mob from "../assets/dashboard_mob.svg";
+import ShopMgt_mob from "../assets/ShopMgt_mob.svg";
+import Loanmgt_mob from "../assets/Loanmgt_mob.svg";
+import settings_mob from "../assets/settings_mob.svg";
+import userGear_mob from "../assets/userGear_mob.svg";
+
+
+export const assets = {
+  product, star1, star2, uploadArea, LoanBox, creditNeedle, house1, house2, house3, house4,
+  battery, solar, bulb, inverter, mttp, solarfan, surge, connector, light, kwc, support,
+  insta, smLogo, sale, vec1, vec2, vec3, vec4, greenTick, b1, b2, line, stars, solarProject,
+  loginImage, logout, logo, store, loans, userGear, window, userImage,
+  shopping, GearSix, sidebar, twitter, whatsApp, yt, loginImageForSm, telegram,
+  dashboard, usermgt, creditMgt, Loanmgt, loansDisbursement, Transactions,
+  balance, ShopMgt, referral, analytics, settings, UserGear1, cart, rePayIcon, solarInverted, solar1,
+  dashboard_mob, ShopMgt_mob, Loanmgt_mob, settings_mob, userGear_mob,
 };
 
 
@@ -99,32 +109,32 @@ export const solarBundleData = [
     progressBar: assets.line,
     rating: assets.stars,
     borderColor: "#FF0000",
-    heading:"2 Newman Inverters + 1 Solar panel + 4 LED bulbs",
-    
+    heading: "2 Newman Inverters + 1 Solar panel + 4 LED bulbs",
+
     bundleTitle: "Troosolar Mini bundle",
     backupInfo: "Provides backup for 10 hours",
     discountedPrice: 2450000, // optional field
     label: "Mini Bundle",
-    totalLoad:"2500",
+    totalLoad: "2500",
     inverterRating: "1200",
-    totalOutput:"2500",
+    totalOutput: "2500",
     itemsIncluded: [
-        {
-          title: "Newman inverter - 4kva",
-          price: 1000000,
-          icon: inverter // replace with actual path/icon component
-        },
-        {
-          title: "Newman Battery - 2kva",
-          price: 1000000,
-          icon: inverter,
-        },
-        {
-          title: "4 led bulbs",
-          price: 100000,
-          icon: ""
-        }
-      ]
+      {
+        title: "Newman inverter - 4kva",
+        price: 1000000,
+        icon: inverter // replace with actual path/icon component
+      },
+      {
+        title: "Newman Battery - 2kva",
+        price: 1000000,
+        icon: inverter,
+      },
+      {
+        title: "4 led bulbs",
+        price: 100000,
+        icon: ""
+      }
+    ]
   },
   {
     id: "abdcdfwgw",
@@ -136,34 +146,34 @@ export const solarBundleData = [
     progressBar: assets.line,
     rating: assets.stars,
     borderColor: "#800080",
-    heading:"2 Newman Inverters + 1 Solar panel + 4 LED bulbs",
-    
+    heading: "2 Newman Inverters + 1 Solar panel + 4 LED bulbs",
+
 
     bundleTitle: "Troosolar Mini bundle",
     backupInfo: "Provides backup for 10 hours",
     discountedPrice: 2450000, // optional field
     label: "Mini Bundle",
-    totalLoad:"2500",
+    totalLoad: "2500",
     inverterRating: "1200",
-    totalOutput:"2500",
+    totalOutput: "2500",
     itemsIncluded: [
 
-        {
-          title: "Newman inverter - 4kva",
-          price: 1000000,
-          icon: "inverter-icon.png" // replace with actual path/icon component
-        },
-        {
-          title: "Newman Battery - 2kva",
-          price: 1000000,
-          icon: inverter,
-        },
-        {
-          title: "4 led bulbs",
-          price: 100000,
-          icon: ""
-        }
-      ]
+      {
+        title: "Newman inverter - 4kva",
+        price: 1000000,
+        icon: "inverter-icon.png" // replace with actual path/icon component
+      },
+      {
+        title: "Newman Battery - 2kva",
+        price: 1000000,
+        icon: inverter,
+      },
+      {
+        title: "4 led bulbs",
+        price: 100000,
+        icon: ""
+      }
+    ]
 
   },
   {
@@ -176,32 +186,32 @@ export const solarBundleData = [
     progressBar: assets.line,
     rating: assets.stars,
     borderColor: "#800080",
-    
 
-    heading:"2 Newman Inverters + 1 Solar panel + 4 LED bulbs",
+
+    heading: "2 Newman Inverters + 1 Solar panel + 4 LED bulbs",
     bundleTitle: "Troosolar Mini bundle",
     backupInfo: "Provides backup for 10 hours",
     discountedPrice: 2450000, // optional field
     label: "Mini Bundle",
-    totalLoad:"2500",
+    totalLoad: "2500",
     inverterRating: "1200",
-    totalOutput:"2500",
+    totalOutput: "2500",
     itemsIncluded: [
-        {
-          title: "Newman inverter - 4kva",
-          price: 1000000,
-          icon: "inverter-icon.png" // replace with actual path/icon component
-        },
-        {
-          title: "Newman Battery - 2kva",
-          price: 1000000,
-          icon: inverter,
-        },
-        {
-          title: "4 led bulbs",
-          price: 100000,
-          icon: ""
-        }
+      {
+        title: "Newman inverter - 4kva",
+        price: 1000000,
+        icon: "inverter-icon.png" // replace with actual path/icon component
+      },
+      {
+        title: "Newman Battery - 2kva",
+        price: 1000000,
+        icon: inverter,
+      },
+      {
+        title: "4 led bulbs",
+        price: 100000,
+        icon: ""
+      }
 
     ],
   },
@@ -215,34 +225,34 @@ export const solarBundleData = [
     progressBar: assets.line,
     rating: assets.stars,
     borderColor: "#FF0000",
-    
 
-    heading:"2 Newman Inverters + 1 Solar panel + 4 LED bulbs",
+
+    heading: "2 Newman Inverters + 1 Solar panel + 4 LED bulbs",
     bundleTitle: "Troosolar Mini bundle",
     backupInfo: "Provides backup for 10 hours",
     discountedPrice: 2450000, // optional field
     label: "Mini Bundle",
-    totalLoad:"2500",
+    totalLoad: "2500",
     inverterRating: "1200",
-    totalOutput:"2500",
+    totalOutput: "2500",
     itemsIncluded: [
 
-        {
-          title: "Newman inverter - 4kva",
-          price: 1000000,
-          icon: "inverter-icon.png" // replace with actual path/icon component
-        },
-        {
-          title: "Newman Battery - 2kva",
-          price: 1000000,
-          icon: inverter,
-        },
-        {
-          title: "4 led bulbs",
-          price: 100000,
-          icon: ""
-        }
-      ]
+      {
+        title: "Newman inverter - 4kva",
+        price: 1000000,
+        icon: "inverter-icon.png" // replace with actual path/icon component
+      },
+      {
+        title: "Newman Battery - 2kva",
+        price: 1000000,
+        icon: inverter,
+      },
+      {
+        title: "4 led bulbs",
+        price: 100000,
+        icon: ""
+      }
+    ]
 
   },
 
@@ -485,5 +495,5 @@ export const bankOptions = [
 ];
 
 export const starsArr = [
-  star1,star1,star1,star1,star2
+  star1, star1, star1, star1, star2
 ]
