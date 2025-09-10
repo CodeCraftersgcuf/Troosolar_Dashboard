@@ -20,13 +20,13 @@ const Otp = () => {
 
   // Prefill if OTP passed from register (dev convenience)
   useEffect(() => {
-    if (state?.otp) {
-      const s = String(state.otp).slice(0, OTP_LENGTH).split("");
-      setDigits((prev) => prev.map((_, i) => s[i] ?? ""));
-    }
-    // focus first input
+    // Initialize all digits to empty
+    setDigits(Array(OTP_LENGTH).fill(""));
+  
+    // Focus the first input
     inputsRef.current?.[0]?.focus();
-  }, [state?.otp]);
+  }, []); // Empty dependency array, runs only once on mount
+  
 
   // countdown
   useEffect(() => {
