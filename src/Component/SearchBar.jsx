@@ -203,7 +203,7 @@ const SearchBar = ({ categories = [] }) => {
   }, [query, selectedValue, products, setFilteredResults, dropdownOptions]);
 
   return (
-<div className="flex items-center bg-white rounded-lg shadow-sm border border-gray-200 w-[841px] relative">
+<div className="flex items-center bg-white rounded-lg shadow-sm border border-gray-200 w-full relative">
       {/* Dropdown */}
       <div className="relative" ref={dropdownRef}>
         <button
