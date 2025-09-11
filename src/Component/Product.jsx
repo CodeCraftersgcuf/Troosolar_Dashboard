@@ -620,7 +620,7 @@ const Product = ({
         <Title>{title || "—"}</Title>
       </div>
 
-      <hr className="border-gray-200 mt-[-3px]" />
+      <hr className="border-gray-200 max-sm:mt-[-18px]" />
 
       {/* Price + right meta */}
       <div className="flex justify-between items-start mt-2">
