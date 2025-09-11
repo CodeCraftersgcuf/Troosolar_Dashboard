@@ -84,8 +84,6 @@ const MyOrders = () => {
   return (
     <div className="w-full">
       <div className="bg-white rounded-2xl shadow-md p-5">
-        <h2 className="text-center text-xl sm:text-2xl font-semibold mb-4">Order History</h2>
-
         {/* Tabs */}
         <div className="inline-flex bg-gray-100 rounded-full p-1 mb-5">
           {[

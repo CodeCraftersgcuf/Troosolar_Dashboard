@@ -63,8 +63,15 @@ import { Sidebar_links } from "../assets/data";
 import LinkComp from "./LinkComponent";
 import API, { BASE_URL } from "../config/api.config";
 
-const LOGOUT_URL = (API && API.LOGOUT) ? API.LOGOUT : `${BASE_URL}/logout`;
-const USER_KEYS = ["user", "auth_user", "current_user", "profile", "logged_in_user", "loggedInUser"];
+const LOGOUT_URL = API && API.LOGOUT ? API.LOGOUT : `${BASE_URL}/logout`;
+const USER_KEYS = [
+  "user",
+  "auth_user",
+  "current_user",
+  "profile",
+  "logged_in_user",
+  "loggedInUser",
+];
 
 // Mobile navigation items matching the photo - using mobile-specific icons
 const mobileNavItems = [
@@ -83,8 +90,18 @@ const SideBar = () => {
   const location = useLocation();
 
   const clearAuthStorage = () => {
-    try { localStorage.removeItem("access_token"); } catch (e) { console.warn("Failed to remove access_token:", e); }
-    USER_KEYS.forEach(k => { try { localStorage.removeItem(k); } catch (e) { console.warn(`Failed to remove ${k}:`, e); } });
+    try {
+      localStorage.removeItem("access_token");
+    } catch (e) {
+      console.warn("Failed to remove access_token:", e);
+    }
+    USER_KEYS.forEach((k) => {
+      try {
+        localStorage.removeItem(k);
+      } catch (e) {
+        console.warn(`Failed to remove ${k}:`, e);
+      }
+    });
   };
 
   const handleLogout = async () => {
@@ -96,7 +113,12 @@ const SideBar = () => {
         await axios.post(
           LOGOUT_URL,
           {},
-          { headers: { Accept: "application/json", Authorization: `Bearer ${token}` } }
+          {
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
         );
       }
     } catch {
@@ -107,6 +129,13 @@ const SideBar = () => {
       // adjust if your auth route differs
       navigate("/login", { replace: true });
     }
+  };
+
+  const getWidth = () => {
+    const width = window.innerWidth;
+    if (width <= 325) return "215px";
+    if (width <= 375) return "325px";
+    return "390px"; // Default for larger screens
   };
 
   return (
@@ -151,7 +180,9 @@ const SideBar = () => {
             className="flex items-center p-2 py-4 cursor-pointer gap-2 text-white font-bold rounded-lg w-full hover:border hover:border-white disabled:opacity-60"
           >
             <img src={assets.logout} alt="logout" className="w-6 h-6" />
-            {!menuOpen && <span>{loggingOut ? "Logging out..." : "Logout"}</span>}
+            {!menuOpen && (
+              <span>{loggingOut ? "Logging out..." : "Logout"}</span>
+            )}
           </button>
         </div>
 
@@ -159,18 +190,18 @@ const SideBar = () => {
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <div 
+      <div
         className="sm:hidden fixed z-50"
         style={{
-          width: '390px',
-          height: '70px',
-          left: 'calc(50% - 390px/2)',
-          bottom: '23px',
-          background: '#FFFFFF',
-          border: '0.3px solid #CDCDCD',
-          boxShadow: '5px 5px 10px rgba(109, 108, 108, 0.25)',
-          borderRadius: '15px',
-          boxSizing: 'border-box'
+          width: getWidth(),
+          height: "60px",
+          left: `calc(50% - ${getWidth()} / 2)`, // Center the div based on its dynamic width
+          bottom: "23px",
+          background: "#FFFFFF",
+          border: "0.3px solid #CDCDCD",
+          boxShadow: "5px 5px 10px rgba(109, 108, 108, 0.25)",
+          borderRadius: "15px",
+          boxSizing: "border-box",
         }}
       >
         <div className="flex items-center justify-around h-full px-4">
@@ -191,9 +222,9 @@ const SideBar = () => {
                       isActive ? "opacity-100" : "opacity-60"
                     }`}
                     style={{
-                      filter: isActive 
-                        ? "brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(2878%) hue-rotate(224deg) brightness(89%) contrast(97%)" 
-                        : "brightness(0) saturate(100%) invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%)"
+                      filter: isActive
+                        ? "brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(2878%) hue-rotate(224deg) brightness(89%) contrast(97%)"
+                        : "brightness(0) saturate(100%) invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%)",
                     }}
                   />
                   <span

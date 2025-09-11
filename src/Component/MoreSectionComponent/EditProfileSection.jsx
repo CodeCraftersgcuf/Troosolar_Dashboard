@@ -155,9 +155,6 @@ const EditProfile = () => {
 
   return (
     <div className="w-full bg-white rounded-2xl p-6 shadow-md border border-gray-300">
-      <h2 className="text-lg text-center font-medium text-gray-800 mb-6">
-        Edit Profile
-      </h2>
 
       <div className="flex flex-col items-center mb-6">
         <label htmlFor="avatar" className="cursor-pointer">

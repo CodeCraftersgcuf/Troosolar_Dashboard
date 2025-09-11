@@ -135,55 +135,107 @@ const NewTicket = ({ onCancel, onCreated }) => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col justify-between">
-      <div>
-        <div className="relative flex items-center justify-center mb-6">
-          <ChevronLeft className="absolute left-0 cursor-pointer" onClick={onCancel} />
-          <p className="text-lg font-semibold text-gray-800">New Ticket</p>
-        </div>
-
-        {/* Subject */}
-        <div className="mb-6">
-          <Input
-            id="subject"
-            label="Subject"
-            placeholder="Select ticket subject"
-            icon={<ChevronRight size={20} color="black" />}
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-          />
-        </div>
-
-        {/* Message */}
+    <>
+      {/* Desktop View */}
+      <div className="hidden sm:flex min-h-screen flex-col justify-between">
         <div>
-          <label
-            htmlFor="message"
-            className="block text-sm font-medium text-gray-700 mb-2"
+          <div className="relative flex items-center justify-center mb-6">
+            <ChevronLeft className="absolute left-0 cursor-pointer" onClick={onCancel} />
+            <p className="text-lg font-semibold text-gray-800">New Ticket</p>
+          </div>
+
+          {/* Subject */}
+          <div className="mb-6">
+            <Input
+              id="subject"
+              label="Subject"
+              placeholder="Select ticket subject"
+              icon={<ChevronRight size={20} color="black" />}
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+            />
+          </div>
+
+          {/* Message */}
+          <div>
+            <label
+              htmlFor="message"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Message
+            </label>
+            <textarea
+              id="message"
+              rows="6"
+              className="w-full p-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-none"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+            />
+            {error ? <p className="text-xs text-red-600 mt-2">{error}</p> : null}
+          </div>
+        </div>
+
+        {/* Send */}
+        <div className="mt-10">
+          <button
+            onClick={handleSubmit}
+            className="w-full flex items-center justify-center bg-[#273e8e] text-white font-medium text-sm rounded-full py-4 px-6 shadow hover:bg-[#1e2f75] transition disabled:opacity-60"
+            disabled={submitting}
           >
-            Message
-          </label>
-          <textarea
-            id="message"
-            rows="6"
-            className="w-full p-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-none"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-          />
-          {error ? <p className="text-xs text-red-600 mt-2">{error}</p> : null}
+            {submitting ? "Sending..." : "Send"}
+          </button>
         </div>
       </div>
 
-      {/* Send */}
-      <div className="mt-10">
-        <button
-          onClick={handleSubmit}
-          className="w-full flex items-center justify-center bg-[#273e8e] text-white font-medium text-sm rounded-full py-4 px-6 shadow hover:bg-[#1e2f75] transition disabled:opacity-60"
-          disabled={submitting}
-        >
-          {submitting ? "Sending..." : "Send"}
-        </button>
+      {/* Mobile View */}
+      <div className="sm:hidden block min-h-screen bg-white">
+       
+        {/* Main Content */}
+        <div className="px-4 flex-1 flex flex-col">
+          {/* Subject Input */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Subject
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Select ticket subject"
+                className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none pr-10"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+              />
+              <ChevronRight className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500" size={16} />
+            </div>
+          </div>
+
+          {/* Message Input */}
+          <div className="flex-1 mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Message
+            </label>
+            <textarea
+              placeholder="Enter your message..."
+              className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none resize-none h-64"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+            />
+            {error ? <p className="text-xs text-red-600 mt-2">{error}</p> : null}
+          </div>
+        </div>
+
+        {/* Fixed Bottom Send Button */}
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200">
+          <button
+            onClick={handleSubmit}
+            className="w-full bg-[#273e8e] text-white rounded-full py-3 text-sm font-medium disabled:opacity-60"
+            disabled={submitting}
+          >
+            {submitting ? "Sending..." : "Send"}
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 

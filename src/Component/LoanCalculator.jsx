@@ -63,11 +63,7 @@ const LoanCalculator = () => {
     </div>
     {/* Mobile View   */}
     <div className="min-h-screen sm:hidden block bg-white px-4 pb-20">
-      {/* Header */}
-      <div className="flex items-center py-4">
-        <ChevronLeft className="text-black" />
-        <h1 className="text-lg font-semibold text-black ml-4">Loan Calculator</h1>
-      </div>
+      
 
       {/* Introduction */}
       <div className="mb-6">
@@ -131,66 +127,60 @@ const LoanCalculator = () => {
         </div>
       </div>
 
-      {/* Important Note */}
-      <div className="mb-6">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-sm text-gray-700">
-            Kindly note that loan amount is <strong className="font-semibold">70%</strong> of product amount, you are required to pay the remaining <strong className="font-semibold">30%</strong> complete the <strong className="font-semibold">30%</strong> payment by funding your wallet directly with <strong className="font-semibold">300,000</strong>
-          </p>
-        </div>
-      </div>
+   {/* Important Note */}
+<div className="mb-6">
+  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+    <p className="text-sm text-[#E8A91D]">
+      Kindly note that loan amount is{" "}
+      <strong className="font-semibold">70%</strong> of product amount, you are
+      required to pay the remaining <strong className="font-semibold">30%</strong>{" "}
+      complete the <strong className="font-semibold">30%</strong> payment by
+      funding your wallet directly with{" "}
+      <strong className="font-semibold">300,000</strong>
+    </p>
+  </div>
+</div>
 
-      {/* Loan Repayment Calculation */}
-      <div className="mb-6">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <h3 className="text-base font-semibold text-black mb-4">
-            Loan Repayment Calculation
-          </h3>
-          
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Product Amount:</span>
-              <span className="font-medium">N1,300,000</span>
-            </div>
-            <hr className="border-gray-300" />
-            
-            <div className="flex justify-between">
-              <span className="text-gray-600">Loan Amount:</span>
-              <span className="font-medium">N1,000,000</span>
-            </div>
-            <hr className="border-gray-300" />
-            
-            <div className="flex justify-between">
-              <span className="text-gray-600">Down Payment:</span>
-              <span className="font-medium">N300,000</span>
-            </div>
-            <hr className="border-gray-300" />
-            
-            <div className="flex justify-between">
-              <span className="text-gray-600">Duration:</span>
-              <span className="font-medium">6 months</span>
-            </div>
-            <hr className="border-gray-300" />
-            
-            <div className="flex justify-between">
-              <span className="text-gray-600">Monthly Payment:</span>
-              <span className="font-medium">N170,000</span>
-            </div>
-            <hr className="border-gray-300" />
-            
-            <div className="flex justify-between">
-              <span className="text-gray-600">Interest Percentage:</span>
-              <span className="font-medium">5% Monthly</span>
-            </div>
-            <hr className="border-gray-300" />
-            
-            <div className="flex justify-between">
-              <span className="text-gray-600">Repayment Date:</span>
-              <span className="font-medium">25th Dec, 2025</span>
-            </div>
-          </div>
-        </div>
+{/* Loan Repayment Calculation */}
+<div className="mb-6">
+  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 shadow-sm">
+    <h3 className="text-lg font-semibold text-black mb-4">
+      Loan Repayment Calculation
+    </h3>
+
+    <div className="space-y-4 text-sm">
+      <div className="flex justify-between">
+        <span className="text-gray-600">Product Amount</span>
+        <span className="font-medium">N1,300,000</span>
       </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Loan Amount</span>
+        <span className="font-medium">N1,000,000</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Down Payment</span>
+        <span className="font-medium">N300,000</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Duration</span>
+        <span className="font-medium">6 months</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Monthly Payment</span>
+        <span className="font-medium">N170,000</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Interest Percentage</span>
+        <span className="font-medium">5% Monthly</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Repayment Date</span>
+        <span className="font-medium">25th Dec, 2025</span>
+      </div>
+    </div>
+  </div>
+</div>
+
     </div>
     </>
 

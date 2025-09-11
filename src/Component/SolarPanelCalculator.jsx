@@ -288,32 +288,33 @@ const SolarPanelCalculator = () => {
 
         {/* Calculations Section */}
         <div className="px-4 mb-3">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-            <h3 className="text-sm font-semibold text-black mb-2">Calculations</h3>
-            <div className="space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Solar Panel Capacity</span>
-                <span className="font-medium">200w</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Panel Quantity</span>
-                <span className="font-medium">4</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Charge Controller</span>
-                <span className="font-medium">20A-24V</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Charge Controller qty</span>
-                <span className="font-medium">1</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Panel Bank (kwatts)</span>
-                <span className="font-medium">1000</span>
-              </div>
-            </div>
-          </div>
-        </div>
+  <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4 shadow-sm">
+    <h3 className="text-sm font-semibold text-black mb-3">Calculations</h3>
+    <div className="space-y-3 text-sm">
+      <div className="flex justify-between border-b-1 border-gray-300 pb-2">
+        <span className="text-gray-700">Solar Panel Capacity</span>
+        <span className="font-medium text-gray-900">200w</span>
+      </div>
+      <div className="flex justify-between border-b-1 border-gray-300 pb-2">
+        <span className="text-gray-700">Panel Quantity</span>
+        <span className="font-medium text-gray-900">4</span>
+      </div>
+      <div className="flex justify-between border-b-1 border-gray-300 pb-2">
+        <span className="text-gray-700">Charge Controller</span>
+        <span className="font-medium text-gray-900">20A-24V</span>
+      </div>
+      <div className="flex justify-between border-b-1 border-gray-300 pb-2">
+        <span className="text-gray-700">Charge Controller qty</span>
+        <span className="font-medium text-gray-900">1</span>
+      </div>
+      <div className="flex justify-between border-b-1 border-gray-300 pb-2">
+        <span className="text-gray-700">Panel Bank (kwatts)</span>
+        <span className="font-medium text-gray-900">1000</span>
+      </div>
+    </div>
+  </div>
+</div>
+
 
         {/* Total Output - Fixed Bottom */}
         <div className="fixed bottom-0 left-0 right-0 bg-[#273e8e] text-white px-4 py-3 flex items-center justify-between">

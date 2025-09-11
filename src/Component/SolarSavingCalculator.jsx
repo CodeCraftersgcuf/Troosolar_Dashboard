@@ -77,20 +77,14 @@ const SolarSavingCalculator = () => {
 
               {/* Payment Plan Details */}
 
-
-
               <h2 className="text-lg font-medium text-[#273e8e] mb-4">
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-xl block font-medium">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl block font-medium">
                     Troosolar Payment Plan Details
-
-                    </h1>
-                    <div className="flex-1 h-px  bg-gray-400/40" />
-                  </div>
-                </h2>
-
-
-
+                  </h1>
+                  <div className="flex-1 h-px  bg-gray-400/40" />
+                </div>
+              </h2>
 
               <div>
                 <label className="block mb-1 text-lg">
@@ -182,19 +176,15 @@ const SolarSavingCalculator = () => {
       {/* Mobile View  */}
       <div>
         <div className="min-h-screen sm:hidden block bg-white px-4 pb-20">
-          {/* Header */}
-          <div className="flex items-center py-4">
-            <ChevronLeft className="text-black" />
-            <h1 className="text-lg font-semibold text-black ml-4">Solar Savings Calculator</h1>
-          </div>
-
           {/* Introduction */}
           <div className="mb-6">
-            <h2 className="text-base font-semibold text-[#273e8e] mb-2">
+            <h2 className="text-base font-semibold text-black-500   mb-2">
               What is a solar savings calculator?
             </h2>
             <p className="text-sm text-gray-600">
-              A solar saving calculator estimates how much money you can save by switching to solar energy. It helps you understand long-term cost benefits based on electricity bills, location, and system size.
+              A solar saving calculator estimates how much money you can save by
+              switching to solar energy. It helps you understand long-term cost
+              benefits based on electricity bills, location, and system size.
             </p>
           </div>
 
@@ -203,7 +193,7 @@ const SolarSavingCalculator = () => {
             <h3 className="text-base font-semibold text-[#273e8e] mb-4">
               Generator Details
             </h3>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -213,7 +203,10 @@ const SolarSavingCalculator = () => {
                   <select className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-3 text-sm appearance-none">
                     <option>Select answer</option>
                   </select>
-                  <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
+                  <ChevronDown
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none"
+                    size={16}
+                  />
                 </div>
               </div>
 
@@ -257,7 +250,7 @@ const SolarSavingCalculator = () => {
             <h3 className="text-base font-semibold text-[#273e8e] mb-4">
               Troosolar Payment Plan Details
             </h3>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -284,7 +277,10 @@ const SolarSavingCalculator = () => {
                     <option value="12">1 Year</option>
                     <option value="24">2 Years</option>
                   </select>
-                  <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
+                  <ChevronDown
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none"
+                    size={16}
+                  />
                 </div>
               </div>
             </div>
@@ -292,28 +288,32 @@ const SolarSavingCalculator = () => {
 
           {/* Savings Summary */}
           <div className="mb-6">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="bg-yellow-50 border border-yellow-300 border-dotted  rounded-lg p-5 shadow-md">
               <p className="text-sm text-gray-700 mb-3">
                 By going solar with Troosolar, you save
               </p>
-              <div className="bg-[#E8A91D] text-white rounded-lg px-4 py-3 mb-4">
-                <span className="text-2xl font-bold">N1,500,000</span>
+              <div className="bg-[#E8A91D] text-white rounded-lg px-6 py-4 mb-4">
+                <span className="text-3xl font-bold">N1,500,000</span>
               </div>
-              
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
+
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between border-b-1 border-gray-300 pb-2">
                   <span className="text-gray-600">Total Duration</span>
                   <span className="font-medium">12 months</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Gen spend over 12 months</span>
+                <div className="flex justify-between border-b-1 border-gray-300 pb-2">
+                  <span className="text-gray-600">
+                    Gen spend over 12 months
+                  </span>
                   <span className="font-medium text-[#E8A91D]">N1,700,000</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Solar spend over 12 months</span>
+                <div className="flex justify-between border-b-1 border-gray-300 pb-2">
+                  <span className="text-gray-600">
+                    Solar spend over 12 months
+                  </span>
                   <span className="font-medium text-[#E8A91D]">N200,000</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between border-b-1 border-gray-300 pb-2">
                   <span className="text-gray-600">Break even period</span>
                   <span className="font-medium">2 months</span>
                 </div>

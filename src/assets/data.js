@@ -74,7 +74,7 @@ import ShopMgt_mob from "../assets/ShopMgt_mob.svg";
 import Loanmgt_mob from "../assets/Loanmgt_mob.svg";
 import settings_mob from "../assets/settings_mob.svg";
 import userGear_mob from "../assets/userGear_mob.svg";
-
+import logout_mob from "../assets/logout_mob.png";
 
 export const assets = {
   product, star1, star2, uploadArea, LoanBox, creditNeedle, house1, house2, house3, house4,
@@ -84,7 +84,7 @@ export const assets = {
   shopping, GearSix, sidebar, twitter, whatsApp, yt, loginImageForSm, telegram,
   dashboard, usermgt, creditMgt, Loanmgt, loansDisbursement, Transactions,
   balance, ShopMgt, referral, analytics, settings, UserGear1, cart, rePayIcon, solarInverted, solar1,
-  dashboard_mob, ShopMgt_mob, Loanmgt_mob, settings_mob, userGear_mob,
+  dashboard_mob, ShopMgt_mob, Loanmgt_mob, settings_mob, userGear_mob,logout_mob,
 };
 
 
