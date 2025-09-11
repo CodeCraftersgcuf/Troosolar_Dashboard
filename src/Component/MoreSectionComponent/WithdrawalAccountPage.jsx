@@ -56,14 +56,6 @@ const WithdrawalAccountPage = ({ onBack, onProceed }) => {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="flex items-center py-4 px-4 bg-white border-b border-gray-100">
-        <button onClick={onBack} className="p-1">
-          <ChevronLeft className="text-black" size={24} />
-        </button>
-        <h1 className="text-lg font-semibold text-black ml-4">Withdrawal Account</h1>
-      </div>
-
       {/* Main Content */}
       <div className="px-4 py-6">
         <form onSubmit={handleProceed} className="space-y-6">

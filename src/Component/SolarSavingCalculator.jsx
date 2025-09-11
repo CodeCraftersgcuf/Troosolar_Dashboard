@@ -104,7 +104,7 @@ const SolarSavingCalculator = () => {
 
             {/* Right Result Box */}
             <div className="col-span-5">
-              <div className="relative w-[130px] mb-4">
+              <div className="relative w-[150px] mb-4">
                 <select
                   className="appearance-none w-full py-4 px-3 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 outline-none"
                   name="duration"

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { PiShoppingCartSimple } from "react-icons/pi";
 import API, { BASE_URL } from "../../config/api.config";
+import OrderDetails from "../OrderComponents/OrderDetails";
 
 const formatNGN = (n) => {
   const num = Number(n) || 0;
@@ -36,6 +37,7 @@ const MyOrders = () => {
   const [tab, setTab] = useState("all"); // all | pending | completed
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
   const ORDERS_URL = API.ORDERS || `${BASE_URL}/orders`;
@@ -81,6 +83,19 @@ const MyOrders = () => {
     return orders.filter((o) => String(o.order_status).toLowerCase() === "pending");
   }, [tab, orders]);
 
+  const handleOrderClick = (order) => {
+    setSelectedOrder(order);
+  };
+
+  const handleBackFromOrderDetails = () => {
+    setSelectedOrder(null);
+  };
+
+  // Show OrderDetails component if an order is selected
+  if (selectedOrder) {
+    return <OrderDetails order={selectedOrder} onBack={handleBackFromOrderDetails} />;
+  }
+
   return (
     <div className="w-full">
       <div className="bg-white rounded-2xl shadow-md p-5">
@@ -115,9 +130,10 @@ const MyOrders = () => {
             {filtered.map((o) => {
               const badge = statusBadge(o.order_status);
               return (
-                <div
+                <button
                   key={o.id}
-                  className="bg-white border rounded-xl px-4 py-3 flex items-center justify-between"
+                  onClick={() => handleOrderClick(o)}
+                  className="w-full text-left bg-white border rounded-xl px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
                     <div className="h-9 w-9 rounded-full bg-indigo-50 flex items-center justify-center">
@@ -137,7 +153,7 @@ const MyOrders = () => {
                       {badge.text}
                     </span>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

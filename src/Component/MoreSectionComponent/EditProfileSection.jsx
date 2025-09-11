@@ -154,7 +154,7 @@ const EditProfile = () => {
   };
 
   return (
-    <div className="w-full bg-white rounded-2xl p-6 shadow-md border border-gray-300">
+    <div className="w-full bg-white sm:bg-white bg-[#e4e6ed] rounded-2xl p-6 shadow-md border border-gray-300">
 
       <div className="flex flex-col items-center mb-6">
         <label htmlFor="avatar" className="cursor-pointer">

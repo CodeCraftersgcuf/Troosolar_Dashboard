@@ -559,9 +559,12 @@ const Product = ({
   const [adding, setAdding] = useState(false);
   const [err, setErr] = useState("");
 
-  const safeImage =
+  console.log("The product Image", image);
+  const starting_base_url="https://troosolar.hmstech.org/"
+  const Image_url =
     image || assets?.placeholderProduct || "/placeholder-product.png";
   const title = useMemo(() => formatTitle(heading), [heading]);
+  const safeImage = starting_base_url + Image_url;
 
   const handleAddToCart = async (e) => {
     e?.preventDefault?.();

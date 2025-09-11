@@ -64,7 +64,7 @@ import mttp from "../assets/mttp.svg";
 import solarfan from "../assets/solarfan.svg";
 import surge from "../assets/surge.svg";
 import connector from "../assets/connector.svg";
-
+import tick from "../assets/tick.png";
 import product from "../assets/product.png";
 
 
@@ -84,7 +84,7 @@ export const assets = {
   shopping, GearSix, sidebar, twitter, whatsApp, yt, loginImageForSm, telegram,
   dashboard, usermgt, creditMgt, Loanmgt, loansDisbursement, Transactions,
   balance, ShopMgt, referral, analytics, settings, UserGear1, cart, rePayIcon, solarInverted, solar1,
-  dashboard_mob, ShopMgt_mob, Loanmgt_mob, settings_mob, userGear_mob,logout_mob,
+  dashboard_mob, ShopMgt_mob, Loanmgt_mob, settings_mob, userGear_mob,logout_mob,tick
 };
 
 
