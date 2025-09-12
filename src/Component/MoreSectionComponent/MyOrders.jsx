@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { PiShoppingCartSimple } from "react-icons/pi";
 import API, { BASE_URL } from "../../config/api.config";
-import OrderDetails from "../OrderComponents/OrderDetails";
-
+// import OrderDetails from "../OrderComponents/OrderDetails";
+import OrderSummary from "../OrderComponents/OrderSummary";
 const formatNGN = (n) => {
   const num = Number(n) || 0;
   try {
@@ -20,7 +20,11 @@ const formatDate = (s) => {
   const day = d.getDate();
   const month = d.toLocaleString("en-GB", { month: "short" });
   const year = String(d.getFullYear()).slice(-2);
-  const time = d.toLocaleString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const time = d.toLocaleString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
   return `${day} ${month}, ${year} - ${time}`;
 };
 
@@ -39,7 +43,8 @@ const MyOrders = () => {
   const [err, setErr] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
   const ORDERS_URL = API.ORDERS || `${BASE_URL}/orders`;
 
   useEffect(() => {
@@ -55,13 +60,18 @@ const MyOrders = () => {
         setLoading(true);
         setErr("");
         const { data } = await axios.get(ORDERS_URL, {
-          headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
         });
         const list = Array.isArray(data?.orders) ? data.orders : [];
         if (mounted) setOrders(list);
       } catch (e) {
         if (mounted) {
-          setErr(e?.response?.data?.message || e?.message || "Failed to load orders.");
+          setErr(
+            e?.response?.data?.message || e?.message || "Failed to load orders."
+          );
           setOrders([]);
         }
       } finally {
@@ -77,10 +87,14 @@ const MyOrders = () => {
   const filtered = useMemo(() => {
     if (tab === "all") return orders;
     if (tab === "completed") {
-      return orders.filter((o) => String(o.order_status).toLowerCase() === "delivered");
+      return orders.filter(
+        (o) => String(o.order_status).toLowerCase() === "delivered"
+      );
     }
     // pending
-    return orders.filter((o) => String(o.order_status).toLowerCase() === "pending");
+    return orders.filter(
+      (o) => String(o.order_status).toLowerCase() === "pending"
+    );
   }, [tab, orders]);
 
   const handleOrderClick = (order) => {
@@ -93,7 +107,9 @@ const MyOrders = () => {
 
   // Show OrderDetails component if an order is selected
   if (selectedOrder) {
-    return <OrderDetails order={selectedOrder} onBack={handleBackFromOrderDetails} />;
+    return (
+      <OrderSummary order={selectedOrder} onBack={handleBackFromOrderDetails} />
+    );
   }
 
   return (
@@ -133,15 +149,22 @@ const MyOrders = () => {
                 <button
                   key={o.id}
                   onClick={() => handleOrderClick(o)}
-                  className="w-full text-left bg-white border rounded-xl px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                  className="w-full text-left bg-white border-1 border-gray-300 rounded-xl px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
                     <div className="h-9 w-9 rounded-full bg-indigo-50 flex items-center justify-center">
-                      <PiShoppingCartSimple className="text-indigo-600" size={20} />
+                      <PiShoppingCartSimple
+                        className="text-indigo-600"
+                        size={20}
+                      />
                     </div>
                     <div>
-                      <div className="text-sm font-medium">{o.order_number || `ORD-${o.id}`}</div>
-                      <div className="text-[11px] text-gray-500">{formatDate(o.created_at)}</div>
+                      <div className="text-sm font-medium">
+                        {o.order_number || `ORD-${o.id}`}
+                      </div>
+                      <div className="text-[11px] text-gray-500">
+                        {formatDate(o.created_at)}
+                      </div>
                     </div>
                   </div>
 
@@ -149,7 +172,9 @@ const MyOrders = () => {
                     <div className="text-[#273e8e] font-semibold text-sm">
                       {formatNGN(o.total_price)}
                     </div>
-                    <span className={`mt-1 inline-block text-[10px] px-2 py-[2px] rounded-full ${badge.cls}`}>
+                    <span
+                      className={`mt-1 inline-block text-[10px] px-2 py-[2px] rounded-full ${badge.cls}`}
+                    >
                       {badge.text}
                     </span>
                   </div>

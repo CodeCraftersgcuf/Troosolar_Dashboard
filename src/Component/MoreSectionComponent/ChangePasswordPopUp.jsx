@@ -1,12 +1,17 @@
 import React, { useState } from "react";
-import { X } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
+import axios from "axios";
+import API, { BASE_URL } from "../../config/api.config";
 
 const ChangePasswordPopUp = ({ onClose, onEmailSubmit }) => {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validation
     if (!email) {
       setError("Email is required");
       return;
@@ -18,7 +23,36 @@ const ChangePasswordPopUp = ({ onClose, onEmailSubmit }) => {
     }
 
     setError("");
-    onEmailSubmit(email);
+    setLoading(true);
+
+    try {
+      // Call forgot-password API
+      const response = await axios.post(
+        API.Forgot_Password,
+        { email: email },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (response.data.status === "success") {
+        // Success - proceed to OTP verification
+        onEmailSubmit(email);
+      } else {
+        setError(response.data.message || "Failed to send OTP. Please try again.");
+      }
+    } catch (err) {
+      console.error("Forgot password error:", err);
+      const errorMessage = err.response?.data?.message || 
+                          err.response?.data?.error || 
+                          "Failed to send OTP. Please try again.";
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -53,9 +87,21 @@ const ChangePasswordPopUp = ({ onClose, onEmailSubmit }) => {
 
           <button
             type="submit"
-            className="w-full py-3 bg-[#273e8e] rounded-full text-white hover:bg-[#1e327a]"
+            disabled={loading}
+            className={`w-full py-3 rounded-full text-white transition-colors ${
+              loading 
+                ? "bg-gray-400 cursor-not-allowed" 
+                : "bg-[#273e8e] hover:bg-[#1e327a]"
+            }`}
           >
-            Send OTP
+            {loading ? (
+              <div className="flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Sending OTP...</span>
+              </div>
+            ) : (
+              "Send OTP"
+            )}
           </button>
         </form>
       </div>

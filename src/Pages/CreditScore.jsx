@@ -108,7 +108,7 @@ const CreditScore = () => {
               {/* Right: Terms -> Offer */}
               {afterTerm ? (
                 <div className="w-1/2">
-                  <Terms />
+                  <Terms showFullWidth={true} />
                   <div className="space-y-4 mt-4 pt-4">
                     <label
                       htmlFor="accept-terms"

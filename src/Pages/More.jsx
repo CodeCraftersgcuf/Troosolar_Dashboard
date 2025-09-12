@@ -178,7 +178,8 @@ const More = () => {
 
   const handleSaveNewPassword = () => {
     setShowNewPasswordPopup(false);
-    alert("Password changed successfully!");
+    // Show success message
+    alert("Password reset successfully! You can now login with your new password.");
   };
 
   const renderActiveSection = () => {
@@ -557,6 +558,7 @@ const More = () => {
             )}
             {showNewPasswordPopup && (
               <NewPasswordPopup
+                email={userEmail}
                 onSave={handleSaveNewPassword}
                 onClose={() => setShowNewPasswordPopup(false)}
               />

@@ -1,16 +1,22 @@
 import React, { useState } from "react";
-import { X } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
+import axios from "axios";
+import API from "../../config/api.config";
 
-const NewPasswordPopup = ({ onSave, onClose }) => {
+const NewPasswordPopup = ({ onSave, onClose, email }) => {
   const [formData, setFormData] = useState({
     newPassword: "",
     confirmPassword: "",
   });
   const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState("");
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    // Clear API error when user starts typing
+    if (apiError) setApiError("");
   };
 
   const validateForm = () => {
@@ -31,10 +37,46 @@ const NewPasswordPopup = ({ onSave, onClose }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (validateForm()) {
-      onSave(formData.newPassword);
+    
+    if (!validateForm()) {
+      return;
+    }
+
+    setLoading(true);
+    setApiError("");
+
+    try {
+      // Call reset-password API
+      const response = await axios.post(
+        API.Reset_Password,
+        { 
+          email: email,
+          password: formData.newPassword 
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (response.data.status === "success") {
+        // Success - call onSave to close popup and show success message
+        onSave(formData.newPassword);
+      } else {
+        setApiError(response.data.message || "Failed to reset password. Please try again.");
+      }
+    } catch (err) {
+      console.error("Reset password error:", err);
+      const errorMessage = err.response?.data?.message || 
+                          err.response?.data?.error || 
+                          "Failed to reset password. Please try again.";
+      setApiError(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -51,6 +93,12 @@ const NewPasswordPopup = ({ onSave, onClose }) => {
         <hr className="border-gray-300 mb-4" />
 
         <form onSubmit={handleSubmit}>
+          {apiError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-600">{apiError}</p>
+            </div>
+          )}
+
           <div className="mb-4">
             <label htmlFor="newPassword" className="block text-sm text-gray-700 mb-2">
               New Password
@@ -93,9 +141,21 @@ const NewPasswordPopup = ({ onSave, onClose }) => {
 
           <button
             type="submit"
-            className="w-full py-3 bg-[#273e8e] rounded-full text-white hover:bg-[#1e327a]"
+            disabled={loading}
+            className={`w-full py-3 rounded-full text-white transition-colors ${
+              loading 
+                ? "bg-gray-400 cursor-not-allowed" 
+                : "bg-[#273e8e] hover:bg-[#1e327a]"
+            }`}
           >
-            Save New Password
+            {loading ? (
+              <div className="flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Resetting Password...</span>
+              </div>
+            ) : (
+              "Save New Password"
+            )}
           </button>
         </form>
       </div>

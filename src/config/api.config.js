@@ -35,7 +35,10 @@ const API = {
     PRODUCT_REVIEWS: `${BASE_URL}/product-reviews`,
     Fund_Wallet: `${BASE_URL}/fund-wallet`,
     Payment_Confirmation: `${BASE_URL}/order/payment-confirmation`,
-
+    Order_Details: (id) => `${BASE_URL}/order/details/${id}`,
+    Forgot_Password: `${BASE_URL}/forget-password`,
+    Verify_Reset_Password_OTP: `${BASE_URL}/verify-reset-password-otp`,
+    Reset_Password: `${BASE_URL}/reset-password`,
 
 
     // add more when needed

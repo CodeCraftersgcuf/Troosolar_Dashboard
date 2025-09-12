@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { X, ArrowLeft } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
-const Terms = ({ link, onClose }) => {
+const Terms = ({ link, onClose, showFullWidth }) => {
   const location = useLocation();
   const isCreditScorePage = location.pathname.includes("/creditscore");
 
@@ -167,8 +167,13 @@ const Terms = ({ link, onClose }) => {
   );
 
   /* DESKTOP/TABLET (sm+) — EXACTLY your original UI, unchanged */
-  const DesktopSheet = () => (
-    <div className="hidden sm:flex w-[100%] h-[850px] bg-white rounded-2xl shadow-md overflow-hidden flex-col">
+  const DesktopSheet = ({showFullWidth }) => {
+    const outerClass = showFullWidth
+      ? "hidden sm:flex w-[100%] h-[850px] bg-white rounded-2xl shadow-md overflow-hidden flex-col"
+      : "hidden sm:flex w-[30%] h-[840px] bg-white rounded-2xl shadow-md overflow-hidden flex-col ms-[550px]";
+    
+    return (
+      <div className={outerClass}>
       <div className="relative pt-3 flex-shrink-0">
         {!isCreditScorePage && (
           <>
@@ -265,13 +270,14 @@ const Terms = ({ link, onClose }) => {
           </div>
         )}
       </div>
-    </div>
-  );
+      </div>
+    );
+  };
 
   return (
     <>
       <MobileSheet />
-      <DesktopSheet />
+      <DesktopSheet showFullWidth={showFullWidth} />
     </>
   );
 };

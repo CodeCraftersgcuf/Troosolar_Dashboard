@@ -377,7 +377,7 @@ const Home = () => {
               {!bundlesLoading &&
                 !bundlesErr &&
                 bundles.slice(0, 4).map((item) => (
-                  <Link to={`/productBundle/details/${item.id}`} key={item.id}>
+                  <Link to={`/productBundle/details/${item.id}`} key={item.id} className="flex-shrink-0">
                     <SolarBundleComponent
                       id={item.id}
                       image={item.image}

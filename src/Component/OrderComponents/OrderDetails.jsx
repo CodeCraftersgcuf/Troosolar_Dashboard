@@ -11,8 +11,11 @@ const OrderDetails = ({ order, onBack }) => {
     price: "N1,500,000",
     status: "Pending",
     orderDate: "15 May, 25 - 09:22 AM",
-    productImage: order?.productImage || "https://troosolar.hmstech.org/storage/products/gallery/87177e7f-3879-4aba-9952-3a9e989dc0c0.png", // Dummy image placeholder
-    description: "High-quality AGM solar inverter with advanced features for residential and commercial use.",
+    productImage:
+      order?.productImage ||
+      "https://troosolar.hmstech.org/storage/products/gallery/87177e7f-3879-4aba-9952-3a9e989dc0c0.png", // Dummy image placeholder
+    description:
+      "High-quality AGM solar inverter with advanced features for residential and commercial use.",
     specifications: [
       "Power: 12V/200Ah",
       "Battery Type: AGM",
@@ -51,7 +54,9 @@ const OrderDetails = ({ order, onBack }) => {
 
         {/* Product Details */}
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-medium text-gray-900 mb-1">{productName}</h3>
+          <h3 className="text-sm font-medium text-gray-900 mb-1">
+            {productName}
+          </h3>
           <p className="text-lg font-bold text-blue-600">{price}</p>
         </div>
       </div>
@@ -63,7 +68,10 @@ const OrderDetails = ({ order, onBack }) => {
       {/* Web Header with Back Arrow */}
       <div className="hidden sm:block bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 py-4">
-          <button onClick={onBack} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+          >
             <ChevronLeft size={20} />
             <span className="text-sm font-medium">Back to Orders</span>
           </button>

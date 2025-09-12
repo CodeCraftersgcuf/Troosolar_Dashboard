@@ -18,13 +18,13 @@ const SolarBundleComponent = ({
   const imageUrl = image;
   return (
     <div
-      className="sm:min-w-[283px] bg-white rounded-2xl p-2 shadow-sm"
+      className="sm:max-w-[283px] bg-white rounded-2xl p-2 shadow-sm"
       style={{ border: `2px solid ${borderColor}` }}
     >
       <img
         src={imageUrl} // Use the full URL for the image
         alt="Solar bundle product"
-        className="w-full h-auto rounded-md mb-3"
+        className=" rounded-md mb-3"
       />
       {/* {bundleTitle && <h2 className="text-[16px] font-[400] mb-2">{bundleTitle}</h2>} */}
       {/* <hr className="mb-3 text-gray-400/40" /> */}
