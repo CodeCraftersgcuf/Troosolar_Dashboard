@@ -197,26 +197,26 @@ const InverterLoadCalculator = () => {
       </div>
 
       {/* Mobile View  */}
-      <div className="min-h-screen bg-white sm:hidden block">
+      <div className="min-h-screen bg-[#f5f6ff] sm:hidden block">
         {/* Home/Office Selection */}
-        <div className="px-4 mb-4">
+        <div className="px-3 mb-4 bg-white max-w-[180px] border border-gray-300 rounded-4xl py-3">
           <div className="flex gap-2">
             <button
               onClick={() => setSelectedType("Home")}
-              className={`py-3 px-8 rounded-full font-medium text-sm ${
+              className={`py-2 px-5 rounded-full font-medium text-[12px] transition-all duration-300 ease-in-out ${
                 selectedType === "Home"
                   ? "bg-[#273e8e] text-white"
-                  : "bg-gray-200 text-gray-600"
+                  : " text-gray-600"
               }`}
             >
               Home
             </button>
             <button
               onClick={() => setSelectedType("Office")}
-              className={`py-3 px-8 rounded-full font-medium text-sm ${
+              className={`py-2 px-5 rounded-full font-medium text-[12px] transition-all duration-300 ease-in-out ${
                 selectedType === "Office"
                   ? "bg-[#273e8e] text-white"
-                  : "bg-gray-200 text-gray-600"
+                  : "text-gray-600"
               }`}
             >
               Office
@@ -226,12 +226,12 @@ const InverterLoadCalculator = () => {
 
         {/* House Selection Cards */}
         <div className="px-4 mb-6">
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-4 gap-2 ">
             {houseData.map((house) => (
               <div
                 key={house.id}
                 onClick={() => setSelectedHouse(house.id)}
-                className={`p-3 rounded-lg flex flex-col items-center ${
+                className={`p-3 py-4 rounded-lg flex flex-col items-center ${
                   selectedHouse === house.id
                     ? "bg-white border-2 border-[#273e8e]"
                     : "bg-white border border-gray-200"
@@ -242,7 +242,9 @@ const InverterLoadCalculator = () => {
                   alt={house.name}
                   className="w-6 h-6 object-contain mb-1"
                 />
-                <p className="text-xs font-medium text-center">{house.name}</p>
+                <p className="text-[8px] font-medium text-center">
+                  {house.name}
+                </p>
               </div>
             ))}
           </div>
@@ -250,10 +252,15 @@ const InverterLoadCalculator = () => {
 
         {/* Title and Description */}
         <div className="px-4 mb-4">
-          <h2 className="text-lg font-semibold text-black mb-2">
-            Inverter Load Calculator{selectedHouse ? ` for ${houseData.find((h) => h.id === selectedHouse)?.name} Apartment` : ""}
+          <h2 className="text-[14px] font-semibold text-black mb-2">
+            Inverter Load Calculator
+            {selectedHouse
+              ? ` for ${
+                  houseData.find((h) => h.id === selectedHouse)?.name
+                } Apartment`
+              : ""}
           </h2>
-          <p className="text-sm text-gray-600">
+          <p className="text-[12px] text-gray-600">
             An inverter load calculator helps estimate the total power needed to
             run selected appliances. It guides you in choosing the right
             inverter and battery size for efficient backup.
@@ -262,7 +269,7 @@ const InverterLoadCalculator = () => {
 
         {/* Search Bar */}
         <div className="px-4 mb-4">
-          <div className="flex items-center bg-gray-100 rounded-lg px-3 py-2">
+          <div className="flex items-center bg-white rounded-lg px-3 py-3">
             <Search className="text-gray-400 w-5 h-5 mr-2" />
             <input
               type="text"
@@ -318,7 +325,7 @@ const InverterLoadCalculator = () => {
 
                   <p className="font-medium">{totalPower}w</p>
 
-                  <button className="bg-gray-200 text-gray-600 rounded px-2 py-1 text-xs">
+                  <button className="bg-gray-200 text-gray-600 rounded px-1 py-1 text-xs">
                     Hrs
                   </button>
                 </div>

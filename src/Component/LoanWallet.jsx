@@ -111,9 +111,7 @@ const LoanWallet = () => {
         const raw = data?.data;
         // backend returns { 'Loan balance': number }
         const val =
-          typeof raw === "object" && raw !== null
-            ? raw["Loan balance"]
-            : 0;
+          typeof raw === "object" && raw !== null ? raw["Loan balance"] : 0;
 
         setBalance(Number(val || 0));
       } catch (e) {
@@ -127,7 +125,9 @@ const LoanWallet = () => {
           // wallet not created yet; treat as zero
           setBalance(0);
         } else {
-          setErr(e?.response?.data?.message || e?.message || "Failed to load wallet.");
+          setErr(
+            e?.response?.data?.message || e?.message || "Failed to load wallet."
+          );
         }
       } finally {
         setLoading(false);
@@ -196,7 +196,7 @@ const LoanWallet = () => {
       </div>
 
       {/* CTA Button */}
-      <button className="bg-white text-[#000] text-sm rounded-full py-3 mt-2 w-full cursor-pointer">
+      <button className="bg-white text-[#000] text-sm rounded-full py-3 mt-2 w-full cursor-pointer text-[12px]">
         {path ? "Transfer to Wallet" : "Apply for Loan"}
       </button>
     </div>

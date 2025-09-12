@@ -578,7 +578,8 @@ const mapApiProductToCard = (p) => {
 };
 
 const HomePage = () => {
-  const { registerProducts, filteredResults, setFilteredResults } = useContext(ContextApi);
+  const { registerProducts, filteredResults, setFilteredResults } =
+    useContext(ContextApi);
 
   const [categories, setCategories] = useState([]);
   const [catLoading, setCatLoading] = useState(false);
@@ -661,8 +662,9 @@ const HomePage = () => {
   // Enrich cards with category name
   const gridProducts = useMemo(() => {
     // Use filtered results if available, otherwise use apiProducts
-    const sourceProducts = filteredResults.length > 0 ? filteredResults : (apiProducts || []);
-    
+    const sourceProducts =
+      filteredResults.length > 0 ? filteredResults : apiProducts || [];
+
     return sourceProducts.map((p) => ({
       ...p,
       categoryName: catMap[p.categoryId] || "Inverter",
@@ -706,7 +708,9 @@ const HomePage = () => {
           </div>
 
           <div className="px-6 py-6 w-full overflow-x-hidden">
-            <h1 className="text-xl text-gray-800 mb-4 font-bold">All Products</h1>
+            <h1 className="text-xl text-gray-800 mb-4 font-bold">
+              All Products
+            </h1>
 
             {prodError && (
               <p className="text-red-600 text-sm mb-3">{prodError}</p>
@@ -785,7 +789,7 @@ const HomePage = () => {
             )}
             {prodLoading && <p className="text-gray-600 text-sm">Loading…</p>}
 
-            <div className="grid grid-cols-1 min:-[320px]:grid-cols-1 min-[390px]:grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px]">
+            <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2">
               {gridProducts.map((item) => (
                 <Link
                   key={item.id}

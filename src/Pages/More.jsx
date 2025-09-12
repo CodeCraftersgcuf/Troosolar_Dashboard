@@ -7,6 +7,7 @@ import {
   PiUsersBold,
 } from "react-icons/pi";
 import { assets } from "../assets/data";
+import { BASE_URL } from "../config/api.config";
 
 import SideBar from "../Component/SideBar";
 import TopNavbar from "../Component/TopNavbar";
@@ -21,6 +22,7 @@ import KycDetails from "../Component/MoreSectionComponent/KycDetails";
 import Support from "../Component/MoreSectionComponent/Support";
 import MyOrders from "../Component/MoreSectionComponent/MyOrders"; // <-- NEW
 import Notifications from "../Component/MoreSectionComponent/Notifications"; // <-- NEW
+import CreditScore from "../Component/MoreSectionComponent/CreditScore";
 import {
   ChevronLeft,
   ChevronRight,
@@ -68,15 +70,37 @@ const getDisplayName = (u) =>
 const getEmail = (u) =>
   (u?.email || u?.user_email || u?.contact_email || "").trim();
 
-const getAvatarUrl = (u) =>
-  (
+const getAvatarUrl = (u) => {
+  const avatarPath = (
     u?.avatar ||
     u?.profile_image ||
     u?.photo ||
     u?.image_url ||
     u?.avatar_url ||
+    u?.profile_picture ||
     ""
   ).trim();
+
+  if (!avatarPath) return "";
+
+  // If it's already a complete URL, return as is
+  if (avatarPath.startsWith("http://") || avatarPath.startsWith("https://")) {
+    return avatarPath;
+  }
+
+  // If it starts with /storage/, construct the full URL
+  if (avatarPath.startsWith("/storage/")) {
+    return `${BASE_URL.replace("/api", "")}${avatarPath}`;
+  }
+
+  // If it's a relative path, construct the full URL
+  if (avatarPath.startsWith("/")) {
+    return `${BASE_URL.replace("/api", "")}${avatarPath}`;
+  }
+
+  // For other cases, assume it's a relative path
+  return `${BASE_URL.replace("/api", "")}/storage/${avatarPath}`;
+};
 
 const getInitials = (name) => {
   const parts = String(name || "")
@@ -171,6 +195,8 @@ const More = () => {
         return <Support />;
       case "maintenance":
         return <Notifications onBack={() => setMobileViewSection("sidebar")} />;
+      case "creditScore":
+        return <CreditScore />;
       case "editProfile":
       default:
         return <EditProfile />;
@@ -485,14 +511,28 @@ const More = () => {
             </div>
           </div>
         ) : (
-          <div className="w-full p-4">
+          <div
+            className={`w-full ${
+              activeSection === "creditScore"
+                ? "bg-[#243a84] p-0"
+                : "bg-[#F5F7FF] p-4"
+            }`}
+          >
             {/* Back Button */}
             <div
-              className="flex items-center justify-between mb-4 text-black"
+              className={`flex items-center justify-between mb-4 text-black ${
+                activeSection === "creditScore" ? "p-4" : ""
+              }`}
               onClick={() => setMobileViewSection("sidebar")}
             >
-              <ChevronLeft />
-              <span className="text-sm font-medium flex-grow text-center">
+              <ChevronLeft
+                className={activeSection === "creditScore" ? "text-white" : ""}
+              />
+              <span
+                className={`text-sm font-medium flex-grow text-center ${
+                  activeSection === "creditScore" ? "text-white" : ""
+                }`}
+              >
                 {sectionTitles[activeSection] || "Settings"}
               </span>
             </div>

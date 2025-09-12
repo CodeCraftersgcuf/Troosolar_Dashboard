@@ -97,7 +97,12 @@ const NewTicket = ({ onCancel, onCreated }) => {
       const { data } = await axios.post(
         TICKETS_URL,
         { subject: subject.trim(), message: body.trim() },
-        { headers: { Accept: "application/json", Authorization: `Bearer ${token}` } }
+        {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
       );
 
       const payload = data?.data || data || {};
@@ -114,7 +119,9 @@ const NewTicket = ({ onCancel, onCreated }) => {
         onCreated({ ticket_id: id, subject: subjectResp, date, messages });
       }
     } catch (e) {
-      setError(e?.response?.data?.message || e?.message || "Failed to create ticket.");
+      setError(
+        e?.response?.data?.message || e?.message || "Failed to create ticket."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -140,7 +147,10 @@ const NewTicket = ({ onCancel, onCreated }) => {
       <div className="hidden sm:flex min-h-screen flex-col justify-between">
         <div>
           <div className="relative flex items-center justify-center mb-6">
-            <ChevronLeft className="absolute left-0 cursor-pointer" onClick={onCancel} />
+            <ChevronLeft
+              className="absolute left-0 cursor-pointer"
+              onClick={onCancel}
+            />
             <p className="text-lg font-semibold text-gray-800">New Ticket</p>
           </div>
 
@@ -171,7 +181,9 @@ const NewTicket = ({ onCancel, onCreated }) => {
               value={body}
               onChange={(e) => setBody(e.target.value)}
             />
-            {error ? <p className="text-xs text-red-600 mt-2">{error}</p> : null}
+            {error ? (
+              <p className="text-xs text-red-600 mt-2">{error}</p>
+            ) : null}
           </div>
         </div>
 
@@ -188,24 +200,26 @@ const NewTicket = ({ onCancel, onCreated }) => {
       </div>
 
       {/* Mobile View */}
-      <div className="sm:hidden block min-h-screen bg-white">
-       
+      <div className="sm:hidden block min-h-screen bg-[#f5f6ff]">
         {/* Main Content */}
-        <div className="px-4 flex-1 flex flex-col">
+        <div className=" flex-1 flex flex-col">
           {/* Subject Input */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="mb-6 mt-4">
+            <label className="block text-ms font-medium text-gray-700 mb-2">
               Subject
             </label>
             <div className="relative">
               <input
                 type="text"
                 placeholder="Select ticket subject"
-                className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none pr-10"
+                className="w-full text-xs bg-white border border-gray-300 rounded-lg px-3 py-4 outline-none pr-10"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
               />
-              <ChevronRight className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500" size={16} />
+              <ChevronRight
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500"
+                size={16}
+              />
             </div>
           </div>
 
@@ -215,17 +229,19 @@ const NewTicket = ({ onCancel, onCreated }) => {
               Message
             </label>
             <textarea
-              placeholder="Enter your message..."
-              className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none resize-none h-64"
+              placeholder=""
+              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none resize-none h-64"
               value={body}
               onChange={(e) => setBody(e.target.value)}
             />
-            {error ? <p className="text-xs text-red-600 mt-2">{error}</p> : null}
+            {error ? (
+              <p className="text-xs text-red-600 mt-2">{error}</p>
+            ) : null}
           </div>
         </div>
 
         {/* Fixed Bottom Send Button */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200">
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#f5f6ff] border-t border-gray-200">
           <button
             onClick={handleSubmit}
             className="w-full bg-[#273e8e] text-white rounded-full py-3 text-sm font-medium disabled:opacity-60"

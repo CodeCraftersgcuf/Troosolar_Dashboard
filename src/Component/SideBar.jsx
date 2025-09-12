@@ -134,7 +134,9 @@ const SideBar = () => {
       </div>
 
       {/* Mobile Bottom Navigation */}
-      {location.pathname !== "/cart" && (
+      {!["/uploadDocument", "/uploadDetails", "/loanDetails", "/cart", "/linkAccount", "/loanCalculate"].includes(
+        location.pathname
+      ) && (
         <div
           className="sm:hidden fixed z-50"
           style={{
@@ -149,44 +151,44 @@ const SideBar = () => {
             boxSizing: "border-box",
           }}
         >
-        <div className="flex items-center justify-around h-full px-4">
-          {mobileNavItems.map((item, index) => {
-            const isActive = location.pathname === item.link;
-            return (
-              <Link
-                key={index}
-                to={item.link}
-                className="flex flex-col items-center justify-center py-2 px-3 min-w-0 flex-1"
-                onClick={() => setActiveLink(item.link)}
-              >
-                <div className="flex flex-col items-center">
-                  <img
-                    src={item.icon}
-                    alt={item.name}
-                    className={`w-6 h-6 mb-1 ${
-                      isActive ? "opacity-100" : "opacity-60"
-                    }`}
-                    style={{
-                      filter: isActive
-                        ? "brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(2878%) hue-rotate(224deg) brightness(89%) contrast(97%)"
-                        : "brightness(0) saturate(100%) invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%)",
-                    }}
-                  />
-                  <span
-                    className={`text-[8px] font-medium ${
-                      isActive ? "text-[#273e8e]" : "text-gray-500"
-                    }`}
-                  >
-                    {item.name}
-                  </span>
-                  {isActive && (
-                    <div className="w-6 h-0.5 bg-[#273e8e] mt-1 rounded-full"></div>
-                  )}
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+          <div className="flex items-center justify-around h-full px-4">
+            {mobileNavItems.map((item, index) => {
+              const isActive = location.pathname === item.link;
+              return (
+                <Link
+                  key={index}
+                  to={item.link}
+                  className="flex flex-col items-center justify-center py-2 px-3 min-w-0 flex-1"
+                  onClick={() => setActiveLink(item.link)}
+                >
+                  <div className="flex flex-col items-center">
+                    <img
+                      src={item.icon}
+                      alt={item.name}
+                      className={`w-6 h-6 mb-1 ${
+                        isActive ? "opacity-100" : "opacity-60"
+                      }`}
+                      style={{
+                        filter: isActive
+                          ? "brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(2878%) hue-rotate(224deg) brightness(89%) contrast(97%)"
+                          : "brightness(0) saturate(100%) invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%)",
+                      }}
+                    />
+                    <span
+                      className={`text-[8px] font-medium ${
+                        isActive ? "text-[#273e8e]" : "text-gray-500"
+                      }`}
+                    >
+                      {item.name}
+                    </span>
+                    {isActive && (
+                      <div className="w-6 h-0.5 bg-[#273e8e] mt-1 rounded-full"></div>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
         </div>
       )}
     </>

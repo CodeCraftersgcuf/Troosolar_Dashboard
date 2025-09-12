@@ -121,7 +121,7 @@ const Tools = () => {
                 >
                   <div className="flex items-center gap-4">
                     <div
-                      className="h-[50px] w-[50px] rounded-full flex justify-center items-center"
+                      className="h-[60px] w-[60px] rounded-full flex justify-center items-center"
                       style={{
                         backgroundColor:
                           tool.id === "inverter"
@@ -151,7 +151,7 @@ const Tools = () => {
                     </div>
                     <div className="flex-1">
                       <h3
-                        className="text-base font-semibold mb-1"
+                        className="text-sm font-semibold mb-1"
                         style={{
                           color:
                             tool.id === "inverter"
@@ -165,7 +165,7 @@ const Tools = () => {
                       >
                         {tool.label}
                       </h3>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-[10px] text-gray-600">
                         {tool.id === "inverter" &&
                           "An inverter load calculator helps estimate the total power needed to run selected appliances. It guides you in choosing the right inverter and battery size for efficient backup."}
                         {tool.id === "solarPanel" &&

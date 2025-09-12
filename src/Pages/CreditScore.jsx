@@ -97,10 +97,10 @@ const CreditScore = () => {
 
             <div className="flex flex-row gap-6">
               {/* Left: gauge */}
-              <div className="bg-[#273e8e] flex justify-center items-center rounded-2xl w-full lg:w-1/2 aspect-square">
+              <div className="bg-[#273e8e] flex justify-center items-center rounded-2xl w-full lg:w-1/2 aspect-square px-5 ">
                 <img
                   src={assets.creditNeedle}
-                  className="h-[281px] w-[281px] object-contain"
+                  className="h-[240px] w-[240] object-contain"
                   alt="Credit Score Meter"
                 />
               </div>

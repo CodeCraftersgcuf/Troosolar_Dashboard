@@ -168,7 +168,7 @@ const Terms = ({ link, onClose }) => {
 
   /* DESKTOP/TABLET (sm+) — EXACTLY your original UI, unchanged */
   const DesktopSheet = () => (
-    <div className="hidden sm:flex w-[100%] h-[610px] bg-white rounded-2xl shadow-md overflow-hidden flex-col">
+    <div className="hidden sm:flex w-[100%] h-[850px] bg-white rounded-2xl shadow-md overflow-hidden flex-col">
       <div className="relative pt-3 flex-shrink-0">
         {!isCreditScorePage && (
           <>

@@ -12,7 +12,7 @@ const SolarPanelCalculator = () => {
     { name: "Washing Machine", power: 70 },
     { name: "Rech Fan", power: 70 },
     { name: "OX Fan", power: 70 },
-    { name: "65\" TV", power: 70 },
+    { name: '65" TV', power: 70 },
     { name: "CCTV Camera", power: 70 },
     { name: "Desktop", power: 70 },
     { name: "Charger", power: 70 },
@@ -195,26 +195,24 @@ const SolarPanelCalculator = () => {
       </div>
 
       {/* Mobile View  */}
-      <div className="min-h-screen sm:hidden block bg-white pb-20">
-        {/* Header */}
-        <div className="px-4 py-3">
-          <h1 className="text-base font-semibold text-black">Solar Panel Calculator</h1>
-        </div>
-
+      <div className="min-h-screen sm:hidden block bg-[#f5f6ff] pb-20">
         {/* Introduction */}
         <div className="px-4 mb-3">
-          <h2 className="text-sm font-semibold text-black mb-2">
+          <h2 className="text-[13px] font-semibold text-black mb-2">
             Select your appliance and their corresponding load and quantity
           </h2>
-          <p className="text-xs text-gray-600">
-            A solar panel calculator estimates the number and size of solar panels needed based on your energy usage. It helps you design an efficient solar system for your homes, businesses, or off-grid setups.
+          <p className="text-[12px] text-gray-600">
+            A solar panel calculator estimates the number and size of solar
+            panels needed based on your energy usage. It helps you design an
+            efficient solar system for your homes, businesses, or off-grid
+            setups.
           </p>
         </div>
 
         {/* Search Bar */}
         <div className="px-4 mb-3">
-          <div className="flex items-center bg-gray-100 rounded-lg px-3 py-2">
-            <Search className="text-gray-400 w-4 h-4 mr-2" />
+          <div className="flex items-center bg-white rounded-lg px-3 py-3">
+            <Search className="text-gray-400 w-5 h-5 mr-2" />
             <input
               type="text"
               className="flex-1 bg-transparent outline-none text-xs placeholder:text-gray-400"
@@ -239,27 +237,29 @@ const SolarPanelCalculator = () => {
           <div className="bg-white rounded-lg border divide-y max-h-80 overflow-y-auto">
             {filteredAppliances.map((item, index) => {
               const totalPower = item.power * item.quantity;
-              
+
               return (
                 <div
                   key={index}
                   className="grid grid-cols-4 items-center text-center py-2 text-[10px]"
                 >
                   <div className="flex justify-center">
-                    <button className="bg-[#273e8e] text-white rounded-full px-2 py-1 text-[10px] font-medium">
+                    <button className="bg-[#273e8e] text-white rounded-full px-2 py-1 text-[6px] font-medium">
                       {item.name}
                     </button>
                   </div>
 
                   <div className="flex justify-center items-center gap-1">
-                    <button 
+                    <button
                       className="bg-[#273e8e] text-white rounded p-1 cursor-pointer"
                       onClick={() => updateQuantity(index, item.quantity - 1)}
                     >
                       <Minus size={10} />
                     </button>
-                    <span className="w-5 text-center font-medium text-[10px]">{item.quantity}</span>
-                    <button 
+                    <span className="w-5 text-center font-medium text-[10px]">
+                      {item.quantity}
+                    </span>
+                    <button
                       className="bg-[#273e8e] text-white rounded p-1 cursor-pointer"
                       onClick={() => updateQuantity(index, item.quantity + 1)}
                     >
@@ -288,48 +288,54 @@ const SolarPanelCalculator = () => {
 
         {/* Calculations Section */}
         <div className="px-4 mb-3">
-  <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4 shadow-sm">
-    <h3 className="text-sm font-semibold text-black mb-3">Calculations</h3>
-    <div className="space-y-3 text-sm">
-      <div className="flex justify-between border-b-1 border-gray-300 pb-2">
-        <span className="text-gray-700">Solar Panel Capacity</span>
-        <span className="font-medium text-gray-900">200w</span>
-      </div>
-      <div className="flex justify-between border-b-1 border-gray-300 pb-2">
-        <span className="text-gray-700">Panel Quantity</span>
-        <span className="font-medium text-gray-900">4</span>
-      </div>
-      <div className="flex justify-between border-b-1 border-gray-300 pb-2">
-        <span className="text-gray-700">Charge Controller</span>
-        <span className="font-medium text-gray-900">20A-24V</span>
-      </div>
-      <div className="flex justify-between border-b-1 border-gray-300 pb-2">
-        <span className="text-gray-700">Charge Controller qty</span>
-        <span className="font-medium text-gray-900">1</span>
-      </div>
-      <div className="flex justify-between border-b-1 border-gray-300 pb-2">
-        <span className="text-gray-700">Panel Bank (kwatts)</span>
-        <span className="font-medium text-gray-900">1000</span>
-      </div>
-    </div>
-  </div>
-</div>
-
-
-        {/* Total Output - Fixed Bottom */}
-        <div className="fixed bottom-0 left-0 right-0 bg-[#273e8e] text-white px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-medium">Total Load</h2>
-            <div className="bg-white rounded-lg px-2 py-1 flex items-center gap-1 text-[#273e8e]">
-              <span className="text-lg font-bold">{totalOutput.toLocaleString()}</span>
-              <span className="text-[10px]">Watts</span>
+          <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4 shadow-sm">
+            <h3 className="text-sm font-semibold text-black mb-3">
+              Calculations
+            </h3>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between border-b-1 border-gray-300 pb-2">
+                <span className="text-gray-700">Solar Panel Capacity</span>
+                <span className="font-medium text-gray-900">200w</span>
+              </div>
+              <div className="flex justify-between border-b-1 border-gray-300 pb-2">
+                <span className="text-gray-700">Panel Quantity</span>
+                <span className="font-medium text-gray-900">4</span>
+              </div>
+              <div className="flex justify-between border-b-1 border-gray-300 pb-2">
+                <span className="text-gray-700">Charge Controller</span>
+                <span className="font-medium text-gray-900">20A-24V</span>
+              </div>
+              <div className="flex justify-between border-b-1 border-gray-300 pb-2">
+                <span className="text-gray-700">Charge Controller qty</span>
+                <span className="font-medium text-gray-900">1</span>
+              </div>
+              <div className="flex justify-between border-b-1 border-gray-300 pb-2">
+                <span className="text-gray-700">Panel Bank (kwatts)</span>
+                <span className="font-medium text-gray-900">1000</span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+        </div>
+
+        {/* Total Output - Fixed Bottom */}
+        <div className="fixed bottom-0 left-0 right-0 bg-[#273e8e] text-white px-4 py-3 flex items-center justify-between space-x-4">
+          {/* Total Load Section */}
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-medium">Total Load</h2>
+            <div className="bg-white rounded-lg px-6 py-3 flex items-center justify-center text-[#273e8e]">
+              <span className="text-xl font-bold">
+                {totalOutput.toLocaleString()}
+              </span>
+              <span className="text-sm ml-1">Watts</span>
+            </div>
+          </div>
+
+          {/* Inverter Rating Section */}
+          <div className="flex flex-col items-center gap-1">
             <h2 className="text-sm font-medium">Inverter Rating</h2>
-            <div className="bg-white rounded-lg px-2 py-1 flex items-center gap-1 text-[#273e8e]">
-              <span className="text-lg font-bold">1,200</span>
-              <span className="text-[10px]">VA</span>
+            <div className="bg-white rounded-lg px-6 py-3 flex items-center justify-center text-[#273e8e]">
+              <span className="text-xl font-bold">1,200</span>
+              <span className="text-sm ml-1">VA</span>
             </div>
           </div>
         </div>

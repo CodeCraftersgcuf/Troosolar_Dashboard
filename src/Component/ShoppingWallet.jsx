@@ -149,7 +149,7 @@ const ShoppingWallet = () => {
       {/* CTA Button */}
       <button
         onClick={() => setShowDialog(true)}
-        className="bg-white text-[#000]  text-sm rounded-full py-3 mt-2 w-full cursor-pointer"
+        className="bg-white text-[#000]  text-[12px] rounded-full py-3 mt-2 w-full cursor-pointer"
       >
         Fund Wallet
       </button>

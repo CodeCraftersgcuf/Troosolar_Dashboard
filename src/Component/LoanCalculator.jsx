@@ -62,15 +62,15 @@ const LoanCalculator = () => {
       </div>
     </div>
     {/* Mobile View   */}
-    <div className="min-h-screen sm:hidden block bg-white px-4 pb-20">
+    <div className="min-h-screen sm:hidden block bg-[#f5f6ff] px-4 pb-20">
       
 
       {/* Introduction */}
       <div className="mb-6">
-        <h2 className="text-base font-semibold text-black mb-2">
+        <h2 className="text-[14px] font-semibold text-black mb-2">
           What is a loan calculator?
         </h2>
-        <p className="text-sm text-gray-600">
+        <p className="text-xs text-gray-600">
           A loan calculator is a tool that helps you estimate your monthly payments, total interest, and repayment schedule based on the loan amount, interest rate, and term.
         </p>
       </div>
@@ -79,14 +79,14 @@ const LoanCalculator = () => {
       <div className="space-y-4 mb-6">
         {/* Product Price */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-[12px] font-medium text-gray-700 mb-2">
             How much is the product you want to purchase?
           </label>
           <input
             type="number"
             placeholder="Enter Product Price"
             defaultValue="1,300,000"
-            className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
+            className="w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
           />
         </div>
 
@@ -99,7 +99,7 @@ const LoanCalculator = () => {
             type="number"
             placeholder="Enter Loan Amount"
             defaultValue="1,000,000"
-            className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
+            className="w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
           />
         </div>
 
@@ -112,7 +112,7 @@ const LoanCalculator = () => {
             <select
               id="duration"
               name="duration"
-              className="appearance-none w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-3 text-sm text-gray-700 outline-none"
+              className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm text-gray-700 outline-none"
             >
               <option value="">Select Duration</option>
               <option value="3">3 months</option>
@@ -130,7 +130,7 @@ const LoanCalculator = () => {
    {/* Important Note */}
 <div className="mb-6">
   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-    <p className="text-sm text-[#E8A91D]">
+    <p className="text-[12px] text-[#E8A91D]">
       Kindly note that loan amount is{" "}
       <strong className="font-semibold">70%</strong> of product amount, you are
       required to pay the remaining <strong className="font-semibold">30%</strong>{" "}
@@ -144,38 +144,38 @@ const LoanCalculator = () => {
 {/* Loan Repayment Calculation */}
 <div className="mb-6">
   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 shadow-sm">
-    <h3 className="text-lg font-semibold text-black mb-4">
+    <h3 className="text-sm font-semibold text-black mb-4">
       Loan Repayment Calculation
     </h3>
 
     <div className="space-y-4 text-sm">
       <div className="flex justify-between">
         <span className="text-gray-600">Product Amount</span>
-        <span className="font-medium">N1,300,000</span>
+        <span className="font-[10px]">N1,300,000</span>
       </div>
       <div className="flex justify-between">
         <span className="text-gray-600">Loan Amount</span>
-        <span className="font-medium">N1,000,000</span>
+        <span className="font-[10px]">N1,000,000</span>
       </div>
       <div className="flex justify-between">
         <span className="text-gray-600">Down Payment</span>
-        <span className="font-medium">N300,000</span>
+        <span className="font-[10px]">N300,000</span>
       </div>
       <div className="flex justify-between">
         <span className="text-gray-600">Duration</span>
-        <span className="font-medium">6 months</span>
+        <span className="font-[10px]">6 months</span>
       </div>
       <div className="flex justify-between">
         <span className="text-gray-600">Monthly Payment</span>
-        <span className="font-medium">N170,000</span>
+        <span className="font-[10px]">N170,000</span>
       </div>
       <div className="flex justify-between">
         <span className="text-gray-600">Interest Percentage</span>
-        <span className="font-medium">5% Monthly</span>
+        <span className="font-[10px]">5% Monthly</span>
       </div>
       <div className="flex justify-between">
         <span className="text-gray-600">Repayment Date</span>
-        <span className="font-medium">25th Dec, 2025</span>
+        <span className="font-[10px]">25th Dec, 2025</span>
       </div>
     </div>
   </div>

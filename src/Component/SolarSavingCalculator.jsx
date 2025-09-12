@@ -175,7 +175,7 @@ const SolarSavingCalculator = () => {
 
       {/* Mobile View  */}
       <div>
-        <div className="min-h-screen sm:hidden block bg-white px-4 pb-20">
+        <div className="min-h-screen sm:hidden block bg-[#f5f6ff] px-4 pb-20">
           {/* Introduction */}
           <div className="mb-6">
             <h2 className="text-base font-semibold text-black-500   mb-2">
@@ -200,7 +200,7 @@ const SolarSavingCalculator = () => {
                   What is your current generator size?
                 </label>
                 <div className="relative">
-                  <select className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-3 text-sm appearance-none">
+                  <select className="w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm appearance-none">
                     <option>Select answer</option>
                   </select>
                   <ChevronDown
@@ -217,7 +217,7 @@ const SolarSavingCalculator = () => {
                 <input
                   type="text"
                   placeholder="Type answer"
-                  className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
+                  className="w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
                 />
               </div>
 
@@ -228,7 +228,7 @@ const SolarSavingCalculator = () => {
                 <input
                   type="text"
                   placeholder="Type answer (in naira)"
-                  className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
+                  className="w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
                 />
               </div>
 
@@ -239,7 +239,7 @@ const SolarSavingCalculator = () => {
                 <input
                   type="text"
                   placeholder="Type answer (in naira)"
-                  className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
+                  className="w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
                 />
               </div>
             </div>
@@ -259,7 +259,7 @@ const SolarSavingCalculator = () => {
                 <input
                   type="text"
                   placeholder="Type answer (in naira)"
-                  className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
+                  className="w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
                 />
               </div>
 
@@ -268,7 +268,7 @@ const SolarSavingCalculator = () => {
                   Select duration
                 </label>
                 <div className="relative">
-                  <select className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-3 text-sm appearance-none">
+                  <select className="w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm appearance-none">
                     <option>Select duration</option>
                     <option value="3">3 months</option>
                     <option value="6">6 months</option>
@@ -289,16 +289,16 @@ const SolarSavingCalculator = () => {
           {/* Savings Summary */}
           <div className="mb-6">
             <div className="bg-yellow-50 border border-yellow-300 border-dotted  rounded-lg p-5 shadow-md">
-              <p className="text-sm text-gray-700 mb-3">
+              <p className="text-xs text-black font-semibold mb-3">
                 By going solar with Troosolar, you save
               </p>
-              <div className="bg-[#E8A91D] text-white rounded-lg px-6 py-4 mb-4">
+              <div className="bg-[#E8A91D] text-white rounded-lg px-6 py-2 mb-4 items-center justify-center flex">
                 <span className="text-3xl font-bold">N1,500,000</span>
               </div>
 
-              <div className="space-y-3 text-sm">
+              <div className="space-y-3 text-xs">
                 <div className="flex justify-between border-b-1 border-gray-300 pb-2">
-                  <span className="text-gray-600">Total Duration</span>
+                  <span className="text-gray-600 ">Total Duration</span>
                   <span className="font-medium">12 months</span>
                 </div>
                 <div className="flex justify-between border-b-1 border-gray-300 pb-2">
@@ -322,7 +322,7 @@ const SolarSavingCalculator = () => {
           </div>
 
           {/* Bottom Button */}
-          <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200">
+          <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#f5f6ff] border-t border-gray-200">
             <button className="w-full bg-[#273e8e] text-white rounded-lg py-3 text-sm font-medium">
               View How much you will be saving
             </button>

@@ -1,45 +1,10 @@
-// import React from "react";
-// import { ChevronRight } from "lucide-react";
-// import {Input} from "../Input"
-
-// const EditProfile = () => {
-//   return (
-//     <div className="w-full bg-white rounded-2xl p-6 shadow-md border border-gray-300">
-//       <h2 className="text-lg text-center font-medium text-gray-800 mb-6">Edit Profile</h2>
-//       <div className="flex flex-col items-center mb-6">
-//         <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center text-xl font-bold text-gray-400">
-//           QA
-//         </div>
-//       </div>
-//       <form className="space-y-4">
-//         <Input id="firstName" label="First Name" placeholder="First Name" />
-//         <Input id="surname" label="Surname" placeholder="Surname" />
-//         <Input id="Email" label="Email Address" placeholder="Enter Email Address" />
-//         <Input id="phone" label="Phone Number" placeholder="Enter Phone Number" />
-//         <Input
-//           id="password"
-//           label="Password"
-//           placeholder="Enter Password"
-//           icon={<ChevronRight size={24} color="black" />}
-//         />
-//         <button
-//           type="submit"
-//           className="w-full bg-[#273e8e] text-white text-sm py-4 rounded-full mt-4"
-//         >
-//           Save
-//         </button>
-//       </form>
-//     </div>
-//   );
-// };
-
-// export default EditProfile;
-// src/Component/MoreSectionComponent/EditProfileSection.jsx
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { ChevronRight } from "lucide-react";
 import { Input } from "../Input";
+import ProfileTabs from "./ProfileTabs";
+import UpdateAddress from "./UpdateAddress";
 import API, { BASE_URL } from "../../config/api.config";
 
 // turn BASE_URL (http://localhost:8000/api) into origin (http://localhost:8000)
@@ -62,6 +27,7 @@ const getLocalUser = () => {
 };
 
 const EditProfile = () => {
+  const [activeTab, setActiveTab] = useState("profile");
   const [form, setForm] = useState({
     first_name: "",
     surname: "",
@@ -79,7 +45,8 @@ const EditProfile = () => {
     if (!u) return;
     setForm({
       first_name: u.first_name || u.name?.split(" ")[0] || "",
-      surname: u.surname || u.last_name || u.name?.split(" ").slice(1).join(" ") || "",
+      surname:
+        u.surname || u.last_name || u.name?.split(" ").slice(1).join(" ") || "",
       email: u.email || "",
       phone: u.phone || u.phone_number || "",
       password: "",
@@ -146,7 +113,9 @@ const EditProfile = () => {
       toast.success("Profile updated");
     } catch (err) {
       toast.error(
-        err?.response?.data?.message || err.message || "Failed to update profile"
+        err?.response?.data?.message ||
+          err.message ||
+          "Failed to update profile"
       );
     } finally {
       setSaving(false);
@@ -154,85 +123,93 @@ const EditProfile = () => {
   };
 
   return (
-    <div className="w-full bg-white sm:bg-white bg-[#e4e6ed] rounded-2xl p-6 shadow-md border border-gray-300">
-
-      <div className="flex flex-col items-center mb-6">
-        <label htmlFor="avatar" className="cursor-pointer">
-          <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center text-xl font-bold text-gray-400 overflow-hidden">
-            {avatarPreview ? (
-              <img
-                src={avatarPreview}
-                alt="profile"
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              "QA"
-            )}
-          </div>
-          <input
-            id="avatar"
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={onFileChange}
+    <div className="w-full sm:bg-white bg-[#F5F7FF] p-4">
+      {/* Tabs */}
+      <ProfileTabs activeTab={activeTab} onTabChange={setActiveTab} />
+      {/* Profile Picture */}
+      {activeTab === "profile" && (
+        <div className="flex flex-col items-center mb-6">
+          <label htmlFor="avatar" className="cursor-pointer">
+            <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center text-xl font-bold text-gray-400 overflow-hidden">
+              {avatarPreview ? (
+                <img
+                  src={avatarPreview}
+                  alt="profile"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                "QA"
+              )}
+            </div>
+            <input
+              id="avatar"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onFileChange}
+            />
+          </label>
+          <p className="text-xs text-gray-500 mt-2">Tap to change photo</p>
+        </div>
+      )}
+      ;{/* Tab Content */}
+      {activeTab === "profile" ? (
+        <form className="space-y-4" onSubmit={onSubmit}>
+          <Input
+            id="firstName"
+            name="first_name"
+            label="First Name"
+            placeholder="First Name"
+            value={form.first_name}
+            onChange={onChange}
           />
-        </label>
-        <p className="text-xs text-gray-500 mt-2">Tap to change photo</p>
-      </div>
+          <Input
+            id="surname"
+            name="surname"
+            label="Surname"
+            placeholder="Surname"
+            value={form.surname}
+            onChange={onChange}
+          />
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            label="Email Address"
+            placeholder="Enter Email Address"
+            value={form.email}
+            onChange={onChange}
+          />
+          <Input
+            id="phone"
+            name="phone"
+            label="Phone Number"
+            placeholder="Enter Phone Number"
+            value={form.phone}
+            onChange={onChange}
+          />
+          <Input
+            id="password"
+            name="password"
+            type="password"
+            label="Password (optional)"
+            placeholder="Enter new password"
+            value={form.password}
+            onChange={onChange}
+            icon={<ChevronRight size={24} color="black" />}
+          />
 
-      <form className="space-y-4" onSubmit={onSubmit}>
-        <Input
-          id="firstName"
-          name="first_name"
-          label="First Name"
-          placeholder="First Name"
-          value={form.first_name}
-          onChange={onChange}
-        />
-        <Input
-          id="surname"
-          name="surname"
-          label="Surname"
-          placeholder="Surname"
-          value={form.surname}
-          onChange={onChange}
-        />
-        <Input
-          id="email"
-          name="email"
-          type="email"
-          label="Email Address"
-          placeholder="Enter Email Address"
-          value={form.email}
-          onChange={onChange}
-        />
-        <Input
-          id="phone"
-          name="phone"
-          label="Phone Number"
-          placeholder="Enter Phone Number"
-          value={form.phone}
-          onChange={onChange}
-        />
-        <Input
-          id="password"
-          name="password"
-          type="password"
-          label="Password (optional)"
-          placeholder="Enter new password"
-          value={form.password}
-          onChange={onChange}
-          icon={<ChevronRight size={24} color="black" />}
-        />
-
-        <button
-          type="submit"
-          disabled={saving}
-          className="w-full bg-[#273e8e] text-white text-sm py-4 rounded-full mt-4 disabled:opacity-60"
-        >
-          {saving ? "Saving..." : "Save"}
-        </button>
-      </form>
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full bg-[#273e8e] text-white text-sm py-4 rounded-full mt-4 disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save"}
+          </button>
+        </form>
+      ) : (
+        <UpdateAddress />
+      )}
     </div>
   );
 };

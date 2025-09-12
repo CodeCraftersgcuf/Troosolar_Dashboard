@@ -408,7 +408,7 @@ const Home = () => {
                 <p className="text-gray-600 text-sm mt-3">Loading…</p>
               )}
 
-              <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[380px]:grid-cols-1">
+              <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2">
                 {!prodLoading &&
                   !prodError &&
                   gridProducts.map((item) => (

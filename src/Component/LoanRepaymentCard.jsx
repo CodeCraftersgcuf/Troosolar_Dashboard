@@ -47,7 +47,7 @@ const LoanRepaymentCard = ({ calculation, monoCalc }) => {
   const hasAny = Object.keys(merged).some((k) => merged[k] != null);
 
   return (
-    <div className="w-full rounded-[10px] bg-[#bfc9f0] /10 border-dashed border-[2px] border-[#929295] p-5">
+    <div className="w-full rounded-[10px] bg-[#FFFF001A] /10 border-dashed border-[2px] border-[#929295] p-5">
       <h2 className="text-[17px] mb-2">Loan Repayment Calculation</h2>
 
       {!hasAny ? (

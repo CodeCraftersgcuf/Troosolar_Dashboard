@@ -1,93 +1,3 @@
-// import React, { useState } from 'react';
-// import { PiTicket } from "react-icons/pi";
-// import NewTicket from './NewTicket';
-
-// const TABS = ['Pending', 'Answered', 'Closed'];
-
-// const ticketsData = [
-//   { id: '123', date: '5 May, 25 - 06:22 AM', status: 'Pending' },
-//   { id: '124', date: '4 May, 25 - 10:30 AM', status: 'Pending' },
-//   { id: '125', date: '3 May, 25 - 02:15 PM', status: 'Answered' },
-//   { id: '126', date: '2 May, 25 - 09:00 AM', status: 'Pending' },
-//   { id: '127', date: '1 May, 25 - 04:45 PM', status: 'Closed' },
-//   { id: '128', date: '30 Apr, 25 - 11:00 AM', status: 'Pending' },
-// ];
-
-
-
-
-// const Support = () => {
-//   const [activeTab, setActiveTab] = useState('Pending');
-//   const filteredTickets = ticketsData.filter(ticket => ticket.status === activeTab);
-//   const [newTicket,setNewTicket] = useState(false);
-//   return (
-//     <div className="min-h-screen  flex items-center justify-center p-4 font-sans">
-//       <div className="bg-white rounded-xl shadow-lg border-gray-300 border p-6 w-full max-w-2xl">
-//         {
-//           newTicket ? <NewTicket/> : <div>
-//             {/* Header */}
-//         <h2 className="text-xl text-gray-800 mb-6 text-center">
-//           Support Tickets
-//         </h2>
-
-//         {/* Tabs */}
-//         <div className="flex border-2 border-gray-300/30 rounded-full justify-start gap-2 p-3 mb-6 w-full max-w-[70%]">
-//           {TABS.map(tab => (
-//             <button
-//               key={tab}
-//               onClick={() => setActiveTab(tab)}
-//               className={`flex-1 py-2 px-2 text-xs  transition duration-200 text-center rounded-full ${
-//                 activeTab === tab
-//                   ? 'bg-[#273e8e] text-white'
-//                   : 'text-gray-400'
-//               }`}
-//             >
-//               {tab}
-//             </button>
-//           ))}
-//         </div>
-
-//         {/* Tickets List */}
-//         <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-//           {filteredTickets.length ? (
-//             filteredTickets.map(({ id, date, status }) => (
-//               <div
-//                 key={id}
-//                 className="flex items-center justify-between bg-white rounded-2xl p-4 border-gray-400 border transition-shadow duration-200 hover:shadow-sm cursor-pointer"
-//               >
-//                 <div className="flex items-center space-x-4">
-//                   <div className="p-3 bg-[#cccccc] rounded-full">
-//                     <PiTicket size={24} className="text-black" />
-//                   </div>
-//                   <div className='space-y-2'>
-//                     <p className="text-[#000000]">Ticket ID - {id}</p>
-//                     <p className="text-[#000000] text-xs">{date}</p>
-//                   </div>
-//                 </div>
-//                 <span className="bg-[#FFA50033] text-[#FFA500]  px-1.5 py-1.5 rounded-[10px] text-xs">
-//                   {status}
-//                 </span>
-//               </div>
-//             ))
-//           ) : (
-//             <p className="text-center text-gray-500 py-10">
-//               No tickets in this category.
-//             </p>
-//           )}
-//         </div>
-
-//         {/* Create Ticket Button */}
-//         <div onClick={()=>setNewTicket(!newTicket)} className="mt-8 flex items-center justify-center bg-[#273e8e] text-white rounded-full py-4 px-6 shadow cursor-pointer hover:bg-[#1f3270] transition">
-//           Create New Ticket
-//         </div>
-//           </div>
-//         }
-//       </div>
-//     </div>
-//   );
-// };
-
-// export default Support;
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { PiTicket } from "react-icons/pi";
@@ -143,9 +53,16 @@ const Support = () => {
       setLoading(true);
       setErr("");
       const { data } = await axios.get(TICKETS_URL, {
-        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       });
-      const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      const list = Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data)
+        ? data
+        : [];
       const norm = list.map((t) => ({
         id: t.id,
         subject: t.subject || `Ticket #${t.id}`,
@@ -155,7 +72,9 @@ const Support = () => {
       }));
       setTickets(norm);
     } catch (e) {
-      setErr(e?.response?.data?.message || e?.message || "Failed to load tickets.");
+      setErr(
+        e?.response?.data?.message || e?.message || "Failed to load tickets."
+      );
       setTickets([]);
     } finally {
       setLoading(false);
@@ -194,14 +113,16 @@ const Support = () => {
         <div className="bg-white rounded-xl shadow-lg border-gray-300 border p-6 w-full max-w-2xl">
           {newTicket ? (
             <NewTicket
-              onCancel={() => setNewTicket(false)}  // back button closes the composer
-              onCreated={handleAfterCreate}         // just refresh tickets; don't close
+              onCancel={() => setNewTicket(false)} // back button closes the composer
+              onCreated={handleAfterCreate} // just refresh tickets; don't close
             />
           ) : (
             <div>
               {/* Header */}
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl text-gray-800 text-center flex-1">Support Tickets</h2>
+                <h2 className="text-xl text-gray-800 text-center flex-1">
+                  Support Tickets
+                </h2>
                 <button
                   onClick={loadTickets}
                   className="ml-3 text-xs rounded-full border px-3 py-1 text-gray-600 hover:bg-gray-50"
@@ -220,8 +141,11 @@ const Support = () => {
                       setActiveTab(tab);
                       setSelectedId(null);
                     }}
-                    className={`flex-1 py-2 px-2 text-xs transition duration-200 text-center rounded-full ${activeTab === tab ? "bg-[#273e8e] text-white" : "text-gray-400"
-                      }`}
+                    className={`flex-1 py-2 px-2 text-xs transition duration-200 text-center rounded-full ${
+                      activeTab === tab
+                        ? "bg-[#273e8e] text-white"
+                        : "text-gray-400"
+                    }`}
                   >
                     {tab}
                   </button>
@@ -231,7 +155,9 @@ const Support = () => {
               {/* Tickets List */}
               <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
                 {loading && (
-                  <div className="text-center text-gray-500 py-10">Loading…</div>
+                  <div className="text-center text-gray-500 py-10">
+                    Loading…
+                  </div>
                 )}
 
                 {!loading && err && (
@@ -261,19 +187,25 @@ const Support = () => {
                           <p className="text-[#000000]">
                             Ticket ID - {id}
                             {subject ? (
-                              <span className="text-gray-500 text-xs"> &nbsp;• {subject}</span>
+                              <span className="text-gray-500 text-xs">
+                                {" "}
+                                &nbsp;• {subject}
+                              </span>
                             ) : null}
                           </p>
-                          <p className="text-[#000000] text-xs">{formatWhen(created_at)}</p>
+                          <p className="text-[#000000] text-xs">
+                            {formatWhen(created_at)}
+                          </p>
                         </div>
                       </div>
                       <span
-                        className={`px-1.5 py-1.5 rounded-[10px] text-xs ${status === "Closed"
+                        className={`px-1.5 py-1.5 rounded-[10px] text-xs ${
+                          status === "Closed"
                             ? "bg-green-100 text-green-700"
                             : status === "Answered"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-[#FFA50033] text-[#FFA500]"
-                          }`}
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-[#FFA50033] text-[#FFA500]"
+                        }`}
                       >
                         {status}
                       </span>
@@ -296,27 +228,32 @@ const Support = () => {
                     </button>
                   </div>
                   <div className="max-h-56 overflow-y-auto space-y-3">
-                    {selectedTicket.messages && selectedTicket.messages.length > 0 ? (
+                    {selectedTicket.messages &&
+                    selectedTicket.messages.length > 0 ? (
                       selectedTicket.messages.map((m, i) => {
                         const isAdmin =
                           String(m.sender || "").toLowerCase() === "admin";
                         return (
                           <div
                             key={i}
-                            className={`p-3 rounded-xl text-sm ${isAdmin
+                            className={`p-3 rounded-xl text-sm ${
+                              isAdmin
                                 ? "bg-indigo-50 text-indigo-900"
                                 : "bg-gray-100 text-gray-800"
-                              }`}
+                            }`}
                           >
                             <div className="text-[11px] opacity-70 mb-1">
-                              {isAdmin ? "Support" : "You"} • {formatWhen(m.created_at)}
+                              {isAdmin ? "Support" : "You"} •{" "}
+                              {formatWhen(m.created_at)}
                             </div>
                             <div>{m.message}</div>
                           </div>
                         );
                       })
                     ) : (
-                      <div className="text-gray-500 text-sm">No messages yet.</div>
+                      <div className="text-gray-500 text-sm">
+                        No messages yet.
+                      </div>
                     )}
                   </div>
                 </div>
@@ -335,7 +272,7 @@ const Support = () => {
       </div>
 
       {/* Mobile View */}
-      <div className="sm:hidden block min-h-screen bg-white pb-20">
+      <div className="sm:hidden block min-h-screen bg-[#f5f6ff] pb-20">
         {newTicket ? (
           <NewTicket
             onCancel={() => setNewTicket(false)}
@@ -343,12 +280,10 @@ const Support = () => {
           />
         ) : (
           <>
-           
-
             {/* Main Content */}
             <div className="px-4 mt-6">
               {/* Tabs */}
-              <div className="bg-gray-100 rounded-full p-1 mb-6">
+              <div className="bg-white rounded-full p-1 mb-6 py-2 px-2 max-w-[221px]">
                 <div className="flex">
                   {TABS.map((tab) => (
                     <button
@@ -357,9 +292,9 @@ const Support = () => {
                         setActiveTab(tab);
                         setSelectedId(null);
                       }}
-                      className={`flex-1 py-2 px-3 text-sm font-medium transition duration-200 text-center rounded-full ${
-                        activeTab === tab 
-                          ? "bg-[#273e8e] text-white" 
+                      className={`flex-1 py-2 px-3 text-[10px] font-medium transition duration-200 text-center rounded-full ${
+                        activeTab === tab
+                          ? "bg-[#273e8e] text-white"
                           : "text-gray-500"
                       }`}
                     >
@@ -372,7 +307,9 @@ const Support = () => {
               {/* Tickets List */}
               <div className="space-y-3">
                 {loading && (
-                  <div className="text-center text-gray-500 py-10">Loading…</div>
+                  <div className="text-center text-gray-500 py-10">
+                    Loading…
+                  </div>
                 )}
 
                 {!loading && err && (
@@ -392,26 +329,28 @@ const Support = () => {
                     <div
                       key={id}
                       onClick={() => setSelectedId(id)}
-                      className="bg-gray-50 rounded-xl p-4 flex items-center justify-between cursor-pointer"
+                      className="bg-gray-50 rounded-xl py-3 px-4 border-1 border-gray-500 flex items-center justify-between cursor-pointer"
                     >
                       <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                        <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
                           <PiTicket size={20} className="text-gray-600" />
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-900">
+                          <p className="text-xs font-medium text-gray-900">
                             Ticket ID - {id}
                           </p>
-                          <p className="text-xs text-gray-500">{formatWhen(created_at)}</p>
+                          <p className="text-[8px] text-gray-500">
+                            {formatWhen(created_at)}
+                          </p>
                         </div>
                       </div>
                       <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        className={`px-2 py-1 rounded-full text-[8px] font-medium ${
                           status === "Closed"
                             ? "bg-green-100 text-green-700"
                             : status === "Answered"
                             ? "bg-blue-100 text-blue-700"
-                            : "bg-yellow-100 text-yellow-700"
+                            : "bg-[#FFA50033] text-yellow-700"
                         }`}
                       >
                         {status}
@@ -435,7 +374,8 @@ const Support = () => {
                     </button>
                   </div>
                   <div className="max-h-56 overflow-y-auto space-y-3">
-                    {selectedTicket.messages && selectedTicket.messages.length > 0 ? (
+                    {selectedTicket.messages &&
+                    selectedTicket.messages.length > 0 ? (
                       selectedTicket.messages.map((m, i) => {
                         const isAdmin =
                           String(m.sender || "").toLowerCase() === "admin";
@@ -449,14 +389,17 @@ const Support = () => {
                             }`}
                           >
                             <div className="text-[11px] opacity-70 mb-1">
-                              {isAdmin ? "Support" : "You"} • {formatWhen(m.created_at)}
+                              {isAdmin ? "Support" : "You"} •{" "}
+                              {formatWhen(m.created_at)}
                             </div>
                             <div>{m.message}</div>
                           </div>
                         );
                       })
                     ) : (
-                      <div className="text-gray-500 text-sm">No messages yet.</div>
+                      <div className="text-gray-500 text-sm">
+                        No messages yet.
+                      </div>
                     )}
                   </div>
                 </div>
@@ -464,10 +407,10 @@ const Support = () => {
             </div>
 
             {/* Fixed Bottom Button */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200">
+            <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#f5f6ff] border-t border-gray-200">
               <button
                 onClick={() => setNewTicket(true)}
-                className="w-full bg-[#273e8e] text-white rounded-full py-3 text-sm font-medium"
+                className="w-full bg-[#273e8e] text-white rounded-full py-4 text-sm font-medium"
               >
                 Create New Ticket
               </button>

@@ -114,7 +114,7 @@ const Product = ({
   };
 
   return (
-    <div className="relative h-full w-full bg-white border border-gray-200 rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col">
+    <div className="relative sm:h-full sm:w-full bg-white border border-gray-200 rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col max-[420]:w-[90%] max-[420]:h-[90%] max-[390px]:w-[85%] max-[390px]:h-[85%] max-[375px]:w-[80%] max-[375px]:h-[80%]">
       {/* Vertical Hot Deal ribbon (mobile-friendly) */}
       {/* {(isHotDeal || discount) && (
           <div className="absolute left-0 top-6 flex items-start">
