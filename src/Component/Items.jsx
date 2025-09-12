@@ -1,4 +1,3 @@
-
 // import React from "react";
 // import { Link } from "react-router-dom";
 
@@ -110,11 +109,13 @@
 //   );
 // };
 
-// export default Items;
 import React from "react";
 import { Link } from "react-router-dom";
 
 const Items = ({ categories = [], loading = false }) => {
+  // Base URL to prepend to the relative image URL
+  const baseUrl = "https://troosolar.hmstech.org";
+
   // Loading skeletons
   if (loading) {
     return (
@@ -136,7 +137,7 @@ const Items = ({ categories = [], loading = false }) => {
 
         {/* Mobile */}
         <div className="w-full sm:hidden block mt-4 px-4 ">
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 min-[390px]:grid-cols-3 gap-3">
             {Array.from({ length: 8 }).map((_, i) => (
               <div
                 key={i}
@@ -153,7 +154,9 @@ const Items = ({ categories = [], loading = false }) => {
   }
 
   if (!categories.length) {
-    return <div className="text-white/90 text-sm px-4">No categories found.</div>;
+    return (
+      <div className="text-white/90 text-sm px-4">No categories found.</div>
+    );
   }
 
   return (
@@ -167,9 +170,10 @@ const Items = ({ categories = [], loading = false }) => {
                 <div className="flex items-center justify-center w-[70px] h-[70px] rounded-full bg-[#0000ff]/10 overflow-hidden">
                   {cat.icon ? (
                     <img
-                      src={cat.icon}
+                      // Prepend the base URL to the relative path
+                      src={`${baseUrl}${cat.icon}`}
                       alt={cat.title || cat.name}
-                      className="h-[40px] w-[40px] object-contain"
+                      className="h-[48] w-[48] object-contain"
                       loading="lazy"
                     />
                   ) : (
@@ -189,14 +193,15 @@ const Items = ({ categories = [], loading = false }) => {
 
       {/* Mobile */}
       <div className="w-full sm:hidden block mt-4 px-2 ">
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-3 max-[320px]:grid-cols-2 min-[390px]:grid-cols-4 gap-3">
           {categories.map((cat) => (
             <Link to={`/product/${cat.id}`} key={cat.id}>
               <div className="flex flex-col items-center justify-center w-full h-[89px] max-sm:w-[89px] bg-white rounded-2xl shadow-sm">
                 <div className="flex items-center justify-center w-[47px] h-[47px] rounded-full bg-[#0000ff]/10 overflow-hidden">
                   {cat.icon ? (
                     <img
-                      src={cat.icon}
+                      // Prepend the base URL to the relative path
+                      src={`${baseUrl}${cat.icon}`}
                       alt={cat.title || cat.name}
                       className="h-10 w-10 object-contain"
                       loading="lazy"

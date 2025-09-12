@@ -249,7 +249,7 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
         ref={desktopWrapRef}
         className="relative sm:block hidden w-full max-w-[200px]"
       >
-        <div className="px-5 py-5 bg-white border border-black/50 rounded-2xl shadow-sm">
+        <div className="px-4 py-4 bg-white border border-black/50 rounded-2xl shadow-sm">
           <button
             type="button"
             onClick={() => setIsOpen((s) => !s)}

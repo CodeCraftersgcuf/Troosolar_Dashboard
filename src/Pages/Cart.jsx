@@ -11,9 +11,11 @@ import API, { BASE_URL } from "../config/api.config";
 
 // helpers
 const toNumber = (v) =>
-  typeof v === "number" ? v : Number(String(v ?? "").replace(/[^\d.]/g, "")) || 0;
+  typeof v === "number"
+    ? v
+    : Number(String(v ?? "").replace(/[^\d.]/g, "")) || 0;
 
-// Turn BASE_URL (http://localhost:8000/api) into origin (http://localhost:8000)
+// Turn BASE_URL (http://localhost:8000/api) into origin (http://localhost:F8000)
 const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, "");
 const toAbsolute = (path) => {
   if (!path) return "";
@@ -37,7 +39,9 @@ const mapCartItem = (ci) => {
     (Array.isArray(model.images) && model.images[0]?.image) ||
     "/placeholder-product.png";
 
-  const unit = toNumber(ci?.unit_price ?? model.discount_price ?? model.price ?? model.total_price);
+  const unit = toNumber(
+    ci?.unit_price ?? model.discount_price ?? model.price ?? model.total_price
+  );
   const qty = toNumber(ci?.quantity);
   const subtotal = toNumber(ci?.subtotal ?? unit * qty);
 
@@ -47,9 +51,9 @@ const mapCartItem = (ci) => {
   );
 
   return {
-    cartLineId: ci.id,           // id to PUT/DELETE on
-    refId: ci.itemable_id,       // product/bundle id
-    type: ci.itemable_type,      // "App\\Models\\Product" or "App\\Models\\Bundles"
+    cartLineId: ci.id, // id to PUT/DELETE on
+    refId: ci.itemable_id, // product/bundle id
+    type: ci.itemable_type, // "App\\Models\\Product" or "App\\Models\\Bundles"
     name: title,
     image: toAbsolute(image),
     qty,
@@ -60,8 +64,8 @@ const mapCartItem = (ci) => {
 };
 
 // ---- Delivery Address endpoints (no index route used)
-const ADDR_STORE  = `${BASE_URL}/delivery-address/store`;
-const ADDR_SHOW   = (id) => `${BASE_URL}/delivery-address/show/${id}`;
+const ADDR_STORE = `${BASE_URL}/delivery-address/store`;
+const ADDR_SHOW = (id) => `${BASE_URL}/delivery-address/show/${id}`;
 const ADDR_UPDATE = (id) => `${BASE_URL}/delivery-address/update/${id}`;
 
 const ADDR_CACHE_KEY = "addresses_cache";
@@ -71,7 +75,8 @@ const parseAddressFromResponse = (resp) => {
   // Controller sometimes passes data as the 2nd arg to ResponseHelper::success
   // so address may appear in resp.data OR resp.message.
   const d = resp ?? {};
-  if (d.data && typeof d.data === "object" && !Array.isArray(d.data)) return d.data;
+  if (d.data && typeof d.data === "object" && !Array.isArray(d.data))
+    return d.data;
   if (d.message && typeof d.message === "object") return d.message;
   return null;
 };
@@ -80,6 +85,20 @@ const parseAddressFromResponse = (resp) => {
 const CHECKOUT_SUMMARY_URL =
   API.CART_CHECKOUT_SUMMARY || `${BASE_URL}/cart/checkout-summary`;
 const ORDERS_URL = API.ORDERS || `${BASE_URL}/orders`;
+const PAYMENT_CONFIRMATION_URL =
+  API.Payment_Confirmation || `${BASE_URL}/order/payment-confirmation`;
+
+// Flutterwave integration
+const ensureFlutterwave = () =>
+  new Promise((resolve, reject) => {
+    if (window.FlutterwaveCheckout) return resolve();
+    const s = document.createElement("script");
+    s.src = "https://checkout.flutterwave.com/v3.js";
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Failed to load Flutterwave script"));
+    document.body.appendChild(s);
+  });
 
 const Cart = () => {
   const [checkout, setCheckOut] = useState(true);
@@ -120,12 +139,15 @@ const Cart = () => {
   const [serverItemsCount, setServerItemsCount] = useState(0);
   const [serverDeliveryPrice, setServerDeliveryPrice] = useState(0);
   const [serverInstallPrice, setServerInstallPrice] = useState(0);
-  const [serverGrandTotal, setServerGrandTotal] = useState(0);
+  const [_serverGrandTotal, setServerGrandTotal] = useState(0);
 
   // place order state
   const [placingOrder, setPlacingOrder] = useState(false);
+  const [orderData, setOrderData] = useState(null);
+  const [processingPayment, setProcessingPayment] = useState(false);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
   // ─────────────────────────────
   // Cart: fetch
@@ -141,7 +163,10 @@ const Cart = () => {
       setLoading(true);
       setErr("");
       const { data } = await axios.get(API.CART, {
-        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       });
       const list = Array.isArray(data?.data) ? data.data : [];
 
@@ -161,7 +186,9 @@ const Cart = () => {
 
       setLines(mapped);
     } catch (e) {
-      setErr(e?.response?.data?.message || e?.message || "Failed to load cart.");
+      setErr(
+        e?.response?.data?.message || e?.message || "Failed to load cart."
+      );
       setLines([]);
     } finally {
       setLoading(false);
@@ -175,7 +202,9 @@ const Cart = () => {
       const raw = localStorage.getItem(ADDR_CACHE_KEY);
       const arr = raw ? JSON.parse(raw) : [];
       if (Array.isArray(arr)) setAddresses(arr);
-    } catch {}
+    } catch {
+      // ignore localStorage errors
+    }
     // restore selected id & try SHOW/:id
     try {
       const selId = localStorage.getItem(ADDR_SELECTED_KEY);
@@ -183,7 +212,9 @@ const Cart = () => {
         setSelectedAddressId(selId);
         void fetchAndSelect(selId);
       }
-    } catch {}
+    } catch {
+      // ignore localStorage errors
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -191,7 +222,9 @@ const Cart = () => {
     setAddresses(arr);
     try {
       localStorage.setItem(ADDR_CACHE_KEY, JSON.stringify(arr));
-    } catch {}
+    } catch {
+      // ignore localStorage errors
+    }
   };
 
   const setSelected = (id, addr) => {
@@ -199,14 +232,19 @@ const Cart = () => {
     setSelectedAddress(addr);
     try {
       if (id) localStorage.setItem(ADDR_SELECTED_KEY, String(id));
-    } catch {}
+    } catch {
+      // ignore localStorage errors
+    }
   };
 
   const fetchAndSelect = async (id) => {
     if (!token || !id) return;
     try {
       const { data } = await axios.get(ADDR_SHOW(id), {
-        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       });
       const addr = parseAddressFromResponse(data);
       if (addr && addr.id) {
@@ -231,7 +269,12 @@ const Cart = () => {
   // ─────────────────────────────
   const saveNew = async () => {
     if (!token) return;
-    if (!newForm.title || !newForm.address || !newForm.state || !newForm.phone_number) {
+    if (
+      !newForm.title ||
+      !newForm.address ||
+      !newForm.state ||
+      !newForm.phone_number
+    ) {
       alert("Please fill all fields.");
       return;
     }
@@ -245,7 +288,12 @@ const Cart = () => {
           state: newForm.state,
           phone_number: newForm.phone_number,
         },
-        { headers: { Accept: "application/json", Authorization: `Bearer ${token}` } }
+        {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
       );
       const addr = parseAddressFromResponse(data);
       if (addr && addr.id) {
@@ -258,7 +306,9 @@ const Cart = () => {
         alert("Address saved, but could not parse response.");
       }
     } catch (e) {
-      alert(e?.response?.data?.message || e?.message || "Failed to add address");
+      alert(
+        e?.response?.data?.message || e?.message || "Failed to add address"
+      );
     } finally {
       setSavingNew(false);
     }
@@ -304,19 +354,34 @@ const Cart = () => {
           state: editingForm.state,
           phone_number: editingForm.phone_number,
         },
-        { headers: { Accept: "application/json", Authorization: `Bearer ${token}` } }
+        {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
       );
-      const addr = parseAddressFromResponse(data) || { id: editingId, ...editingForm };
+      const addr = parseAddressFromResponse(data) || {
+        id: editingId,
+        ...editingForm,
+      };
       // update local
-      const updated = addresses.map((a) => (String(a.id) === String(editingId) ? { ...a, ...addr } : a));
+      const updated = addresses.map((a) =>
+        String(a.id) === String(editingId) ? { ...a, ...addr } : a
+      );
       persistAddresses(updated);
       // if was selected, update selected
       if (String(selectedAddressId) === String(editingId)) {
-        setSelected(String(editingId), updated.find((a) => String(a.id) === String(editingId)) || addr);
+        setSelected(
+          String(editingId),
+          updated.find((a) => String(a.id) === String(editingId)) || addr
+        );
       }
       setEditingId(null);
     } catch (e) {
-      alert(e?.response?.data?.message || e?.message || "Failed to update address");
+      alert(
+        e?.response?.data?.message || e?.message || "Failed to update address"
+      );
     } finally {
       setSavingEdit(false);
     }
@@ -335,7 +400,12 @@ const Cart = () => {
       await axios.put(
         API.CART_ITEM(cartLineId),
         { quantity: newQty },
-        { headers: { Accept: "application/json", Authorization: `Bearer ${token}` } }
+        {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
       );
       setLines((prev) =>
         prev.map((l) =>
@@ -365,7 +435,10 @@ const Cart = () => {
     if (!token) return;
     try {
       await axios.delete(API.CART_ITEM(cartLineId), {
-        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       });
       setLines((prev) => prev.filter((l) => l.cartLineId !== cartLineId));
     } catch {
@@ -374,19 +447,27 @@ const Cart = () => {
   };
 
   // Totals (local)
-  const itemCount = useMemo(() => lines.reduce((s, l) => s + l.qty, 0), [lines]);
-  const amountTotal = useMemo(() => lines.reduce((s, l) => s + l.subtotal, 0), [lines]);
+  const itemCount = useMemo(
+    () => lines.reduce((s, l) => s + l.qty, 0),
+    [lines]
+  );
+  const amountTotal = useMemo(
+    () => lines.reduce((s, l) => s + l.subtotal, 0),
+    [lines]
+  );
 
   // Installation total = sum(installUnit * qty) — per product (client-side)
   const installationTotal = useMemo(
-    () => lines.reduce((s, l) => s + toNumber(l.installUnit) * toNumber(l.qty), 0),
+    () =>
+      lines.reduce((s, l) => s + toNumber(l.installUnit) * toNumber(l.qty), 0),
     [lines]
   );
 
   // Prefer server items_total if we have it (after pressing Checkout)
   const itemsTotalToShow = serverItemsTotal || amountTotal;
   // Prefer client-summed installation (per product); fall back to server installation.price
-  const installationToShow = installationTotal > 0 ? installationTotal : serverInstallPrice;
+  const installationToShow =
+    installationTotal > 0 ? installationTotal : serverInstallPrice;
   // Delivery from server (0 if not yet loaded)
   const deliveryToShow = serverDeliveryPrice || 0;
   // Grand = items + delivery + installation
@@ -402,11 +483,16 @@ const Cart = () => {
     setSummaryLoading(true);
     try {
       const res = await axios.get(CHECKOUT_SUMMARY_URL, {
-        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       });
       const payload = res?.data?.data || res?.data || {};
       const cart = payload.cart || {};
-      const addressesArr = Array.isArray(payload.addresses) ? payload.addresses : [];
+      const addressesArr = Array.isArray(payload.addresses)
+        ? payload.addresses
+        : [];
       const delivery = payload.delivery || {};
       const installation = payload.installation || {};
 
@@ -446,6 +532,95 @@ const Cart = () => {
   };
 
   // ─────────────────────────────
+  // Payment Confirmation
+  // ─────────────────────────────
+  const confirmPayment = async (orderId, txId, amount) => {
+    if (!token) return false;
+    try {
+      const { data } = await axios.post(
+        PAYMENT_CONFIRMATION_URL,
+        {
+          amount: String(amount),
+          orderId: Number(orderId),
+          txId: String(txId),
+        },
+        {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      return data?.status === "success";
+    } catch (e) {
+      console.error("Payment confirmation failed:", e);
+      return false;
+    }
+  };
+
+  // ─────────────────────────────
+  // Flutterwave Payment
+  // ─────────────────────────────
+  const startFlutterwavePayment = async (amount, orderId) => {
+    try {
+      setProcessingPayment(true);
+      await ensureFlutterwave();
+      const txRef = "txref_" + Date.now();
+
+      window.FlutterwaveCheckout({
+        public_key: "FLWPUBK_TEST-dd1514f7562b1d623c4e63fb58b6aedb-X", // 🔑 your test public key
+        tx_ref: txRef,
+        amount,
+        currency: "NGN",
+        payment_options: "card,ussd",
+        customer: {
+          email: "test@example.com",
+          name: "Test User",
+        },
+        callback: async function (response) {
+          console.log("Flutterwave response:", response);
+          if (response?.status === "successful") {
+            console.log("Payment successful:", {
+              tx_ref: txRef,
+              amount,
+              response,
+            });
+
+            // Confirm payment with backend
+            const confirmed = await confirmPayment(
+              orderId,
+              response.transaction_id,
+              amount
+            );
+            if (confirmed) {
+              // Show success modal
+              setCheckOutPayment(true);
+            } else {
+              alert("Payment confirmation failed. Please contact support.");
+            }
+          } else {
+            alert("Payment was not successful. Please try again.");
+          }
+          setProcessingPayment(false);
+        },
+        onclose: function () {
+          console.log("Flutterwave modal closed");
+          setProcessingPayment(false);
+        },
+        customizations: {
+          title: "TrooSolar Payment",
+          description: `Order ID: ${orderData?.order_number || orderId}`,
+          logo: "https://yourdomain.com/logo.png",
+        },
+      });
+    } catch (e) {
+      console.error("Payment init failed:", e);
+      setProcessingPayment(false);
+      alert("Failed to initialize payment. Please try again.");
+    }
+  };
+
+  // ─────────────────────────────
   // Place Order (final Checkout in Delivery step)
   // ─────────────────────────────
   const handlePlaceOrder = async () => {
@@ -455,7 +630,9 @@ const Cart = () => {
     }
     if (!selectedAddressId) {
       setOpenPicker(true);
-      alert("Please select or add a delivery address before placing the order.");
+      alert(
+        "Please select or add a delivery address before placing the order."
+      );
       return;
     }
     if (lines.length === 0) {
@@ -476,7 +653,7 @@ const Cart = () => {
 
     setPlacingOrder(true);
     try {
-      await axios.post(
+      const { data } = await axios.post(
         ORDERS_URL,
         {
           delivery_address_id: Number(selectedAddressId),
@@ -491,15 +668,19 @@ const Cart = () => {
         }
       );
 
-      // Show success modal (UI unchanged)
-      setCheckOutPayment(true);
-      // (Optional) you could clear cart here by reloading, but UI request didn't specify.
-      // await loadCart();
+      // Store order data for payment
+      if (data?.status === "success" && data?.data) {
+        setOrderData(data.data);
+
+        // Start Flutterwave payment with the order total
+        const paymentAmount = Number(data.data.total_price) || grandTotal;
+        await startFlutterwavePayment(paymentAmount, data.data.id);
+      } else {
+        alert("Order placed but payment initialization failed.");
+      }
     } catch (e) {
       const msg =
-        e?.response?.data?.message ||
-        e?.message ||
-        "Failed to place order.";
+        e?.response?.data?.message || e?.message || "Failed to place order.";
       alert(msg);
     } finally {
       setPlacingOrder(false);
@@ -517,7 +698,10 @@ const Cart = () => {
           {/* Cart Items */}
           <div className="w-full sm:w-[57%] space-y-4 p-5">
             <h1 className="text-2xl">Shopping Cart</h1>
-            <Link to="/homePage" className="text-blue-500 underline text-sm hover:text-blue-700">
+            <Link
+              to="/homePage"
+              className="text-blue-500 underline text-sm hover:text-blue-700"
+            >
               Go Back
             </Link>
 
@@ -536,16 +720,22 @@ const Cart = () => {
             </Link>
 
             {loading ? (
-              <div className="px-4 p-4 text-sm rounded-xl bg-white border text-gray-500">Loading…</div>
+              <div className="px-4 p-4 text-sm rounded-xl bg-white border text-gray-500">
+                Loading…
+              </div>
             ) : err ? (
-              <div className="px-4 p-4 text-sm rounded-xl bg-white border text-red-600">{err}</div>
+              <div className="px-4 p-4 text-sm rounded-xl bg-white border text-red-600">
+                {err}
+              </div>
             ) : lines.length === 0 ? (
-              <div className="px-4 p-4 text-sm rounded-xl bg-white border text-gray-500">Your cart is empty.</div>
+              <div className="px-4 p-4 text-sm rounded-xl bg-white border text-gray-500">
+                Your cart is empty.
+              </div>
             ) : (
               lines.map((line) => (
                 <CartItems
                   key={line.cartLineId}
-                  itemId={line.cartLineId}            // cart line id for server handlers
+                  itemId={line.cartLineId} // cart line id for server handlers
                   name={line.name}
                   price={line.unitPrice}
                   image={line.image}
@@ -565,7 +755,7 @@ const Cart = () => {
             <div className="w-full lg:w-1/2 p-5 mt-16 space-y-5">
               <h2 className="text-2xl ">Order Summary</h2>
 
-              <div className="border rounded-2xl bg-white p-5 space-y-3">
+              <div className="rounded-2xl bg-white p-5 space-y-3 border-[1px] border-gray-300">
                 <div className="flex justify-between text-gray-600">
                   <span className="text-xs text-gray-400">Items</span>
                   <span className="text-gray-500">{itemCount}</span>
@@ -573,7 +763,9 @@ const Cart = () => {
                 <hr className="border-gray-300" />
                 <div className="flex justify-between text-[#273e8e]">
                   <span className="text-xs text-gray-400 ">Total</span>
-                  <span className="font-semibold">N{amountTotal.toLocaleString()}</span>
+                  <span className="font-semibold">
+                    N{amountTotal.toLocaleString()}
+                  </span>
                 </div>
               </div>
 
@@ -594,15 +786,15 @@ const Cart = () => {
             <div className="w-full lg:w-1/2 p-5 mt-16 space-y-6">
               <h2 className="text-2xl font-semibold">Delivery Details</h2>
 
-              <div className="bg-white border rounded-2xl p-4 space-y-4">
+              <div className="bg-white border-[1px] border-gray-300 rounded-2xl p-4 space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="font-medium">Delivery Address</span>
                   <button
                     type="button"
                     onClick={() => setOpenPicker((s) => !s)}
-                    className="text-sm text-blue-600 hover:underline"
+                    className="text-sm text-[#273E8E] hover:text-[#1d3c73] underline p-2 cursor-pointer"
                   >
-                    {summaryLoading ? "Loading…" : "Change Address"}
+                    {summaryLoading ? "Loading…" : "Change"}
                   </button>
                 </div>
                 <hr className="border-gray-300" />
@@ -619,12 +811,18 @@ const Cart = () => {
                               <input
                                 type="radio"
                                 name="deliveryAddress"
-                                checked={String(selectedAddressId) === String(a.id)}
+                                checked={
+                                  String(selectedAddressId) === String(a.id)
+                                }
                                 onChange={() => selectExisting(a.id)}
                               />
                               <div className="flex-1">
-                                <div className="text-sm font-medium">{a.title}</div>
-                                <div className="text-xs text-gray-600">{a.address}</div>
+                                <div className="text-sm font-medium">
+                                  {a.title}
+                                </div>
+                                <div className="text-xs text-gray-600">
+                                  {a.address}
+                                </div>
                                 <div className="text-xs text-gray-600">
                                   {a.state} — {a.phone_number}
                                 </div>
@@ -646,7 +844,10 @@ const Cart = () => {
                                   placeholder="Title"
                                   value={editingForm.title}
                                   onChange={(e) =>
-                                    setEditingForm((f) => ({ ...f, title: e.target.value }))
+                                    setEditingForm((f) => ({
+                                      ...f,
+                                      title: e.target.value,
+                                    }))
                                   }
                                 />
                                 <input
@@ -654,7 +855,10 @@ const Cart = () => {
                                   placeholder="State"
                                   value={editingForm.state}
                                   onChange={(e) =>
-                                    setEditingForm((f) => ({ ...f, state: e.target.value }))
+                                    setEditingForm((f) => ({
+                                      ...f,
+                                      state: e.target.value,
+                                    }))
                                   }
                                 />
                                 <input
@@ -662,7 +866,10 @@ const Cart = () => {
                                   placeholder="Address"
                                   value={editingForm.address}
                                   onChange={(e) =>
-                                    setEditingForm((f) => ({ ...f, address: e.target.value }))
+                                    setEditingForm((f) => ({
+                                      ...f,
+                                      address: e.target.value,
+                                    }))
                                   }
                                 />
                                 <input
@@ -670,7 +877,10 @@ const Cart = () => {
                                   placeholder="Phone Number"
                                   value={editingForm.phone_number}
                                   onChange={(e) =>
-                                    setEditingForm((f) => ({ ...f, phone_number: e.target.value }))
+                                    setEditingForm((f) => ({
+                                      ...f,
+                                      phone_number: e.target.value,
+                                    }))
                                   }
                                 />
                                 <div className="flex gap-2 mt-1 md:col-span-2">
@@ -696,7 +906,9 @@ const Cart = () => {
                         ))}
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-500">No addresses yet.</div>
+                      <div className="text-sm text-gray-500">
+                        No addresses yet.
+                      </div>
                     )}
 
                     {/* Add new toggle */}
@@ -731,7 +943,10 @@ const Cart = () => {
                           placeholder="Address"
                           value={newForm.address}
                           onChange={(e) =>
-                            setNewForm((f) => ({ ...f, address: e.target.value }))
+                            setNewForm((f) => ({
+                              ...f,
+                              address: e.target.value,
+                            }))
                           }
                         />
                         <input
@@ -739,7 +954,10 @@ const Cart = () => {
                           placeholder="Phone Number"
                           value={newForm.phone_number}
                           onChange={(e) =>
-                            setNewForm((f) => ({ ...f, phone_number: e.target.value }))
+                            setNewForm((f) => ({
+                              ...f,
+                              phone_number: e.target.value,
+                            }))
                           }
                         />
                         <div className="flex gap-2 mt-1 md:col-span-2">
@@ -755,7 +973,12 @@ const Cart = () => {
                             type="button"
                             onClick={() => {
                               setAddingNew(false);
-                              setNewForm({ title: "", address: "", state: "", phone_number: "" });
+                              setNewForm({
+                                title: "",
+                                address: "",
+                                state: "",
+                                phone_number: "",
+                              });
                             }}
                             className="px-3 py-1 rounded-full border text-xs"
                           >
@@ -790,61 +1013,80 @@ const Cart = () => {
 
                 <div className="flex justify-between text-gray-600 text-sm">
                   <span>Estimated Time</span>
-                  <span className="text-gray-900 font-medium">July 3, 2025</span>
+                  <span className="text-gray-900 font-medium">
+                    July 3, 2025
+                  </span>
                 </div>
                 <hr className="border-gray-300" />
-                <div className="flex justify-between text-[#273e8e] text-sm">
+                <div className="flex justify-between text-[#00000080] text-sm">
                   <span>Price</span>
                   {/* show server items_total when available */}
-                  <span>N{itemsTotalToShow.toLocaleString()}</span>
+                  <span className="text-[#273E8E]">
+                    N{itemsTotalToShow.toLocaleString()}
+                  </span>
                 </div>
               </div>
 
               <div>
-                <h1 className="text-xl py-3 font-semibold text-gray-600">Installation</h1>
+                <h1 className="text-xl py-3 font-semibold text-gray-600">
+                  Installation
+                </h1>
 
                 <div className="flex items-start gap-3">
                   <div className="p-1 rounded-full border">
                     <div className="h-3 w-3 rounded-full bg-[#273e8e]"></div>
                   </div>
-                  <div className="w-full border rounded-xl p-4 space-y-3">
+                  <div className="w-full border-[1px] bg-white  border-gray-300 rounded-xl p-4 space-y-3">
                     <div className="bg-yellow-50 border-2 border-yellow-400 rounded-lg py-2 px-2">
                       <p className="text-yellow-600">
-                        Installation will be carried out by one of our skilled technicians. You can choose not to use our installers.
+                        Installation will be carried out by one of our skilled
+                        technicians. You can choose not to use our installers.
                       </p>
                     </div>
                     <div className="flex justify-between text-gray-600 text-sm">
                       <span>Estimated Time</span>
-                      <span className="text-gray-900 font-medium">July 3, 2025</span>
+                      <span className="text-gray-900 font-medium">
+                        July 3, 2025
+                      </span>
                     </div>
                     <hr className="border-gray-300" />
-                    <div className="flex justify-between text-[#273e8e] text-sm">
+                    <div className="flex justify-between text-[#00000080] text-sm">
                       <span>Price</span>
                       {/* per-product sum (client) or server fallback */}
-                      <span>N{(installationTotal > 0 ? installationTotal : installationToShow).toLocaleString()}</span>
+                      <span className="text-[#273E8E]">
+                        N
+                        {(installationTotal > 0
+                          ? installationTotal
+                          : installationToShow
+                        ).toLocaleString()}
+                      </span>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Summary Breakdown */}
-              <div className="border p-4 rounded-xl space-y-3 bg-white">
+              <div className="border-[1px] border-gray-300 p-4 rounded-xl space-y-3 bg-white">
                 <div className="flex justify-between">
                   <p>Items</p>
                   <p>{serverItemsCount || itemCount}</p>
                 </div>
-                <hr />
+                <hr className="border-gray-300"/>
                 <div className="flex justify-between">
                   <p>Payment Method</p>
                   <p>Direct</p>
                 </div>
-                <hr />
+                <hr className="border-gray-300"/>
                 <div className="flex justify-between">
                   <p>Charge</p>
                   {/* show delivery from server if present; keep label unchanged */}
-                  <p>{deliveryToShow ? `N${deliveryToShow.toLocaleString()}` : "Free"}</p>
+                  <p>
+                    {deliveryToShow
+                      ? `N${deliveryToShow.toLocaleString()}`
+                      : "Free"}
+                  </p>
                 </div>
-                <hr />
+                <hr className="border-gray-300"/>
                 <div className="flex justify-between font-bold text-[#273e8e]">
                   <p>Total</p>
                   {/* grand = items + delivery + installation */}
@@ -863,9 +1105,18 @@ const Cart = () => {
                 <button
                   onClick={handlePlaceOrder}
                   className="py-3 bg-[#273e8e] text-white rounded-full text-sm hover:bg-[#1f2f6e] transition disabled:opacity-60"
-                  disabled={lines.length === 0 || summaryLoading || placingOrder}
+                  disabled={
+                    lines.length === 0 ||
+                    summaryLoading ||
+                    placingOrder ||
+                    processingPayment
+                  }
                 >
-                  {placingOrder ? "Placing..." : "Checkout"}
+                  {placingOrder
+                    ? "Placing..."
+                    : processingPayment
+                    ? "Processing Payment..."
+                    : "Checkout"}
                 </button>
               </div>
             </div>
@@ -878,9 +1129,15 @@ const Cart = () => {
                 <div className="max-h-[450px] overflow-y-auto border rounded-2xl p-4">
                   <div className="flex flex-col items-center gap-5 text-center">
                     <div
-                      className={`${checkout ? "bg-red-600 " : "bg-green-600"} rounded-full flex items-center justify-center h-[100px] w-[100px]`}
+                      className={`${
+                        checkout ? "bg-red-600 " : "bg-green-600"
+                      } rounded-full flex items-center justify-center h-[100px] w-[100px]`}
                     >
-                      {checkout ? <RxCrossCircled size={40} color="white" /> : <GiCheckMark size={40} color="white" />}
+                      {checkout ? (
+                        <RxCrossCircled size={40} color="white" />
+                      ) : (
+                        <GiCheckMark size={40} color="white" />
+                      )}
                     </div>
 
                     <p className="text-[15px]">
@@ -892,7 +1149,8 @@ const Cart = () => {
                         </span>
                       ) : (
                         <span>
-                          <strong>Congratulations</strong> your order has been placed successfully, Expect delivery from Mon, July
+                          <strong>Congratulations</strong> your order has been
+                          placed successfully, Expect delivery from Mon, July
                           3rd - Wed July 7th
                         </span>
                       )}
@@ -909,7 +1167,9 @@ const Cart = () => {
                           quantity={firstLine.qty}
                         />
                       ) : (
-                        <div className="bg-white border rounded-xl p-4 text-gray-500">No items</div>
+                        <div className="bg-white border rounded-xl p-4 text-gray-500">
+                          No items
+                        </div>
                       )}
                     </div>
                   </div>

@@ -1335,6 +1335,8 @@ const ProductBundle = () => {
   if (err) return <div className="p-6 text-red-600">{err}</div>;
   if (!productData) return <div className="p-6">Not found.</div>;
 
+  console.log("productData Imagesss", productData.heroImage);
+
   return (
     <div className="flex min-h-screen w-full relative bg-[#F5F7FF]">
       {/* DESKTOP */}

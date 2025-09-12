@@ -1,4 +1,3 @@
-
 // // src/Pages/HomePage.jsx
 // import React, { useContext, useEffect, useMemo, useState } from "react";
 // import axios from "axios";
@@ -63,7 +62,6 @@
 // const HomePage = () => {
 //   const { registerProducts } = useContext(ContextApi);
 
-
 //   const [categories, setCategories] = useState([]);
 //   const [catLoading, setCatLoading] = useState(false);
 //   const [catError, setCatError] = useState("");
@@ -110,7 +108,7 @@
 //           headers: { Accept: "application/json",
 //             ...(token ? { Authorization: `Bearer ${token}` } : {}),
 //            },
-            
+
 //         });
 //           const list = Array.isArray(data?.data) ? data.data : [];
 //         setApiProducts(list.map(mapApiProductToCard));
@@ -238,7 +236,7 @@
 //             </div>
 //           </div>
 //         </div>
-        
+
 //         {/* Mobile Bottom Navigation */}
 //         <SideBar />
 //       </div>
@@ -580,7 +578,7 @@ const mapApiProductToCard = (p) => {
 };
 
 const HomePage = () => {
-  const { registerProducts } = useContext(ContextApi);
+  const { registerProducts, filteredResults, setFilteredResults } = useContext(ContextApi);
 
   const [categories, setCategories] = useState([]);
   const [catLoading, setCatLoading] = useState(false);
@@ -631,7 +629,10 @@ const HomePage = () => {
           },
         });
         const list = Array.isArray(data?.data) ? data.data : [];
-        setApiProducts(list.map(mapApiProductToCard));
+        const mappedProducts = list.map(mapApiProductToCard);
+        setApiProducts(mappedProducts);
+        // Initialize filtered results with all products
+        setFilteredResults(mappedProducts);
         // keep raw list in context if you use it elsewhere
         registerProducts?.(list);
       } catch (err) {
@@ -645,7 +646,7 @@ const HomePage = () => {
       }
     };
     fetchProducts();
-  }, [registerProducts]);
+  }, [registerProducts, setFilteredResults]);
 
   // Build a quick id->name map for categories
   const catMap = useMemo(() => {
@@ -658,15 +659,22 @@ const HomePage = () => {
   }, [categories]);
 
   // Enrich cards with category name
-  const gridProducts = useMemo(
-    () =>
-      (apiProducts || []).map((p) => ({
-        ...p,
-        categoryName: catMap[p.categoryId] || "Inverter",
-      })),
-    [apiProducts, catMap]
-  );
+  const gridProducts = useMemo(() => {
+    // Use filtered results if available, otherwise use apiProducts
+    const sourceProducts = filteredResults.length > 0 ? filteredResults : (apiProducts || []);
+    
+    return sourceProducts.map((p) => ({
+      ...p,
+      categoryName: catMap[p.categoryId] || "Inverter",
+    }));
+  }, [filteredResults, apiProducts, catMap]);
 
+  const baseUrl = "https://troosolar.hmstech.org/";
+
+  categories.forEach((category) => {
+    const iconUrl = `${baseUrl}${category.icon}`;
+    console.log("Category Icon:", iconUrl);
+  });
   return (
     <>
       {/* Desktop view */}
@@ -681,20 +689,24 @@ const HomePage = () => {
           <div className="bg-[#273e8e] px-6 py-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-6">
               <div>
-                <h1 className="text-2xl text-white">Solar Store</h1>
-                <p className="text-white font-light">Welcome to your dashboard</p>
+                <h1 className="text-[16px] text-white">Solar Store</h1>
+                <p className="text-white font-light text-[13px]">
+                  Welcome to your dashboard
+                </p>
               </div>
 
               {/* SearchBar gets full width 841px on desktop via the component */}
-              <SearchBar categories={categories} />
+              <SearchBar categories={categories} products={apiProducts} />
             </div>
 
-            {catError && <p className="text-red-200 text-sm mb-2">{catError}</p>}
+            {catError && (
+              <p className="text-red-200 text-sm mb-2">{catError}</p>
+            )}
             <Items categories={categories} loading={catLoading} />
           </div>
 
           <div className="px-6 py-6 w-full overflow-x-hidden">
-            <h1 className="text-2xl text-gray-800 mb-4">All Products</h1>
+            <h1 className="text-xl text-gray-800 mb-4 font-bold">All Products</h1>
 
             {prodError && (
               <p className="text-red-600 text-sm mb-3">{prodError}</p>
@@ -734,7 +746,9 @@ const HomePage = () => {
           <div className="bg-[#273e8e] pt-8 rounded-b-2xl px-5 pb-5">
             <div className="flex items-start justify-between">
               <div>
-                <h1 className="text-white text-[20px] font-semibold">Solar Store</h1>
+                <h1 className="text-white text-[20px] font-semibold">
+                  Solar Store
+                </h1>
                 <p className="text-white/90 text-[12px]">
                   Shop the latest solar products
                 </p>
@@ -750,7 +764,7 @@ const HomePage = () => {
 
             {/* Search */}
             <div className="mt-4">
-              <SearchBar categories={categories} />
+              <SearchBar categories={categories} products={apiProducts} />
             </div>
           </div>
 
@@ -771,7 +785,7 @@ const HomePage = () => {
             )}
             {prodLoading && <p className="text-gray-600 text-sm">Loading…</p>}
 
-            <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px]">
+            <div className="grid grid-cols-1 min:-[320px]:grid-cols-1 min-[390px]:grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px]">
               {gridProducts.map((item) => (
                 <Link
                   key={item.id}
@@ -789,7 +803,6 @@ const HomePage = () => {
                     ratingCount={item.ratingCount}
                     categoryName={item.categoryName}
                     isHotDeal={item.isHotDeal}
-                   
                   />
                 </Link>
               ))}

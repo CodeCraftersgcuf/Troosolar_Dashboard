@@ -225,6 +225,7 @@ const More = () => {
                       colorBg="bg-[#273E8E]"
                       icon={LuUserRound}
                       label="Profile Settings"
+                      isSelected={activeSection === "editProfile"}
                     />
                   </div>
 
@@ -233,6 +234,7 @@ const More = () => {
                       colorBg="bg-[#8E2778]"
                       icon={PiShoppingCartSimple}
                       label="My Orders"
+                      isSelected={activeSection === "myOrders"}
                     />
                   </div>
 
@@ -241,6 +243,7 @@ const More = () => {
                       colorBg="bg-[#8E2727]"
                       icon={PiNotepadBold}
                       label="Transaction History"
+                      isSelected={activeSection === "transactionHistory"}
                     />
                   </div>
                   <div onClick={() => setActiveSection("kycDetails")}>
@@ -248,6 +251,7 @@ const More = () => {
                       colorBg="bg-[#278E5B]"
                       image={assets.kwc}
                       label="KYC Details"
+                      isSelected={activeSection === "kycDetails"}
                     />
                   </div>
 
@@ -256,6 +260,7 @@ const More = () => {
                       colorBg="bg-[#5C278E]"
                       icon={PiUsersBold}
                       label="Referrals"
+                      isSelected={activeSection === "referrals"}
                     />
                   </div>
 
@@ -264,6 +269,7 @@ const More = () => {
                       colorBg="bg-[#27608E]"
                       image={assets.support}
                       label="Support"
+                      isSelected={activeSection === "support"}
                     />
                   </div>
 
@@ -272,6 +278,7 @@ const More = () => {
                       colorBg="bg-[#8E2778]"
                       icon={TbPassword}
                       label="Change Password"
+                      isSelected={showPasswordPopup}
                     />
                   </div>
                 </div>

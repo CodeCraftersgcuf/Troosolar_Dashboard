@@ -9,6 +9,7 @@ import TopNavbar from "../Component/TopNavbar";
 
 const LoanPage = () => {
   const [showLoan, setShowLoan] = useState(true); // true = no modal
+  const [showLoanTerms, setShowLoanTerms] = useState(true);
 
   return (
     <>
@@ -42,7 +43,7 @@ const LoanPage = () => {
                 You have not taken any loan yet
               </p>
               <button
-                onClick={() => setShowLoan(false)}
+                onClick={() => setShowLoanTerms(false)}
                 className="px-6 py-3 rounded-md bg-[#273e8e] text-white hover:bg-[#1d2f6b] transition"
               >
                 Apply Now
@@ -52,11 +53,14 @@ const LoanPage = () => {
         </div>
 
         {/* Desktop Modal */}
-        {!showLoan && (
+        {!showLoanTerms && (
           <div className="absolute inset-0 z-50 flex items-center justify-center">
             <div className="absolute inset-0 bg-black/40" />
             <div className="relative z-10">
-              <Terms link="/linkAccount" />
+              <Terms
+                link="/linkAccount"
+                onClose={() => setShowLoanTerms(true)}
+              />
             </div>
           </div>
         )}
@@ -65,7 +69,7 @@ const LoanPage = () => {
       {/* ---------------- Mobile (<= 640px) ---------------- */}
       <div
         className={`sm:hidden relative flex min-h-screen w-full ${
-          !showLoan ? "bg-black/40" : "bg-[#F5F7FF]"
+          !showLoanTerms ? "bg-black/40" : "bg-[#F5F7FF]"
         }`}
       >
         <div className="flex-1 flex flex-col pb-24">
@@ -73,7 +77,9 @@ const LoanPage = () => {
           <div className="px-5 pt-6 flex items-start justify-between">
             <div>
               <h1 className="text-[20px] font-semibold">Loans</h1>
-              <p className="text-[12px] text-black/50">Welcome to the dashboard</p>
+              <p className="text-[12px] text-black/50">
+                Welcome to the dashboard
+              </p>
             </div>
             <button className="h-10 w-10 rounded-lg bg-white flex items-center justify-center shadow-md">
               <Bell size={20} />
@@ -94,7 +100,7 @@ const LoanPage = () => {
             />
             <p className="text-gray-600">You have not taken any loan yet</p>
             <button
-              onClick={() => setShowLoan(false)}
+              onClick={() => setShowLoanTerms(false)}
               className="mt-4 px-6 py-3 rounded-md bg-[#273e8e] text-white"
             >
               Apply Now
@@ -106,11 +112,14 @@ const LoanPage = () => {
         <SideBar />
 
         {/* Mobile Modal (centered sheet) */}
-        {!showLoan && (
+        {!showLoanTerms && (
           <div className="absolute inset-0 z-50 flex items-center justify-center">
             <div className="absolute inset-0 bg-black/40" />
             <div className="relative z-10 w-[92%] max-w-md">
-              <Terms link="/linkAccount" />
+              <Terms
+                link="/linkAccount"
+                pnClose={() => setShowLoanTerms(true)}
+              />
             </div>
           </div>
         )}

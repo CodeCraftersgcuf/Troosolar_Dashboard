@@ -234,7 +234,7 @@ const SpecificProduct = () => {
               <PriceDropDown onFilter={handlePriceFilter} />
             </div>
 
-            <h1 className="text-2xl text-gray-800 my-4">{displayCategoryName}</h1>
+            <h1 className="text-xl font-semibold text-black-800 my-4">{displayCategoryName}</h1>
 
             {prodError && (
               <p className="text-red-600 text-sm mb-3">{prodError}</p>

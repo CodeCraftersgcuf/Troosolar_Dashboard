@@ -91,7 +91,7 @@ const TermsPage = ({ link }) => {
           </div>
         )}
 
-        <div className={`border rounded-2xl flex-1 ${isCreditScorePage ? "max-h-[400px]" : "max-h-[600px]"} flex flex-col`}>
+        <div className={`border rounded-2xl flex-1 ${isCreditScorePage ? "max-h-[630px]" : "max-h-[600px]"} flex flex-col`}>
           <div className="overflow-y-auto p-4 space-y-3 flex-1">
             <h3 className="text-[#273e8e] font-semibold">Terms of Use</h3>
             <p>

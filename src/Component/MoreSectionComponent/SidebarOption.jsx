@@ -1,9 +1,13 @@
 import React from "react";
 import { ChevronRight } from "lucide-react";
 
-const SidebarOption = ({ icon: Icon, label, image, colorBg }) => {
+const SidebarOption = ({ icon: Icon, label, image, colorBg, isSelected = false }) => {
   return (
-    <div className="flex justify-between items-center bg-white rounded-xl px-4 py-3 mb-3 shadow-sm hover:border-[#273e8e] hover:border border border-gray-300 cursor-pointer">
+    <div className={`flex justify-between items-center bg-white rounded-xl px-4 py-3 mb-3 shadow-sm cursor-pointer transition-all ${
+      isSelected 
+        ? "border-2 border-[#273e8e]" 
+        : "border border-gray-300 hover:border-[#273e8e] hover:border"
+    }`}>
       <div className="flex items-center gap-3">
         {image && (
           <img

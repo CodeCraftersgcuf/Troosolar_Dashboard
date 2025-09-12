@@ -107,7 +107,16 @@ const Auth = () => {
         const user = data?.user || data?.data?.user || null;
 
         if (token) localStorage.setItem("access_token", token);
-        if (user) localStorage.setItem("user", JSON.stringify(user));
+        if (user) {
+          // Construct the new profile picture URL based on the user's ID
+          const updatedUser = {
+            ...user,
+            profile_picture: `https://troosolar.hmstech.org/public/users/${user.profile_picture}`,
+          };
+
+          // Store the updated user object in localStorage
+          localStorage.setItem("user", JSON.stringify(updatedUser));
+        }
 
         // Go somewhere after login
         navigate("/");

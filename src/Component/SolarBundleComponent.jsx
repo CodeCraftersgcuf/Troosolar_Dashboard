@@ -1,5 +1,7 @@
 import React from "react";
-const SolarBundleComponent = ({ image,
+
+const SolarBundleComponent = ({
+  image,
   heading,
   price,
   oldPrice,
@@ -8,14 +10,23 @@ const SolarBundleComponent = ({ image,
   progressBar,
   rating,
   bundleTitle,
-  borderColor}) => {
+  borderColor,
+}) => {
+  // Assuming image is the relative path, prepend the base URL
+  // const imageUrl = `https://troosolar.hmstech.org/${image}`;
+
+  const imageUrl = image;
   return (
     <div
-      className=" sm:min-w-[380px] bg-white rounded-2xl p-2 shadow-sm"
+      className="sm:min-w-[283px] bg-white rounded-2xl p-2 shadow-sm"
       style={{ border: `2px solid ${borderColor}` }}
     >
-      <img src={image} alt="Solar bundle product" className="w-full h-auto rounded-md mb-3" />
-      {bundleTitle && <h2 className="text-[16px] font-[400] mb-2">{bundleTitle}</h2>}
+      <img
+        src={imageUrl} // Use the full URL for the image
+        alt="Solar bundle product"
+        className="w-full h-auto rounded-md mb-3"
+      />
+      {/* {bundleTitle && <h2 className="text-[16px] font-[400] mb-2">{bundleTitle}</h2>} */}
       {/* <hr className="mb-3 text-gray-400/40" /> */}
 
       <h2 className="text-[16px] font-[500] mb-2">{heading}</h2>
@@ -38,9 +49,19 @@ const SolarBundleComponent = ({ image,
         <div className="space-y-2 text-right relative">
           <div>
             <p className="text-xs text-start text-gray-400 mb-1">{soldText}</p>
-        {progressBar && <img src={progressBar} alt="Progress bar" className="w-[100px] h-2 object-contain" /> }    
+            {progressBar && (
+              <img
+                src={progressBar}
+                alt="Progress bar"
+                className="w-[100px] h-2 object-contain"
+              />
+            )}
           </div>
-          <img src={rating} alt="Customer rating" className="w-[55px] absolute right-2 object-contain" />
+          <img
+            src={rating}
+            alt="Customer rating"
+            className="w-[55px] absolute right-2 object-contain"
+          />
         </div>
       </div>
     </div>

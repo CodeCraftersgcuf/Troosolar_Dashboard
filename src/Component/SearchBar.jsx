@@ -76,7 +76,7 @@
 //         {isDropdownOpen && (
 //           <div className="absolute left-0 top-full mt-1 max-h-[400px] z-50 w-[280px] bg-white rounded-md shadow-lg border border-gray-200 overflow-y-auto">
 //             <div className="px-4 py-2 border-b">
-//                <p className="text-center text-gray-500">Select Category</p> 
+//                <p className="text-center text-gray-500">Select Category</p>
 //               <X
 //                 size={20}
 //                 onClick={() => setIsDropdownOpen(false)}
@@ -135,14 +135,21 @@ import { ContextApi } from "../Context/AppContext";
 /**
  * props:
  * - categories: [{ id, name }]
+ * - products: array of products to filter (optional, falls back to context)
  */
-const SearchBar = ({ categories = [] }) => {
-  const { products, setFilteredResults } = useContext(ContextApi);
+const SearchBar = ({ categories = [], products: propProducts }) => {
+  const { products: contextProducts, setFilteredResults } = useContext(ContextApi);
+  
+  // Use prop products if provided, otherwise fall back to context products
+  const products = propProducts || contextProducts;
 
   // Build dropdown options from API cats
   const dropdownOptions = useMemo(() => {
     const base = [{ label: "All", value: "all" }];
-    const fromApi = categories.map((c) => ({ label: c.title, value: String(c.id) }));
+    const fromApi = categories.map((c) => ({
+      label: c.title,
+      value: String(c.id),
+    }));
     return [...base, ...fromApi];
   }, [categories]);
 
@@ -181,7 +188,9 @@ const SearchBar = ({ categories = [] }) => {
             return Number(item.category_id) === catId;
           }
           // Fallback for your mocked products that use `category` string
-          const label = dropdownOptions.find((o) => o.value === selectedValue)?.label;
+          const label = dropdownOptions.find(
+            (o) => o.value === selectedValue
+          )?.label;
           if (label && item.category) {
             return String(item.category).toLowerCase() === label.toLowerCase();
           }
@@ -192,7 +201,9 @@ const SearchBar = ({ categories = [] }) => {
       if (query.trim()) {
         const q = query.trim().toLowerCase();
         results = results.filter((item) =>
-          String(item.heading || item.name || "").toLowerCase().includes(q)
+          String(item.heading || item.name || "")
+            .toLowerCase()
+            .includes(q)
         );
       }
 
@@ -203,7 +214,7 @@ const SearchBar = ({ categories = [] }) => {
   }, [query, selectedValue, products, setFilteredResults, dropdownOptions]);
 
   return (
-<div className="flex items-center bg-white rounded-lg shadow-sm border border-gray-200 w-full relative">
+    <div className="flex items-center bg-white rounded-lg shadow-sm border border-gray-200 w-[80%] relative">
       {/* Dropdown */}
       <div className="relative" ref={dropdownRef}>
         <button
@@ -221,7 +232,7 @@ const SearchBar = ({ categories = [] }) => {
 
         {isDropdownOpen && (
           <div className="absolute left-0 top-full mt-1 max-h-[400px] z-50 w-[280px] bg-white rounded-md shadow-lg border border-gray-200 overflow-y-auto">
-            <div className="px-4 py-2 border-b relative">
+            <div className="px-4 py-2 relative">
               <p className="text-center text-gray-500">Select Category</p>
               <X
                 size={20}

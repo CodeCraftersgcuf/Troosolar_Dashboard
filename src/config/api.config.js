@@ -33,6 +33,8 @@ const API = {
     CATEGORY_BRANDS: (id) => `${BASE_URL}/categories/${id}/brands`,
     BRAND_PRODUCTS: (idsCsv) => `${BASE_URL}/brands/${idsCsv}/products`,
     PRODUCT_REVIEWS: `${BASE_URL}/product-reviews`,
+    Fund_Wallet: `${BASE_URL}/fund-wallet`,
+    Payment_Confirmation: `${BASE_URL}/order/payment-confirmation`,
 
 
 

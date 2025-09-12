@@ -1,60 +1,3 @@
-// import React, { useState } from "react";
-// import { Link } from "react-router-dom";
-// import { assets } from "../assets/data";
-// import { Sidebar_links } from "../assets/data";
-// import LinkComp from "./LinkComponent";
-
-// const SideBar = () => {
-//   const [menuOpen, setMenuOpen] = useState(false);
-//   const [activeLink, setActiveLink] = useState("/dashboard");
-
-//   return (
-//     <div className="hidden overflow-clip max-w-[250px] sm:block min-h-lvh pb-10  transition-all duration-300 bg-[#273E8E] text-white"
-//       style={{
-//         scrollbarWidth: "thin",
-//         scrollbarColor: "white #273E8E",
-//       }}
-//     >
-//       {/* Sidebar Header */}
-//       <div className="flex items-center justify-between px-4 relative">
-//         <Link to="/">
-//           <img src={assets.smLogo} alt="logo" className="w-full h-auto" />
-//         </Link>
-//       </div>
-
-//       {/* Menu Items */}
-//       <nav>
-//         {!menuOpen && <h1 className="p-4 text-[16px]">General</h1>}
-//         <ul className="space-y-2">
-//           {Sidebar_links.map((x, index) => (
-//             <li key={index}>
-//               <LinkComp
-//                 name={x.name}
-//                 link={x.link}
-//                 icon={x.icon}
-//                 sub={x.sublinks}
-//                 isActiveCheck={activeLink === x.link}
-//                 onClick={() => setActiveLink(x.link)}
-//                 menuStatus={menuOpen}
-//               />
-//             </li>
-//           ))}
-//         </ul>
-//       </nav>
-
-//       {/* Logout Button */}
-//       <div className="pt-4 border-t-2 border-[#ffffff79] mx-4 mt-4 flex items-center justify-center">
-//         <button className="flex items-center p-2 py-4 cursor-pointer gap-2 text-white font-bold rounded-lg w-full hover:border hover:border-white">
-//           <img src={assets.logout} alt="logout" className="w-6 h-6" />
-//           {!menuOpen && <span>Logout</span>}
-//         </button>
-//       </div>
-//       <img src={assets.sidebar} alt="" />
-//     </div>
-//   );
-// };
-
-// export default SideBar;
 import React, { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
@@ -142,7 +85,7 @@ const SideBar = () => {
     <>
       {/* Desktop Sidebar */}
       <div
-        className="hidden overflow-clip max-w-[250px] sm:block min-h-lvh pb-10 transition-all duration-300 bg-[#273E8E] text-white"
+        className="hidden overflow-y-auto max-w-[250px] sm:block min-h-screen pb-10 transition-all duration-300 bg-[#273E8E] text-white"
         style={{ scrollbarWidth: "thin", scrollbarColor: "white #273E8E" }}
       >
         {/* Sidebar Header */}
@@ -186,24 +129,26 @@ const SideBar = () => {
           </button>
         </div>
 
+        {/* Sidebar Footer Image */}
         <img src={assets.sidebar} alt="" />
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <div
-        className="sm:hidden fixed z-50"
-        style={{
-          width: getWidth(),
-          height: "60px",
-          left: `calc(50% - ${getWidth()} / 2)`, // Center the div based on its dynamic width
-          bottom: "23px",
-          background: "#FFFFFF",
-          border: "0.3px solid #CDCDCD",
-          boxShadow: "5px 5px 10px rgba(109, 108, 108, 0.25)",
-          borderRadius: "15px",
-          boxSizing: "border-box",
-        }}
-      >
+      {location.pathname !== "/cart" && (
+        <div
+          className="sm:hidden fixed z-50"
+          style={{
+            width: getWidth(),
+            height: "60px",
+            left: `calc(50% - ${getWidth()} / 2)`, // Center the div based on its dynamic width
+            bottom: "23px",
+            background: "#FFFFFF",
+            border: "0.3px solid #CDCDCD",
+            boxShadow: "5px 5px 10px rgba(109, 108, 108, 0.25)",
+            borderRadius: "15px",
+            boxSizing: "border-box",
+          }}
+        >
         <div className="flex items-center justify-around h-full px-4">
           {mobileNavItems.map((item, index) => {
             const isActive = location.pathname === item.link;
@@ -242,7 +187,8 @@ const SideBar = () => {
             );
           })}
         </div>
-      </div>
+        </div>
+      )}
     </>
   );
 };

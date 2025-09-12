@@ -1,36 +1,35 @@
-
 // src/Component/CartItems.jsx
 import React, { useContext } from "react";
 import { Minus, Plus, Trash } from "lucide-react";
 import { ContextApi } from "../Context/AppContext";
 
 const CartItems = ({
-  itemId,            // can be product id (context) OR cart-line id (API)
+  itemId, // can be product id (context) OR cart-line id (API)
   name,
   price,
   image,
   showControls = true,
 
   // NEW (optional) when using API:
-  quantity,         // override qty shown
-  onIncrement,      // (id) => void
-  onDecrement,      // (id) => void
-  onDelete,         // (id) => void
+  quantity, // override qty shown
+  onIncrement, // (id) => void
+  onDecrement, // (id) => void
+  onDelete, // (id) => void
 }) => {
   const { addToCart, removeToCart, cartItems } = useContext(ContextApi);
 
   // If quantity is passed (API mode), use it; else fallback to context
-  const itemQty = typeof quantity === "number"
-    ? quantity
-    : (cartItems[String(itemId)] || 0);
+  const itemQty =
+    typeof quantity === "number" ? quantity : cartItems[String(itemId)] || 0;
 
-  const handleInc = () => (onIncrement ? onIncrement(itemId) : addToCart(itemId));
+  const handleInc = () =>
+    onIncrement ? onIncrement(itemId) : addToCart(itemId);
   const handleDec = () =>
     onDecrement ? onDecrement(itemId) : removeToCart(itemId);
   const handleDelete = () => onDelete && onDelete(itemId);
 
   return (
-    <div className="min-h-[150px] w-full bg-white rounded-2xl border p-4 shadow-sm">
+    <div className="min-h-[150px] w-full bg-white rounded-2xl border-[1px] border-gray-300 p-4 shadow-sm">
       <div className="flex flex-col sm:flex-row gap-4">
         {/* Product Image */}
         <div className="w-full sm:w-1/4 bg-[#f3f3f3] flex justify-center items-center rounded-2xl overflow-hidden">
@@ -41,21 +40,27 @@ const CartItems = ({
         <div className="flex-1 flex flex-col justify-between">
           <div className="space-y-2">
             <h2 className="text-lg sm:text-[15px]">{name}</h2>
-            <p className="text-[16px] font-medium text-[#273e8e]">N{price}</p>
           </div>
 
           {/* Controls */}
           {showControls && (
             <div className="flex items-center justify-between mt-4">
-              {/* Delete Button */}
-              <button
-                onClick={handleDelete}
-                className="h-10 w-10 flex items-center justify-center rounded-lg shadow bg-white hover:bg-gray-100"
-                aria-label="Remove item"
-              >
-                <Trash color="red" size={18} />
-              </button>
+              <div className="flex flex-col">
+                <p className="text-[16px] font-medium text-[#273e8e]">
+                  N{price}
+                </p>
 
+                <div>
+                  {/* Delete Button */}
+                  <button
+                    onClick={handleDelete}
+                    className="h-10 w-10 flex items-center justify-center rounded-lg shadow bg-white hover:bg-gray-100"
+                    aria-label="Remove item"
+                  >
+                    <Trash color="red" size={18} />
+                  </button>
+                </div>
+              </div>
               {/* Quantity Controls */}
               <div className="flex items-center gap-3">
                 <button

@@ -22,7 +22,8 @@ const LinkComp = ({
       basePath === baseLink ||
       sub.some(
         (item) =>
-          currentPath === item.link || currentPath.split("/")[1] === item.link.split("/")[1]
+          currentPath === item.link ||
+          currentPath.split("/")[1] === item.link.split("/")[1]
       );
 
     setIsActive(isActiveNow);
@@ -43,9 +44,9 @@ const LinkComp = ({
         <img
           src={icon}
           alt={`${name || "icon"}`}
-          className={`w-10 h-10 ${
-            isActive ? "invert" : "group-hover:invert"
-          }`}
+          className={`${
+            name === "Cart" || name === "More" ? "w-7 h-7 ms-2" : "w-10 h-10"
+          } ${isActive ? "invert" : "group-hover:invert"}`}
         />
         {!menuStatus && <span className="ml-3 font-medium">{name}</span>}
 

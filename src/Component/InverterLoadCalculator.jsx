@@ -26,7 +26,7 @@ const InverterLoadCalculator = () => {
   );
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedType, setSelectedType] = useState("Home");
-  const [selectedHouse, setSelectedHouse] = useState("1");
+  const [selectedHouse, setSelectedHouse] = useState(null);
 
   // House types
   const houseData = [
@@ -93,7 +93,12 @@ const InverterLoadCalculator = () => {
             {houseData.map((house) => (
               <div
                 key={house.id}
-                className="bg-white p-4 flex flex-col justify-center items-center h-[110px] w-[110px] rounded-2xl border-2 border-[#273e8e] shadow-2xl cursor-pointer transition"
+                onClick={() => setSelectedHouse(house.id)}
+                className={`bg-white p-4 flex flex-col justify-center items-center h-[110px] w-[110px] rounded-2xl shadow-2xl cursor-pointer transition ${
+                  selectedHouse === house.id
+                    ? "border-2 border-[#273e8e]"
+                    : "border-2 border-gray-300"
+                }`}
               >
                 <img
                   src={house.image}
@@ -246,8 +251,7 @@ const InverterLoadCalculator = () => {
         {/* Title and Description */}
         <div className="px-4 mb-4">
           <h2 className="text-lg font-semibold text-black mb-2">
-            Inverter Load Calculator for{" "}
-            {houseData.find((h) => h.id === selectedHouse)?.name} Apartment
+            Inverter Load Calculator{selectedHouse ? ` for ${houseData.find((h) => h.id === selectedHouse)?.name} Apartment` : ""}
           </h2>
           <p className="text-sm text-gray-600">
             An inverter load calculator helps estimate the total power needed to

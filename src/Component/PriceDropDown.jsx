@@ -71,7 +71,7 @@ const PriceDropDown = ({ onFilter }) => {
         className="relative sm:block hidden w-full max-w-[200px] cursor-pointer"
       >
         <div
-          className="px-5 py-5 bg-white border border-black/50 rounded-2xl shadow-sm hover:border-black/70 transition-colors"
+          className="px-4 py-4 bg-white border border-black/50 rounded-2xl shadow-sm hover:border-black/70 transition-colors"
           onClick={toggleDropdown}
         >
           <div className="flex items-center justify-between w-full font-medium">
@@ -93,9 +93,9 @@ const PriceDropDown = ({ onFilter }) => {
 
         {isOpen && (
           <div className="absolute left-0 z-50 mt-1 w-[400px] bg-white border border-gray-200 rounded-md shadow-lg">
-            <div className="relative px-4 py-2 border-b">
+            <div className="relative px-4 py-2 border-b-1 border-gray-500">
               <p className="text-center text-gray-900 py-1 font-medium">
-                Select Price Range
+                Price 
               </p>
               <X
                 size={20}
@@ -214,7 +214,7 @@ const PriceDropDown = ({ onFilter }) => {
 
             {/* Centered Dropdown */}
             <div className="fixed z-50 top-[70%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[400px] bg-white border border-gray-200 rounded-md shadow-lg">
-              <div className="relative px-4 py-2 border-b">
+              <div className="relative px-4 py-2 border-b-1 border-gray-500">
                 <p className="text-center text-gray-900 py-1 font-medium">
                   Select Price Range
                 </p>
