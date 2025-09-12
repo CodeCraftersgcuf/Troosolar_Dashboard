@@ -162,14 +162,14 @@ const Auth = () => {
           </div>
         </div>
 
-        <div className="w-1/2 bg-[#f5f7ff] flex justify-center items-center">
+        <div className="w-1/2 bg-[#f5f7ff] flex justify-center items-center ml-[-20px]">
           <div className="w-[90%] max-w-[600px] p-6 bg-white rounded-2xl shadow-lg h-[100%] overflow-y-auto">
             <form className="space-y-6" onSubmit={handleSubmit}>
               <div className="text-center">
                 <img
                   src={assets.logo}
                   alt="Logo"
-                  className="w-[200px] mx-auto mb-6"
+                  className="w-[200px] mx-auto mb-8"
                   loading="lazy"
                 />
                 <h2 className="text-3xl font-semibold">
