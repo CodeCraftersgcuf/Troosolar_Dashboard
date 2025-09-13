@@ -42,6 +42,10 @@ const API = {
     Transaction_History: `${BASE_URL}/transactions`,
     Get_Referral_Details: `${BASE_URL}/get-referral-details`,
     Withdraw_Referral_Balance: `${BASE_URL}/withdraw`,
+    Loan_Calculation_Status: `${BASE_URL}/loan-calculation-stauts`,
+    Loan_Calculation_finalize: (id) => `${BASE_URL}/loan-calculation-finalized/${id}`,
+    Offered_Loan_Calculation: `${BASE_URL}/offered-loan-calculation`,
+
 
 
 

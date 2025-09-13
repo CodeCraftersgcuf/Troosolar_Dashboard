@@ -9,7 +9,7 @@ import API from "../../config/api.config";
 const WithdrawalAccountPage = ({ onBack, onProceed, amount = 0 }) => {
   const [accountNumber, setAccountNumber] = useState("");
   const [bankName, setBankName] = useState(""); // manual bank input (no dropdown)
-  const [accountName, setAccountName] = useState("QAMARDEEN ABDULMALIK"); // now editable
+  const [accountName, setAccountName] = useState(""); // now editable
   const [saveAccount, setSaveAccount] = useState(true);
   
   // API state

@@ -1,8 +1,8 @@
 // src/Pages/CreditScore.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Bell, ChevronLeft } from "lucide-react";
 import SideBar from "../Component/SideBar";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { assets } from "../assets/data";
 import Terms from "../Component/Terms";
 import LoanCard from "../Component/LoanCard";
@@ -16,25 +16,69 @@ const CreditScore = () => {
   const [afterTerm, setAfterTerm] = useState(true);
   const [accepted, setAccepted] = useState(false); // mobile: enable Proceed only if checked
 
-  const { state } = useLocation();
   const navigate = useNavigate();
 
-  // Pull calculation from route state, else sessionStorage (from previous screen)
-  const calculation = useMemo(() => {
-    if (state?.calculation) return state.calculation;
-    try {
-      const s = sessionStorage.getItem("last_calculation");
-      return s ? JSON.parse(s) : null;
-    } catch {
-      return null;
-    }
-  }, [state]);
+  // API data state
+  const [offeredLoanData, setOfferedLoanData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const [monoCalc, setMonoCalc] = useState(null);
   const [monoErr, setMonoErr] = useState("");
 
+  // Fetch offered loan calculation data
+  useEffect(() => {
+    const fetchOfferedLoanData = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const token = localStorage.getItem("access_token");
+        if (!token) {
+          setError("Please log in to view loan information");
+          navigate("/login");
+          return;
+        }
+
+        const response = await axios.get(API.Offered_Loan_Calculation, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.data.status === "success") {
+          setOfferedLoanData(response.data.data);
+        } else {
+          setError(response.data.message || "Failed to fetch loan data");
+        }
+      } catch (err) {
+        console.error("Error fetching offered loan data:", err);
+        if (err?.response?.status === 401) {
+          localStorage.removeItem("access_token");
+          navigate("/login");
+        } else if (err?.response?.status === 404) {
+          setError("No loan offer found. Please complete your loan application first.");
+        } else {
+          setError(
+            err?.response?.data?.message || 
+            err?.message || 
+            "Failed to load loan information"
+          );
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOfferedLoanData();
+  }, [navigate]);
+
+  // Fetch mono loan data when offered loan data is available
   useEffect(() => {
     const fetchMono = async () => {
+      if (!offeredLoanData?.loan_calculation_id) return;
+
       setMonoErr("");
       setMonoCalc(null);
 
@@ -43,12 +87,9 @@ const CreditScore = () => {
         navigate("/login");
         return;
       }
-      const id = calculation?.id;
-      if (!id) return;
 
       try {
-        // ✅ pass a single config object to axios.get
-        const { data } = await axios.get(API.MONO_LOAN(id), {
+        const { data } = await axios.get(API.MONO_LOAN(offeredLoanData.loan_calculation_id), {
           headers: {
             "Content-Type": "application/json",
             Accept: "application/json",
@@ -72,7 +113,7 @@ const CreditScore = () => {
     };
 
     fetchMono();
-  }, [calculation?.id, navigate]);
+  }, [offeredLoanData?.loan_calculation_id, navigate]);
 
   return (
     <>
@@ -134,6 +175,21 @@ const CreditScore = () => {
                     </div>
                   </div>
                 </div>
+              ) : loading ? (
+                <div className="w-1/2 flex flex-col items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#273e8e] mb-4"></div>
+                  <p className="text-gray-600">Loading loan information...</p>
+                </div>
+              ) : error ? (
+                <div className="w-1/2 flex flex-col items-center justify-center">
+                  <p className="text-red-600 text-center mb-4">{error}</p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition"
+                  >
+                    Retry
+                  </button>
+                </div>
               ) : (
                 <div className="w-1/2 space-y-3">
                   <LoanCard />
@@ -142,9 +198,9 @@ const CreditScore = () => {
                     {monoErr && (
                       <p className="text-red-600 text-sm mb-2">{monoErr}</p>
                     )}
-                    {/* Pass both: original calculation + mono result */}
+                    {/* Pass both: offered loan data + mono result */}
                     <LoanRepaymentCard
-                      calculation={calculation}
+                      calculation={offeredLoanData}
                       monoCalc={monoCalc}
                     />
                   </div>
@@ -203,7 +259,7 @@ const CreditScore = () => {
             </div>
           </div>
 
-          {/* White rounded “sheet” that overlaps the blue header */}
+          {/* White rounded "sheet" that overlaps the blue header */}
           <div className="-mt-6 bg-white rounded-t-2xl p-5">
             {afterTerm ? (
               <>
@@ -244,6 +300,21 @@ const CreditScore = () => {
                   Proceed
                 </button>
               </>
+            ) : loading ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#273e8e] mb-4"></div>
+                <p className="text-gray-600 text-center">Loading loan information...</p>
+              </div>
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <p className="text-red-600 text-center mb-4">{error}</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition"
+                >
+                  Retry
+                </button>
+              </div>
             ) : (
               <>
                 {/* Offer cards */}
@@ -255,7 +326,7 @@ const CreditScore = () => {
                       <p className="text-red-600 text-sm mb-2">{monoErr}</p>
                     )}
                     <LoanRepaymentCard
-                      calculation={calculation}
+                      calculation={offeredLoanData}
                       monoCalc={monoCalc}
                     />
                   </div>
