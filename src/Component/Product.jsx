@@ -40,7 +40,7 @@ const Stars = ({ value = 0 }) => {
   );
 
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-0.5 max-w-[70px]">
       {Array.from({ length: 5 }).map((_, i) => {
         const filled = i < full || (i === full && hasHalf);
         return <Star key={i} filled={filled} />;

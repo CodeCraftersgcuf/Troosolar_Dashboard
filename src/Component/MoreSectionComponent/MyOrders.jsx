@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { PiShoppingCartSimple } from "react-icons/pi";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import API, { BASE_URL } from "../../config/api.config";
 // import OrderDetails from "../OrderComponents/OrderDetails";
 import OrderSummary from "../OrderComponents/OrderSummary";
@@ -42,6 +43,12 @@ const MyOrders = () => {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const itemsPerPage = 10;
 
   const token =
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
@@ -84,6 +91,7 @@ const MyOrders = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Filter orders based on current tab
   const filtered = useMemo(() => {
     if (tab === "all") return orders;
     if (tab === "completed") {
@@ -97,12 +105,44 @@ const MyOrders = () => {
     );
   }, [tab, orders]);
 
+  // Update pagination info when filtered orders change
+  useEffect(() => {
+    const total = filtered.length;
+    setTotalItems(total);
+    setTotalPages(Math.ceil(total / itemsPerPage));
+    
+    // Reset to page 1 if current page is beyond available pages
+    if (currentPage > Math.ceil(total / itemsPerPage)) {
+      setCurrentPage(1);
+    }
+  }, [filtered, itemsPerPage, currentPage]);
+
+  // Get paginated orders for current page
+  const paginatedOrders = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filtered.slice(startIndex, endIndex);
+  }, [filtered, currentPage, itemsPerPage]);
+
   const handleOrderClick = (order) => {
     setSelectedOrder(order);
   };
 
   const handleBackFromOrderDetails = () => {
     setSelectedOrder(null);
+  };
+
+  // Handle pagination
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  // Handle tab change with pagination reset
+  const handleTabChange = (newTab) => {
+    setTab(newTab);
+    setCurrentPage(1); // Reset to first page when tab changes
   };
 
   // Show OrderDetails component if an order is selected
@@ -124,7 +164,7 @@ const MyOrders = () => {
           ].map((t) => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              onClick={() => handleTabChange(t.key)}
               className={`px-4 py-2 text-sm rounded-full transition ${
                 tab === t.key ? "bg-[#273e8e] text-white" : "text-gray-600"
               }`}
@@ -142,8 +182,9 @@ const MyOrders = () => {
         ) : filtered.length === 0 ? (
           <div className="text-gray-500 text-sm">No orders to show.</div>
         ) : (
-          <div className="space-y-3">
-            {filtered.map((o) => {
+          <>
+            <div className="space-y-3">
+              {paginatedOrders.map((o) => {
               const badge = statusBadge(o.order_status);
               return (
                 <button
@@ -181,7 +222,53 @@ const MyOrders = () => {
                 </button>
               );
             })}
-          </div>
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex justify-center items-center gap-2 mt-6">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+
+                <div className="flex gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    const pageNum = i + 1;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`px-3 py-2 rounded-lg text-sm ${
+                          currentPage === pageNum
+                            ? "bg-[#273e8e] text-white"
+                            : "border border-gray-300 hover:bg-gray-50"
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+            )}
+
+            {/* Results Info */}
+            <div className="text-center text-sm text-gray-500 mt-4">
+              Showing {paginatedOrders.length} of {totalItems} orders
+            </div>
+          </>
         )}
       </div>
     </div>

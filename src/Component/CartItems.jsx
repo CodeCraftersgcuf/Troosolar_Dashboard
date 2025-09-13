@@ -117,7 +117,7 @@ const CartItems = ({
   const formatted = typeof price === "number" ? price.toLocaleString() : String(price);
 
   return (
-    <div className="w-full bg-white rounded-2xl border border-gray-300 p-3 shadow-sm">
+    <div className="w-full bg-white rounded-2xl border border-gray-300 p-3 ">
       {/* Row on mobile & desktop so image is LEFT on mobile too */}
       <div className="flex items-center gap-4">
         {/* Image */}

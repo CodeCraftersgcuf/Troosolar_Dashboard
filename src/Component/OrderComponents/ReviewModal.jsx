@@ -24,16 +24,18 @@ const ReviewModal = ({ isOpen, onClose, onSubmit }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-transparent bg-opacity-50">
       {/* Web Version - Centered Modal */}
       <div className="hidden sm:block">
         <div className="bg-white rounded-2xl shadow-lg w-[400px] max-w-[90vw] relative">
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Add a review</h2>
-            <button 
+          <div className="relative flex items-center justify-center py-2 px-6 border-b border-gray-200">
+            <h2 className="text-md text-gray-900">
+              Add a review
+            </h2>
+            <button
               onClick={handleClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              className="absolute right-6 text-gray-400 hover:text-gray-600 transition-colors"
             >
               <X size={24} />
             </button>
@@ -42,7 +44,7 @@ const ReviewModal = ({ isOpen, onClose, onSubmit }) => {
           {/* Content */}
           <form onSubmit={handleSubmit} className="p-6">
             {/* Star Rating */}
-            <div className="flex items-center gap-2 mb-6">
+            <div className="flex items-center justify-center gap-2 mb-6 border-1 border-gray-300 rounded-xl px-2 py-4">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
                   key={star}
@@ -54,7 +56,7 @@ const ReviewModal = ({ isOpen, onClose, onSubmit }) => {
                     size={24}
                     className={`${
                       star <= rating
-                        ? "text-blue-600 fill-current"
+                        ? "text-[#273e8e] fill-current"
                         : "text-gray-300"
                     } transition-colors`}
                   />
@@ -68,7 +70,7 @@ const ReviewModal = ({ isOpen, onClose, onSubmit }) => {
                 value={reviewText}
                 onChange={(e) => setReviewText(e.target.value)}
                 placeholder="Type here"
-                className="w-full h-32 px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                className="w-full h-32 px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-[#273e8e] focus:border-transparent resize-none text-gray-700 placeholder-gray-400"
               />
             </div>
 
@@ -87,11 +89,13 @@ const ReviewModal = ({ isOpen, onClose, onSubmit }) => {
       <div className="sm:hidden block w-full">
         <div className="bg-white rounded-t-3xl shadow-lg w-full max-h-[80vh] relative animate-slide-up">
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Add a review</h2>
-            <button 
+          <div className="relative flex items-center justify-center p-6 border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Add a review
+            </h2>
+            <button
               onClick={handleClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              className="absolute right-6 text-gray-400 hover:text-gray-600 transition-colors"
             >
               <X size={24} />
             </button>
@@ -100,7 +104,7 @@ const ReviewModal = ({ isOpen, onClose, onSubmit }) => {
           {/* Content */}
           <form onSubmit={handleSubmit} className="p-6">
             {/* Star Rating */}
-            <div className="flex items-center gap-2 mb-6">
+            <div className="flex items-center justify-center gap-2 mb-6">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
                   key={star}
@@ -112,7 +116,7 @@ const ReviewModal = ({ isOpen, onClose, onSubmit }) => {
                     size={28}
                     className={`${
                       star <= rating
-                        ? "text-blue-600 fill-current"
+                        ? "text-[#273e8e] fill-current"
                         : "text-gray-300"
                     } transition-colors`}
                   />
@@ -126,7 +130,7 @@ const ReviewModal = ({ isOpen, onClose, onSubmit }) => {
                 value={reviewText}
                 onChange={(e) => setReviewText(e.target.value)}
                 placeholder="Type here"
-                className="w-full h-32 px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                className="w-full h-32 px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-[#273e8e] focus:border-transparent resize-none text-gray-700 placeholder-gray-400"
               />
             </div>
 

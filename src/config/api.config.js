@@ -39,6 +39,10 @@ const API = {
     Forgot_Password: `${BASE_URL}/forget-password`,
     Verify_Reset_Password_OTP: `${BASE_URL}/verify-reset-password-otp`,
     Reset_Password: `${BASE_URL}/reset-password`,
+    Transaction_History: `${BASE_URL}/transactions`,
+    Get_Referral_Details: `${BASE_URL}/get-referral-details`,
+    Withdraw_Referral_Balance: `${BASE_URL}/withdraw`,
+
 
 
     // add more when needed

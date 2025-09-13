@@ -1,128 +1,199 @@
-import { ChevronLeft, ChevronDown } from "lucide-react";
 import React, { useState } from "react";
+import { ChevronLeft } from "lucide-react";
 
-const WithdrawalAccountPage = ({ onBack, onProceed }) => {
+
+import axios from "axios";
+import API from "../../config/api.config";
+
+
+const WithdrawalAccountPage = ({ onBack, onProceed, amount = 0 }) => {
   const [accountNumber, setAccountNumber] = useState("");
-  const [selectedBank, setSelectedBank] = useState("");
-  const [accountName] = useState("QAMARDEEN ABDULMALIK");
+  const [bankName, setBankName] = useState(""); // manual bank input (no dropdown)
+  const [accountName, setAccountName] = useState("QAMARDEEN ABDULMALIK"); // now editable
   const [saveAccount, setSaveAccount] = useState(true);
-  const [showBankDropdown, setShowBankDropdown] = useState(false);
+  
+  // API state
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
 
-  const banks = [
-    "Access Bank",
-    "Citibank",
-    "Diamond Bank",
-    "Ecobank",
-    "Fidelity Bank",
-    "First Bank of Nigeria",
-    "First City Monument Bank",
-    "Guaranty Trust Bank",
-    "Heritage Bank",
-    "Keystone Bank",
-    "Kuda Bank",
-    "Opay",
-    "PalmPay",
-    "Polaris Bank",
-    "Providus Bank",
-    "Stanbic IBTC Bank",
-    "Standard Chartered Bank",
-    "Sterling Bank",
-    "Suntrust Bank",
-    "Union Bank of Nigeria",
-    "United Bank For Africa",
-    "Unity Bank",
-    "VFD",
-    "Wema Bank",
-    "Zenith Bank"
-  ];
-
-  const handleProceed = (e) => {
+  const handleProceed = async (e) => {
     e.preventDefault();
-    if (!accountNumber || !selectedBank) {
-      alert("Please fill in all required fields");
+    
+    // Validation
+    if (!accountNumber || !bankName || !accountName) {
+      setError("Please fill in all required fields");
       return;
     }
-    // Handle withdrawal logic here
-    console.log("Withdrawal details:", {
-      accountNumber,
-      bank: selectedBank,
-      accountName,
-      saveAccount
-    });
-    if (onProceed) {
-      onProceed();
+
+    if (amount <= 0) {
+      setError("Invalid withdrawal amount");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+      setSuccess(false);
+
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        setError("Please log in to make a withdrawal");
+        return;
+      }
+
+      // Prepare withdrawal data
+      const withdrawalData = {
+        amount: amount.toString(), // Convert to string as required by API
+        bank_name: bankName,
+        account_name: accountName,
+        account_number: accountNumber
+      };
+
+      console.log("Making withdrawal request:", withdrawalData);
+
+      // Make API call
+      const response = await axios.post(API.Withdraw_Referral_Balance, withdrawalData, {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      console.log("Withdrawal response:", response.data);
+
+      if (response.data.status === "success" || response.status === 200) {
+        setSuccess(true);
+        // Show success message for a few seconds, then proceed
+        setTimeout(() => {
+          if (onProceed) onProceed();
+        }, 2000);
+      } else {
+        setError(response.data.message || "Withdrawal failed. Please try again.");
+      }
+    } catch (err) {
+      console.error("Withdrawal error:", err);
+      setError(
+        err?.response?.data?.message || 
+        err?.message || 
+        "Failed to process withdrawal. Please try again."
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-white">
+      {/* Header with Back Button */}
+      <div className="px-4 py-4 border-b border-gray-200">
+        <button
+          onClick={onBack}
+          className="flex items-center text-gray-600 hover:text-gray-800 transition-colors"
+        >
+          <ChevronLeft size={24} />
+          <span className="ml-1">Back</span>
+        </button>
+      </div>
+
       {/* Main Content */}
       <div className="px-4 py-6">
+        {/* Withdrawal Amount Display */}
+        {amount > 0 && (
+          <div className="mb-6 p-4 bg-[#273e8e] rounded-xl text-white">
+            <div className="text-center">
+              <p className="text-sm text-white/70 mb-1">Withdrawal Amount</p>
+              <p className="text-2xl font-bold">₦{amount.toLocaleString()}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Success Message */}
+        {success && (
+          <div className="mb-6 p-4 bg-green-100 border border-green-300 rounded-xl">
+            <div className="text-center">
+              <p className="text-green-800 font-semibold">Withdrawal Request Submitted!</p>
+              <p className="text-green-700 text-sm mt-1">
+                Your withdrawal request has been processed successfully.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-100 border border-red-300 rounded-xl">
+            <div className="text-center">
+              <p className="text-red-800 font-semibold">Error</p>
+              <p className="text-red-700 text-sm mt-1">{error}</p>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleProceed} className="space-y-6">
           {/* Account Number */}
           <div>
-            <label htmlFor="accountNumber" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="accountNumber"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
               Account Number
             </label>
             <input
               id="accountNumber"
               type="text"
               placeholder="Enter your Account Number"
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className={`w-full px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                loading ? "bg-gray-100 cursor-not-allowed" : ""
+              }`}
               value={accountNumber}
               onChange={(e) => setAccountNumber(e.target.value)}
+              disabled={loading}
               required
             />
           </div>
 
-          {/* Bank Name */}
+          {/* Bank Name (manual input) */}
           <div>
-            <label htmlFor="bankName" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="bankName"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
               Bank Name
             </label>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowBankDropdown(!showBankDropdown)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-left flex items-center justify-between bg-white"
-              >
-                <span className={selectedBank ? "text-gray-900" : "text-gray-400"}>
-                  {selectedBank || "Select Bank"}
-                </span>
-                <ChevronDown className="text-gray-400" size={20} />
-              </button>
-              
-              {showBankDropdown && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                  {banks.map((bank, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => {
-                        setSelectedBank(bank);
-                        setShowBankDropdown(false);
-                      }}
-                      className="w-full px-4 py-3 text-left hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl"
-                    >
-                      {bank}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <input
+              id="bankName"
+              type="text"
+              placeholder="Enter your Bank Name"
+              className={`w-full px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                loading ? "bg-gray-100 cursor-not-allowed" : ""
+              }`}
+              value={bankName}
+              onChange={(e) => setBankName(e.target.value)}
+              disabled={loading}
+              required
+            />
           </div>
 
-          {/* Account Name */}
+          {/* Account Name (editable) */}
           <div>
-            <label htmlFor="accountName" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="accountName"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
               Account Name
             </label>
             <input
               id="accountName"
               type="text"
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 text-gray-600"
+              placeholder="Enter Account Name"
+              className={`w-full px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                loading ? "bg-gray-100 cursor-not-allowed" : ""
+              }`}
               value={accountName}
-              readOnly
+              onChange={(e) => setAccountName(e.target.value)}
+              disabled={loading}
+              required
             />
           </div>
 
@@ -133,7 +204,8 @@ const WithdrawalAccountPage = ({ onBack, onProceed }) => {
               type="checkbox"
               checked={saveAccount}
               onChange={(e) => setSaveAccount(e.target.checked)}
-              className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+              disabled={loading}
+              className="w-5 h-5 accent-[#273E8E] bg-gray-100 border-gray-300 rounded focus:ring-[#273E8E] focus:ring-2"
             />
             <label htmlFor="saveAccount" className="ml-3 text-sm text-gray-700">
               Save account for later withdrawals
@@ -150,9 +222,23 @@ const WithdrawalAccountPage = ({ onBack, onProceed }) => {
           {/* Proceed Button */}
           <button
             type="submit"
-            className="w-full bg-[#273e8e] text-white font-semibold py-4 rounded-xl hover:bg-[#1e327a] transition-colors"
+            disabled={loading || success}
+            className={`w-full font-semibold py-4 rounded-xl transition-colors ${
+              loading || success
+                ? "bg-gray-400 text-gray-200 cursor-not-allowed"
+                : "bg-[#273e8e] text-white hover:bg-[#1e327a]"
+            }`}
           >
-            Proceed
+            {loading ? (
+              <div className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                Processing...
+              </div>
+            ) : success ? (
+              "Request Submitted!"
+            ) : (
+              "Proceed"
+            )}
           </button>
         </form>
       </div>

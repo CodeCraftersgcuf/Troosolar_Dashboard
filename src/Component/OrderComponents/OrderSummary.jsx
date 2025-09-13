@@ -27,7 +27,7 @@ const OrderSummary = ({ order, onBack }) => {
 
         if (response.data.status === "success") {
           const data = response.data.data;
-          
+
           // Transform API data to match component structure
           const transformedData = {
             id: data.id,
@@ -37,31 +37,44 @@ const OrderSummary = ({ order, onBack }) => {
             productName: data.items?.[0]?.item?.title || "Product",
             price: `N${parseFloat(data.total_price).toLocaleString()}`,
             views: "12 views", // This might not be in API response
-            deliveryDate: new Date(data.created_at).toLocaleDateString("en-GB", {
-              weekday: "short",
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            }),
-            deliveryAddress: data.delivery_address?.address || "Address not provided",
-            phoneNumber: data.delivery_address?.phone_number || "Phone not provided",
+            deliveryDate: new Date(data.created_at).toLocaleDateString(
+              "en-GB",
+              {
+                weekday: "short",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              }
+            ),
+            deliveryAddress:
+              data.delivery_address?.address || "Address not provided",
+            phoneNumber:
+              data.delivery_address?.phone_number || "Phone not provided",
             estimatedDeliveryTime: "July 2 - 7, 2025", // This might need to be calculated or from API
             deliveryPrice: "N20,000", // This might need to be from API
-            installationNote: "Installation will be carried out by one of our skilled technicians, you can choose not to use our installers",
-            estimatedInstallationTime: data.installation?.installation_date 
-              ? new Date(data.installation.installation_date).toLocaleDateString("en-GB", {
+            installationNote:
+              "Installation will be carried out by one of our skilled technicians, you can choose not to use our installers",
+            estimatedInstallationTime: data.installation?.installation_date
+              ? new Date(
+                  data.installation.installation_date
+                ).toLocaleDateString("en-GB", {
                   day: "numeric",
                   month: "long",
                   year: "numeric",
                 })
               : "July 2 - 7, 2025",
-            installationPrice: data.installation?.installation_fee 
-              ? `N${parseFloat(data.installation.installation_fee).toLocaleString()}`
+            installationPrice: data.installation?.installation_fee
+              ? `N${parseFloat(
+                  data.installation.installation_fee
+                ).toLocaleString()}`
               : "N25,000",
-            paymentMethod: data.payment_method === "direct" ? "Direct" : data.payment_method,
+            paymentMethod:
+              data.payment_method === "direct" ? "Direct" : data.payment_method,
             charge: "Free", // This might need to be from API
-            productImage: data.items?.[0]?.item?.featured_image 
-              ? `${BASE_URL.replace('/api', '')}${data.items[0].item.featured_image}`
+            productImage: data.items?.[0]?.item?.featured_image
+              ? `${BASE_URL.replace("/api", "")}${
+                  data.items[0].item.featured_image
+                }`
               : "https://troosolar.hmstech.org/storage/products/gallery/87177e7f-3879-4aba-9952-3a9e989dc0c0.png",
             technicianName: data.installation?.technician_name,
             userInfo: data.user_info,
@@ -72,7 +85,7 @@ const OrderSummary = ({ order, onBack }) => {
             unitPrice: data.items?.[0]?.unit_price || data.total_price,
             subtotal: data.items?.[0]?.subtotal || data.total_price,
           };
-          
+
           setOrderData(transformedData);
         }
       } catch (err) {
@@ -165,7 +178,7 @@ const OrderSummary = ({ order, onBack }) => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Web Header with Back Arrow */}
-      <div className="hidden sm:block bg-white border-b border-gray-200">
+      <div className="hidden sm:block bg-white border-b border-gray-300">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <button
             onClick={onBack}
@@ -180,7 +193,7 @@ const OrderSummary = ({ order, onBack }) => {
       {/* Main Content */}
       <div className="px-4 py-6 space-y-6 bg-white">
         {/* Success Confirmation Banner */}
-        <div className="bg-white rounded-2xl p-6 text-center mt-4 border border-gray-300">
+        <div className="bg-white rounded-2xl p-6 text-center mt-4 border border-gray-400">
           <div className="flex justify-center items-center">
             {/* Green Check Icon Circle */}
             <img
@@ -191,12 +204,18 @@ const OrderSummary = ({ order, onBack }) => {
           </div>
           {/* Status Message */}
           <h2 className="text-sm font-semibold text-gray-900 text-center max-w-md mx-auto">
-            <b>Congratulations</b> your order {orderData.orderNumber} has been successfully delivered on{" "}
-            {orderData.deliveryDate}
+            <b>Congratulations</b> your order {orderData.orderNumber} has been
+            successfully delivered on {orderData.deliveryDate}
           </h2>
           <div className="mt-2 text-xs text-gray-600">
-            Order Status: <span className="font-medium capitalize">{orderData.orderStatus}</span> | 
-            Payment Status: <span className="font-medium capitalize">{orderData.paymentStatus}</span>
+            Order Status:{" "}
+            <span className="font-medium capitalize">
+              {orderData.orderStatus}
+            </span>{" "}
+            | Payment Status:{" "}
+            <span className="font-medium capitalize">
+              {orderData.paymentStatus}
+            </span>
           </div>
         </div>
 
@@ -206,9 +225,9 @@ const OrderSummary = ({ order, onBack }) => {
             <h3 className="text-sm font-semibold text-gray-900 mb-4">
               Product Details
             </h3>
-            <hr className="border-gray-300" />
+            <hr className="border-gray-400" />
           </div>
-          <div className="bg-white rounded-2xl p-2 border border-gray-300">
+          <div className="bg-white rounded-2xl p-2 border border-gray-400">
             <div className="flex items-start gap-4">
               {/* Product Image */}
               <div className="w-20 h-20 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -245,9 +264,9 @@ const OrderSummary = ({ order, onBack }) => {
           <h3 className="text-lg font-semibold text-gray-900 mb-6">
             Delivery Details
           </h3>
-          <div className="bg-white rounded-2xl border border-gray-300 ">
+          <div className="bg-white rounded-2xl border border-gray-400 ">
             {/* Card Header */}
-            <div className="px-6 py-3 border-b border-gray-200">
+            <div className="px-6 py-3 border-b border-gray-300">
               <h2 className="text-base font-medium text-gray-900">
                 Delivery Address
               </h2>
@@ -257,13 +276,13 @@ const OrderSummary = ({ order, onBack }) => {
               {/* Delivery Address Box */}
               <div className="bg-gray-100 rounded-xl p-4 space-y-3">
                 <div>
-                  <span className="block text-sm text-gray-600">Address</span>
+                  <span className="block text-xs text-gray-600">Address</span>
                   <p className="text-sm font-medium text-gray-900">
                     {orderData.deliveryAddress}
                   </p>
                 </div>
                 <div>
-                  <span className="block text-sm text-gray-600">
+                  <span className="block text-xs text-gray-600">
                     Phone Number
                   </span>
                   <p className="text-sm font-medium text-gray-900">
@@ -273,7 +292,7 @@ const OrderSummary = ({ order, onBack }) => {
               </div>
 
               {/* Estimated Time */}
-              <div className="flex justify-between items-center py-3 border-t border-gray-200">
+              <div className="flex justify-between items-center py-3 border-t border-gray-300 mb-0">
                 <span className="text-sm text-gray-600">Estimated time</span>
                 <span className="text-sm font-medium text-gray-900">
                   {orderData.estimatedDeliveryTime}
@@ -281,9 +300,9 @@ const OrderSummary = ({ order, onBack }) => {
               </div>
 
               {/* Price */}
-              <div className="flex justify-between items-center py-3 border-t border-gray-200">
+              <div className="flex justify-between items-center py-3 border-t border-gray-300">
                 <span className="text-sm text-gray-600">Price</span>
-                <span className="text-sm font-bold text-blue-900">
+                <span className="text-sm  text-[#273E8E]">
                   {orderData.deliveryPrice}
                 </span>
               </div>
@@ -292,9 +311,9 @@ const OrderSummary = ({ order, onBack }) => {
         </div>
 
         {/* Installation Section */}
-        <div className="bg-white rounded-2xl border border-gray-300">
+        <div className="bg-white rounded-2xl border border-gray-400">
           {/* Card Header */}
-          <div className="px-6 py-3 border-b border-gray-300">
+          <div className="px-6 py-3 border-b border-gray-400">
             <h3 className="text-base font-medium text-gray-900">
               Installation
             </h3>
@@ -309,7 +328,7 @@ const OrderSummary = ({ order, onBack }) => {
             </div>
 
             {/* Estimated Time */}
-            <div className="flex justify-between items-center py-3 border-t border-gray-200">
+            <div className="flex justify-between items-center py-3 border-t border-gray-300 mb-0">
               <span className="text-sm text-gray-600">Estimated time</span>
               <span className="text-sm font-medium text-gray-900">
                 {orderData.estimatedInstallationTime}
@@ -317,9 +336,9 @@ const OrderSummary = ({ order, onBack }) => {
             </div>
 
             {/* Price */}
-            <div className="flex justify-between items-center py-3 border-t border-gray-200">
+            <div className="flex justify-between items-center py-3 border-t border-gray-300 mb-0">
               <span className="text-sm text-gray-600">Price</span>
-              <span className="text-sm font-bold text-blue-900">
+              <span className="text-sm text-[#273E8E]">
                 {orderData.installationPrice}
               </span>
             </div>
@@ -329,7 +348,7 @@ const OrderSummary = ({ order, onBack }) => {
         {/* Payment Section */}
         <div>
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Payment</h3>
-          <div className="bg-white rounded-2xl p-2 border border-gray-300 space-y-4">
+          <div className="bg-white rounded-2xl p-2 border border-gray-400 space-y-4">
             <div className="flex justify-between items-center p-2">
               <span className="text-sm text-gray-600">Payment method</span>
               <span className="text-sm font-medium text-gray-900">
@@ -375,7 +394,7 @@ const OrderSummary = ({ order, onBack }) => {
                             size={16}
                             className={`${
                               star <= userReview.rating
-                                ? "text-blue-600 fill-current"
+                                ? "text-[#273E8E] fill-current"
                                 : "text-gray-300"
                             }`}
                           />
@@ -397,7 +416,7 @@ const OrderSummary = ({ order, onBack }) => {
       </div>
 
       {/* Bottom Action Button */}
-      <div className="sm:relative fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4">
+      <div className="sm:relative fixed bottom-0 left-0 right-0 bg-white border-t border-gray-300 p-4">
         <div className="sm:max-w-md sm:mx-auto">
           <button
             onClick={() => setShowReviewModal(true)}
