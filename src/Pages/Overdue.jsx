@@ -12,7 +12,9 @@ const OverdueLoan = () => {
 
   return (
     <div>
-      <div className={`relative flex min-h-screen overflow-hidden bg-[#F5F7FF]`}>
+      <div
+        className={`relative flex min-h-screen overflow-hidden bg-[#F5F7FF]`}
+      >
         {/* Sidebar */}
         <SideBar />
 
@@ -28,12 +30,12 @@ const OverdueLoan = () => {
               <h1 className="text-2xl font-semibold mb-1">Loans</h1>
               <p className="text-gray-500 mb-4">Welcome to the dashboard</p>
               <LoanWallet />
-              <div className="mt-5">
+              {/* <div className="mt-5">
                 <LoanCard />
-              </div>
-              <p className="bg-gray-300 text-[#273e8e] p-3 rounded-xl border-dashed border mt-4">
+              </div> */}
+              {/* <p className="bg-gray-300 text-[#273e8e] p-3 rounded-xl border-dashed border mt-4">
                 Your loan application is pending
-              </p>
+              </p> */}
             </div>
 
             {/* Right Section */}
@@ -42,17 +44,17 @@ const OverdueLoan = () => {
               <div className="mt-2">
                 {toggle ? (
                   <div>
-                    <LoanStatusCard 
-                      amount="N200,200" 
-                      amountColor="text-[#FF0000]" 
-                      status="Active" 
-                      statusTextColor="text-[#008000]" 
-                      statusBgColor="bg-[#00800033]" 
-                      date="2 days overdue" 
+                    <LoanStatusCard
+                      amount="N200,200"
+                      amountColor="text-[#FF0000]"
+                      status="Active"
+                      statusTextColor="text-[#008000]"
+                      statusBgColor="bg-[#00800033]"
+                      date="2 days overdue"
                       showBtn="false"
                     />
-                    <p 
-                      onClick={() => setToggle(!toggle)} 
+                    <p
+                      onClick={() => setToggle(!toggle)}
                       className="cursor-pointer mt-2 text-[#273e8e] font-medium"
                     >
                       Next
@@ -62,26 +64,28 @@ const OverdueLoan = () => {
                   <div>
                     <div className="flex justify-between items-center mb-4">
                       <h1 className="text-lg font-semibold">Loan History</h1>
-                      <p 
-                        onClick={() => setToggle(!toggle)} 
+                      <p
+                        onClick={() => setToggle(!toggle)}
                         className="cursor-pointer text-[#273e8e] font-medium"
                       >
                         Back
                       </p>
                     </div>
-                    <MainLoanCard 
-                      loanStatus="Overdue" 
-                      intersetRate="5%" 
-                      duration="12 month" 
-                      loanAmount="N200,000" 
-                      date="22 June, 2025" 
-                      statusTextColor="text-[#FF0000]" 
+                    <MainLoanCard
+                      loanStatus="Overdue"
+                      intersetRate="5%"
+                      duration="12 month"
+                      loanAmount="N200,000"
+                      date="22 June, 2025"
+                      statusTextColor="text-[#FF0000]"
                       statusBgColor="bg-[#FF000033]"
                     />
                     <div className="mt-4">
-                    <p>Repayment History</p>
-                    <RepaymentHistorySection/>
-                    <button className="w-full py-4 px-4 bg-[#273e8e] text-white text-sm text-center mt-5 rounded-full">Repay All</button>
+                      <p>Repayment History</p>
+                      <RepaymentHistorySection />
+                      <button className="w-full py-4 px-4 bg-[#273e8e] text-white text-sm text-center mt-5 rounded-full">
+                        Repay All
+                      </button>
                     </div>
                   </div>
                 )}

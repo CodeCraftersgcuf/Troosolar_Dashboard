@@ -11,7 +11,9 @@ const PendingLoan = () => {
 
   return (
     <div>
-      <div className={`relative flex min-h-screen overflow-hidden bg-[#F5F7FF]`}>
+      <div
+        className={`relative flex min-h-screen overflow-hidden bg-[#F5F7FF]`}
+      >
         {/* Sidebar */}
         <SideBar />
 
@@ -27,12 +29,12 @@ const PendingLoan = () => {
               <h1 className="text-2xl font-semibold mb-1">Loans</h1>
               <p className="text-gray-500 mb-4">Welcome to the dashboard</p>
               <LoanWallet />
-              <div className="mt-5">
+              {/* <div className="mt-5">
                 <LoanCard />
-              </div>
-              <p className="bg-gray-300 text-[#273e8e] p-3 rounded-xl border-dashed border mt-4">
+              </div> */}
+              {/* <p className="bg-gray-300 text-[#273e8e] p-3 rounded-xl border-dashed border mt-4">
                 Your loan application is pending
-              </p>
+              </p> */}
             </div>
 
             {/* Right Section */}
@@ -41,17 +43,17 @@ const PendingLoan = () => {
               <div className="mt-2">
                 {toggle ? (
                   <div>
-                    <LoanStatusCard 
-                      amount="N200,200" 
-                      amountColor="text-[#FFA500]" 
-                      status="Pending" 
-                      statusTextColor="text-[#FFA500]" 
-                      statusBgColor="bg-[#FFA50033]" 
-                      date="June 22, 2025" 
+                    <LoanStatusCard
+                      amount="N200,200"
+                      amountColor="text-[#FFA500]"
+                      status="Pending"
+                      statusTextColor="text-[#FFA500]"
+                      statusBgColor="bg-[#FFA50033]"
+                      date="June 22, 2025"
                       showBtn="false"
                     />
-                    <p 
-                      onClick={() => setToggle(!toggle)} 
+                    <p
+                      onClick={() => setToggle(!toggle)}
                       className="cursor-pointer mt-2 text-[#273e8e] font-medium"
                     >
                       Next
@@ -61,20 +63,20 @@ const PendingLoan = () => {
                   <div>
                     <div className="flex justify-between items-center mb-4">
                       <h1 className="text-lg font-semibold">Loan History</h1>
-                      <p 
-                        onClick={() => setToggle(!toggle)} 
+                      <p
+                        onClick={() => setToggle(!toggle)}
                         className="cursor-pointer text-[#273e8e] font-medium"
                       >
                         Back
                       </p>
                     </div>
-                    <MainLoanCard 
-                      loanStatus="Active" 
-                      intersetRate="5%" 
-                      duration="12 month" 
-                      loanAmount="N200,000" 
-                      date="22 June, 2025" 
-                      statusTextColor="text-[#008000]" 
+                    <MainLoanCard
+                      loanStatus="Active"
+                      intersetRate="5%"
+                      duration="12 month"
+                      loanAmount="N200,000"
+                      date="22 June, 2025"
+                      statusTextColor="text-[#008000]"
                       statusBgColor="bg-[#00800033]"
                     />
                   </div>

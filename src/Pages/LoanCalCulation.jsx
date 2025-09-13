@@ -321,7 +321,7 @@ const LoanCalculation = () => {
                 onClick={onContinue}
                 className="hidden sm:block py-4 w-full px-10 bg-[#273e8e] text-white rounded-full hover:bg-[#1f2f6d] transition duration-200 disabled:opacity-60"
               >
-                {finalizing ? "Finalizing..." : "Continue to Credit Page"}
+                {finalizing ? "Finalizing..." : "Submit Application"}
               </button>
             </div>
           </div>

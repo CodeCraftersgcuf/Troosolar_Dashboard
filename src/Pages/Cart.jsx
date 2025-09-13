@@ -155,6 +155,7 @@ const Cart = () => {
   const [serverDeliveryPrice, setServerDeliveryPrice] = useState(0);
   const [serverInstallPrice, setServerInstallPrice] = useState(0);
   const [_serverGrandTotal, setServerGrandTotal] = useState(0);
+  const [type, setType] = useState("product");
 
   // place order / payment
   const [placingOrder, setPlacingOrder] = useState(false);
@@ -428,6 +429,10 @@ const Cart = () => {
       await loadCart();
     }
   };
+  const itemType = useMemo(() => {
+    return lines.map((l) => l.type);
+  }, [lines]);
+  console.log("The itemType is", itemType);
 
   // Totals (local)
   const itemCount = useMemo(
@@ -481,6 +486,10 @@ const Cart = () => {
       setServerDeliveryPrice(toNumber(delivery.price));
       setServerInstallPrice(toNumber(installation.price));
       setServerGrandTotal(toNumber(payload.grand_total));
+      setType(cart.type);
+      console.log("The type is", cart.type);
+      console.log("The type is", type);
+      console.log("The Cart of the Checkout summary", cart);
 
       if (addressesArr.length) {
         const merged = (() => {
@@ -623,7 +632,7 @@ const Cart = () => {
         quantity: Number(l.qty) || 1,
       };
     });
-
+    console.log("The itemsPayload is", itemsPayload);
     setPlacingOrder(true);
     try {
       const { data } = await axios.post(

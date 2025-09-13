@@ -28,7 +28,6 @@ const relationshipOptions = [
   "Other",
 ];
 
-
 const UploadDocument = () => {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -98,7 +97,9 @@ const UploadDocument = () => {
   };
 
   const labelForSelectedDoc = () => {
-    const found = documentTypes.find((d) => d.value === formData.selectedDocument);
+    const found = documentTypes.find(
+      (d) => d.value === formData.selectedDocument
+    );
     return found?.label || formData.selectedDocument || "";
   };
 
@@ -133,9 +134,9 @@ const UploadDocument = () => {
         return;
       }
 
-      // 2) Beneficiary -> /beneficiary-detail/{id} + /loan-details/{id}
+      // 2) Beneficiary -> /beneficiary-detail/{id}
       if (isBeneficiaryPage) {
-        // First, save beneficiary details
+        // Save beneficiary details
         const beneficiaryPayload = {
           beneficiary_name: formData.beneficiaryName?.trim(),
           beneficiary_email: formData.beneficiaryEmail?.trim(),
@@ -143,27 +144,17 @@ const UploadDocument = () => {
           beneficiary_relationship: formData.beneficiaryRelationship?.trim(),
         };
 
-        await axios.post(API.BENEFICIARY_DETAIL(monoLoanId), beneficiaryPayload, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json",
-            "Content-Type": "application/json",
-          },
-        });
-
-        // Then, call loan details API with default values
-        const loanPayload = {
-          loan_amount: 0, // Default value since we're removing the form
-          repayment_duration: 0, // Default value since we're removing the form
-        };
-
-        await axios.post(API.LOAN_DETAILS(monoLoanId), loanPayload, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json",
-            "Content-Type": "application/json",
-          },
-        });
+        await axios.post(
+          API.BENEFICIARY_DETAIL(monoLoanId),
+          beneficiaryPayload,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+          }
+        );
 
         setShowSuccess(true); // show success modal after submit
         return;
@@ -171,18 +162,22 @@ const UploadDocument = () => {
     } catch (err) {
       const resp = err?.response?.data;
       const msg =
-        resp?.message || resp?.error || err?.message || "Request failed. Please try again.";
+        resp?.message ||
+        resp?.error ||
+        err?.message ||
+        "Request failed. Please try again.";
       setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
-
   // ---------- Helpers for progress (mobile 1/2 & 2/2) ----------
   const mobileStepIndex = isUploadDocumentPage ? 1 : 2;
   const mobileStepCount = 2; // Now only 2 steps total
-  const mobileProgressPct = Math.round((mobileStepIndex / mobileStepCount) * 100);
+  const mobileProgressPct = Math.round(
+    (mobileStepIndex / mobileStepCount) * 100
+  );
 
   return (
     <>
@@ -197,10 +192,12 @@ const UploadDocument = () => {
               <div className="w-full md:w-1/2 py-4">
                 <header className="mb-6">
                   <h1 className="text-2xl font-medium text-gray-800 mb-2">
-                    Upload Documents (1 <span className="text-gray-400/80">/2</span>)
+                    Upload Documents (1{" "}
+                    <span className="text-gray-400/80">/2</span>)
                   </h1>
                   <p className="text-gray-600">
-                    Before you continue your application process, kindly upload required documents.
+                    Before you continue your application process, kindly upload
+                    required documents.
                   </p>
                   <div className="w-full bg-gray-400/40 my-7 rounded-full h-3">
                     <div className="w-1/2 bg-[#273e8e] h-full rounded-full" />
@@ -210,7 +207,10 @@ const UploadDocument = () => {
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="space-y-4">
                     <div>
-                      <label htmlFor="selectedDocument" className="block text-gray-700 mb-2">
+                      <label
+                        htmlFor="selectedDocument"
+                        className="block text-gray-700 mb-2"
+                      >
                         Select Document
                       </label>
                       <select
@@ -230,7 +230,9 @@ const UploadDocument = () => {
                     </div>
 
                     <div>
-                      <label className="block text-gray-700 mb-2">Upload Document</label>
+                      <label className="block text-gray-700 mb-2">
+                        Upload Document
+                      </label>
                       <div className="border-2 bg-white py-14 outline-none border-gray-300 rounded-md p-6 text-center">
                         <input
                           type="file"
@@ -244,7 +246,11 @@ const UploadDocument = () => {
                           htmlFor="file-upload"
                           className="inline-flex flex-col items-center justify-center cursor-pointer"
                         >
-                          <img src={assets.uploadArea} alt="Upload document" className="mb-3" />
+                          <img
+                            src={assets.uploadArea}
+                            alt="Upload document"
+                            className="mb-3"
+                          />
                           <p className="text-gray-500">
                             {formData.selectedFile
                               ? `Selected: ${formData.selectedFile.name}`
@@ -273,9 +279,12 @@ const UploadDocument = () => {
               <div className="w-full md:w-1/2 py-4">
                 <header className="mb-6">
                   <h1 className="text-2xl font-medium text-gray-800 mb-2">
-                    Beneficiary Details (2 <span className="text-gray-400/80">/2</span>)
+                    Beneficiary Details (2{" "}
+                    <span className="text-gray-400/80">/2</span>)
                   </h1>
-                  <p className="text-gray-600">Kindly add your beneficiary details</p>
+                  <p className="text-gray-600">
+                    Kindly add your beneficiary details
+                  </p>
                   <div className="w-full bg-gray-400/40 my-7 rounded-full h-3">
                     <div className="w-full bg-[#273e8e] h-full rounded-full" />
                   </div>
@@ -348,10 +357,6 @@ const UploadDocument = () => {
                   <LoanPopUp
                     icon={<GiCheckMark size={22} color="white" />}
                     text="Your loan application has been submitted successfully"
-                    link1Text="Back"
-                    link1="/uploadDetails"
-                    link2Text="Loan Dashboard"
-                    link2="loanDashboard"
                     imgBg="bg-[#008000]"
                   />
                 )}
@@ -382,12 +387,14 @@ const UploadDocument = () => {
               <h1 className="text-[20px] font-semibold text-gray-900">
                 {isUploadDocumentPage && (
                   <>
-                    Upload Documents (<span className="text-[#273e8e]">1</span>/{mobileStepCount})
+                    Upload Documents (<span className="text-[#273e8e]">1</span>/
+                    {mobileStepCount})
                   </>
                 )}
                 {isBeneficiaryPage && (
                   <>
-                    Beneficiary Details (<span className="text-[#273e8e]">2</span>/{mobileStepCount})
+                    Beneficiary Details (
+                    <span className="text-[#273e8e]">2</span>/{mobileStepCount})
                   </>
                 )}
               </h1>
@@ -407,9 +414,16 @@ const UploadDocument = () => {
 
             {/* ----- Step 1: Upload (mobile) ----- */}
             {isUploadDocumentPage && (
-              <form id="udoc-form" onSubmit={handleSubmit} className="space-y-6">
+              <form
+                id="udoc-form"
+                onSubmit={handleSubmit}
+                className="space-y-6"
+              >
                 <div>
-                  <label htmlFor="selectedDocument" className="block text-gray-700 mb-2">
+                  <label
+                    htmlFor="selectedDocument"
+                    className="block text-gray-700 mb-2"
+                  >
                     Select Document
                   </label>
                   <select
@@ -429,7 +443,9 @@ const UploadDocument = () => {
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 mb-2">Upload Document</label>
+                  <label className="block text-gray-700 mb-2">
+                    Upload Document
+                  </label>
                   <div className="border bg-white py-10 border-gray-300 rounded-xl p-6 text-center">
                     <input
                       type="file"
@@ -443,7 +459,11 @@ const UploadDocument = () => {
                       htmlFor="file-upload-m"
                       className="inline-flex flex-col items-center justify-center cursor-pointer"
                     >
-                      <img src={assets.uploadArea} alt="Upload" className="mb-3" />
+                      <img
+                        src={assets.uploadArea}
+                        alt="Upload"
+                        className="mb-3"
+                      />
                       <p className="text-gray-500 text-[13px]">
                         {formData.selectedFile
                           ? `Selected: ${formData.selectedFile.name}`
@@ -459,7 +479,11 @@ const UploadDocument = () => {
 
             {/* ----- Step 2: Beneficiary (mobile) ----- */}
             {isBeneficiaryPage && (
-              <form id="beneficiary-form" onSubmit={handleSubmit} className="space-y-6">
+              <form
+                id="beneficiary-form"
+                onSubmit={handleSubmit}
+                className="space-y-6"
+              >
                 <Input
                   id="beneficiaryName"
                   name="beneficiaryName"
@@ -472,7 +496,10 @@ const UploadDocument = () => {
 
                 {/* use a select here to match the mock; desktop remains input */}
                 <div>
-                  <label htmlFor="beneficiaryRelationship" className="block text-gray-700 mb-2">
+                  <label
+                    htmlFor="beneficiaryRelationship"
+                    className="block text-gray-700 mb-2"
+                  >
                     Beneficiary Relationship
                   </label>
                   <select

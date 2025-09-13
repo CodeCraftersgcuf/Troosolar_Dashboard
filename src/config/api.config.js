@@ -45,6 +45,8 @@ const API = {
     Loan_Calculation_Status: `${BASE_URL}/loan-calculation-stauts`,
     Loan_Calculation_finalize: (id) => `${BASE_URL}/loan-calculation-finalized/${id}`,
     Offered_Loan_Calculation: `${BASE_URL}/offered-loan-calculation`,
+    Loan_Payment_Relate: `${BASE_URL}/installments/with-history`,
+    Loan_Payment_Repay: (id) => `${BASE_URL}/installments/${id}/pay`, 
 
 
 

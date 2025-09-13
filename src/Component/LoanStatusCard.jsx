@@ -1,6 +1,36 @@
-import React from "react";
+import React, { useState } from "react";
 import { assets } from "../assets/data";
-const LoanStatusCard = ({amount,amountColor,status,statusTextColor,statusBgColor,date ,showBtn}) => {
+import RepayModal from "./RepayModal";
+
+const LoanStatusCard = ({
+  id,
+  amount,
+  amountColor,
+  status,
+  statusTextColor,
+  statusBgColor,
+  date,
+  onClick,
+  onRepay,
+  maxAmount = 0,
+}) => {
+  const [showRepayModal, setShowRepayModal] = useState(false);
+
+  const handleRepayClick = () => {
+    setShowRepayModal(true);
+  };
+
+  const handleRepayProceed = (repayAmount) => {
+    if (onRepay) {
+      onRepay(repayAmount);
+    }
+    setShowRepayModal(false);
+  };
+
+  const handleRepayClose = () => {
+    setShowRepayModal(false);
+  };
+  console.log("The id is", id);
   return (
     <div className="h-[150px] min-w-full border rounded-2xl p-4 bg-white  border-gray-400">
       <div className="flex justify-between items-start">
@@ -8,8 +38,10 @@ const LoanStatusCard = ({amount,amountColor,status,statusTextColor,statusBgColor
           <h1 className={`text-2xl font-semibold ${amountColor}`}>{amount}</h1>
           <p className="text-gray-400 pb-2 text-sm">{date}</p>
         </div>
-        <button className={` py-1 px-2 text-sm rounded-lg  ${statusBgColor} ${statusTextColor}`}>
-        {status}
+        <button
+          className={` py-1 px-2 text-sm rounded-lg  ${statusBgColor} ${statusTextColor}`}
+        >
+          {status}
         </button>
       </div>
       <hr />
@@ -20,13 +52,25 @@ const LoanStatusCard = ({amount,amountColor,status,statusTextColor,statusBgColor
         </div>
         <div className="flex justify-center items-center gap-2">
           <div className="py-2 rounded-md shadow-2xl border-gray-400 border px-2 ">
-            <img src={assets.rePayIcon} alt="" />
+            <img src={assets.rePayIcon} alt="" onClick={onClick} />
           </div>
-          <button className="bg-[#273e8e] py-3.5 px-6 text-sm rounded-full text-[#ffffff]">
+          <button
+            onClick={handleRepayClick}
+            className="bg-[#273e8e] py-3.5 px-6 text-sm rounded-full text-[#ffffff] hover:bg-[#1e2f6b] transition-colors"
+          >
             Repay Now
           </button>
         </div>
       </div>
+
+      {/* Repay Modal */}
+      <RepayModal
+        id={id}
+        isOpen={showRepayModal}
+        onClose={handleRepayClose}
+        onProceed={handleRepayProceed}
+        maxAmount={maxAmount}
+      />
     </div>
   );
 };

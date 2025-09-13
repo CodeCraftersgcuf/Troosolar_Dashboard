@@ -23,7 +23,6 @@ const CreditScore = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [monoCalc, setMonoCalc] = useState(null);
   const [monoErr, setMonoErr] = useState("");
 
   // Fetch offered loan calculation data
@@ -58,12 +57,14 @@ const CreditScore = () => {
           localStorage.removeItem("access_token");
           navigate("/login");
         } else if (err?.response?.status === 404) {
-          setError("No loan offer found. Please complete your loan application first.");
+          setError(
+            "No loan offer found. Please complete your loan application first."
+          );
         } else {
           setError(
-            err?.response?.data?.message || 
-            err?.message || 
-            "Failed to load loan information"
+            err?.response?.data?.message ||
+              err?.message ||
+              "Failed to load loan information"
           );
         }
       } finally {
@@ -73,47 +74,6 @@ const CreditScore = () => {
 
     fetchOfferedLoanData();
   }, [navigate]);
-
-  // Fetch mono loan data when offered loan data is available
-  useEffect(() => {
-    const fetchMono = async () => {
-      if (!offeredLoanData?.loan_calculation_id) return;
-
-      setMonoErr("");
-      setMonoCalc(null);
-
-      const token = localStorage.getItem("access_token");
-      if (!token) {
-        navigate("/login");
-        return;
-      }
-
-      try {
-        const { data } = await axios.get(API.MONO_LOAN(offeredLoanData.loan_calculation_id), {
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        const monoData = data?.data ?? data;
-        setMonoCalc(monoData);
-        sessionStorage.setItem("last_mono_calc", JSON.stringify(monoData));
-      } catch (err) {
-        const status = err?.response?.status;
-        const resp = err?.response?.data;
-        if (status === 401) {
-          localStorage.removeItem("access_token");
-          navigate("/login");
-        } else {
-          setMonoErr(resp?.message || "Mono loan calculation failed.");
-        }
-      }
-    };
-
-    fetchMono();
-  }, [offeredLoanData?.loan_calculation_id, navigate]);
 
   return (
     <>
@@ -198,11 +158,8 @@ const CreditScore = () => {
                     {monoErr && (
                       <p className="text-red-600 text-sm mb-2">{monoErr}</p>
                     )}
-                    {/* Pass both: offered loan data + mono result */}
-                    <LoanRepaymentCard
-                      calculation={offeredLoanData}
-                      monoCalc={monoCalc}
-                    />
+                    {/* Pass both: offered loan data */}
+                    <LoanRepaymentCard calculation={offeredLoanData} />
                   </div>
 
                   <div className="grid grid-cols-2 pb-10 gap-3 pt-2">
@@ -212,19 +169,34 @@ const CreditScore = () => {
                     >
                       Edit Details
                     </Link>
-                    <Link
-                      to="/uploadDocument"
-                      state={{ monoLoanId: monoCalc?.id, monoCalc }}
-                      className="py-4 text-center text-sm rounded-full bg-[#273e8e] text-white"
-                      onClick={(e) => {
-                        if (!monoCalc?.id) {
-                          e.preventDefault();
+                    <button
+                      onClick={async () => {
+                        // Use the ID directly from offered-loan-calculation response
+                        if (!offeredLoanData?.id) {
                           setMonoErr("Please wait, preparing your offer…");
+                          return;
                         }
+
+                        setMonoErr("");
+
+                        const monoData = offeredLoanData; // reuse full payload
+                        sessionStorage.setItem(
+                          "last_mono_calc",
+                          JSON.stringify(monoData)
+                        );
+
+                        // Navigate to upload document page and pass the id
+                        navigate("/uploadDocument", {
+                          state: {
+                            monoLoanId: monoData.id,
+                            monoCalc: monoData,
+                          },
+                        });
                       }}
+                      className="py-4 text-center text-sm rounded-full bg-[#273e8e] text-white hover:bg-[#1e3275] transition-colors"
                     >
                       Accept Offer
-                    </Link>
+                    </button>
                   </div>
                 </div>
               )}
@@ -303,7 +275,9 @@ const CreditScore = () => {
             ) : loading ? (
               <div className="flex flex-col items-center justify-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#273e8e] mb-4"></div>
-                <p className="text-gray-600 text-center">Loading loan information...</p>
+                <p className="text-gray-600 text-center">
+                  Loading loan information...
+                </p>
               </div>
             ) : error ? (
               <div className="flex flex-col items-center justify-center py-8">
@@ -325,10 +299,7 @@ const CreditScore = () => {
                     {monoErr && (
                       <p className="text-red-600 text-sm mb-2">{monoErr}</p>
                     )}
-                    <LoanRepaymentCard
-                      calculation={offeredLoanData}
-                      monoCalc={monoCalc}
-                    />
+                    <LoanRepaymentCard calculation={offeredLoanData} />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 pt-2 pb-4">
@@ -338,19 +309,34 @@ const CreditScore = () => {
                     >
                       Edit Details
                     </Link>
-                    <Link
-                      to="/uploadDocument"
-                      state={{ monoLoanId: monoCalc?.id, monoCalc }}
-                      className="py-4 text-center text-sm rounded-full bg-[#273e8e] text-white"
-                      onClick={(e) => {
-                        if (!monoCalc?.id) {
-                          e.preventDefault();
+                    <button
+                      onClick={async () => {
+                        // Use the ID directly from offered-loan-calculation response
+                        if (!offeredLoanData?.id) {
                           setMonoErr("Please wait, preparing your offer…");
+                          return;
                         }
+
+                        setMonoErr("");
+
+                        const monoData = offeredLoanData; // reuse full payload
+                        sessionStorage.setItem(
+                          "last_mono_calc",
+                          JSON.stringify(monoData)
+                        );
+
+                        // Navigate to upload document page and pass the id
+                        navigate("/uploadDocument", {
+                          state: {
+                            monoLoanId: monoData.id,
+                            monoCalc: monoData,
+                          },
+                        });
                       }}
+                      className="py-4 text-center text-sm rounded-full bg-[#273e8e] text-white hover:bg-[#1e3275] transition-colors"
                     >
                       Accept Offer
-                    </Link>
+                    </button>
                   </div>
                 </div>
               </>
