@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 const SolarBundleComponent = ({
   image,
@@ -9,23 +9,60 @@ const SolarBundleComponent = ({
   soldText,
   progressBar,
   rating,
-  bundleTitle,
   borderColor,
 }) => {
+  const [imageLoading, setImageLoading] = useState(true);
+  const [imageError, setImageError] = useState(false);
+
   // Assuming image is the relative path, prepend the base URL
   // const imageUrl = `https://troosolar.hmstech.org/${image}`;
 
   const imageUrl = image;
+
+  const handleImageLoad = () => {
+    setImageLoading(false);
+  };
+
+  const handleImageError = () => {
+    setImageLoading(false);
+    setImageError(true);
+  };
   return (
     <div
       className="sm:max-w-[283px] bg-white rounded-2xl p-2 shadow-sm"
       style={{ border: `2px solid ${borderColor}` }}
     >
-      <img
-        src={imageUrl} // Use the full URL for the image
-        alt="Solar bundle product"
-        className=" rounded-md mb-3"
-      />
+      <div className="relative rounded-md mb-3 overflow-hidden">
+        {/* Loading Indicator */}
+        {imageLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#273E8E]"></div>
+          </div>
+        )}
+        
+        {/* Error State */}
+        {imageError && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+            <div className="text-center text-gray-400">
+              <svg className="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <p className="text-xs">Image unavailable</p>
+            </div>
+          </div>
+        )}
+        
+        {/* Actual Image */}
+        <img
+          src={imageUrl}
+          alt="Solar bundle product"
+          className={`w-full h-auto transition-opacity duration-300 ${
+            imageLoading ? 'opacity-0' : 'opacity-100'
+          }`}
+          onLoad={handleImageLoad}
+          onError={handleImageError}
+        />
+      </div>
       {/* {bundleTitle && <h2 className="text-[16px] font-[400] mb-2">{bundleTitle}</h2>} */}
       {/* <hr className="mb-3 text-gray-400/40" /> */}
 

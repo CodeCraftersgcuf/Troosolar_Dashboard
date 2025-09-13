@@ -156,6 +156,7 @@ const Cart = () => {
   const [serverInstallPrice, setServerInstallPrice] = useState(0);
   const [_serverGrandTotal, setServerGrandTotal] = useState(0);
   const [type, setType] = useState("product");
+  const [typeByRefId, setTypeByRefId] = useState(new Map());
 
   // place order / payment
   const [placingOrder, setPlacingOrder] = useState(false);
@@ -267,6 +268,12 @@ const Cart = () => {
     } catch {
       /* ignore */
     }
+  };
+  const normalizeTypeForOrder = (t) => {
+    const s = String(t || "");
+    if (/bundle/i.test(s)) return "Bundles"; // match "Bundles"
+    if (/product/i.test(s)) return "Product"; // match "Product"
+    return "Product"; // safe default
   };
 
   // ─────────────────────────────
@@ -491,6 +498,18 @@ const Cart = () => {
       console.log("The type is", type);
       console.log("The Cart of the Checkout summary", cart);
 
+      // Build type mapping from checkout summary items
+      const newTypeMap = new Map();
+      if (Array.isArray(cart.items)) {
+        cart.items.forEach((item) => {
+          if (item.ref_id && item.type) {
+            newTypeMap.set(String(item.ref_id), item.type);
+          }
+        });
+      }
+      setTypeByRefId(newTypeMap);
+      console.log("Type mapping built:", newTypeMap);
+
       if (addressesArr.length) {
         const merged = (() => {
           const byId = new Map(addresses.map((a) => [String(a.id), a]));
@@ -624,14 +643,16 @@ const Cart = () => {
     if (lines.length === 0) return alert("Your cart is empty.");
 
     const itemsPayload = lines.map((l) => {
-      const isBundle =
-        /bundle/i.test(l.type || "") || /Bundles/i.test(l.type || "");
+      const typeForOrder =
+        typeByRefId.get(String(l.refId)) || normalizeTypeForOrder(l.type);
       return {
-        itemable_type: isBundle ? "bundle" : "product",
+        itemable_type: typeForOrder, // <-- "Product" or "Bundles"
         itemable_id: Number(l.refId),
         quantity: Number(l.qty) || 1,
       };
     });
+    console.log("itemsPayload →", itemsPayload);
+
     console.log("The itemsPayload is", itemsPayload);
     setPlacingOrder(true);
     try {
@@ -685,10 +706,10 @@ const Cart = () => {
     }
 
     const itemsPayload = lines.map((l) => {
-      const isBundle =
-        /bundle/i.test(l.type || "") || /Bundles/i.test(l.type || "");
+      const typeForOrder =
+        typeByRefId.get(String(l.refId)) || normalizeTypeForOrder(l.type);
       return {
-        itemable_type: isBundle ? "bundle" : "product",
+        itemable_type: typeForOrder, // <-- "Product" or "Bundles"
         itemable_id: Number(l.refId),
         quantity: Number(l.qty) || 1,
       };
