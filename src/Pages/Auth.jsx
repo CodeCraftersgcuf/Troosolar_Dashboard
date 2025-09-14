@@ -63,7 +63,8 @@ const Auth = () => {
           email: formData.email?.trim(),
           password: formData.password,
           phone: formData.phone?.trim(),
-          refferal_code: formData.code ? String(formData.code).trim() : null,
+          bvn: String(formData.bvn ?? "").trim(),
+          referral_code: formData.code ? String(formData.code).trim() : null,
           role: "Admin",
         };
 
@@ -229,6 +230,16 @@ const Auth = () => {
 
                 {!isLogin && (
                   <>
+                    {/* ✅ Missing on desktop before — required by validation */}
+                    <Input
+                      id="phone"
+                      name="phone"
+                      label="Phone Number"
+                      placeholder="Phone Number"
+                      type="tel"
+                      value={formData.phone}
+                      onChange={handleChange}
+                    />
                     <Input
                       id="bvn"
                       name="bvn" // ✅
