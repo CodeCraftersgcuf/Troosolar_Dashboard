@@ -30,7 +30,7 @@ const Notifications = ({ onBack }) => {
       <div className="hidden sm:block min-h-screen p-4 bg-gray-50">
         <div className="max-w-2xl mx-auto">
           <div className="relative flex items-center justify-center mb-6">
-            <ChevronLeft className="absolute left-0 cursor-pointer" onClick={onBack} />
+            {/* <ChevronLeft className="absolute left-0 cursor-pointer" onClick={onBack} /> */}
             <h2 className="text-lg font-semibold text-gray-800">Notifications</h2>
           </div>
 

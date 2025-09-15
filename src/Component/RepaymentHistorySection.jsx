@@ -35,9 +35,9 @@ const RepaymentHistorySection = ({
         >
           <div className="flex items-center">
             <div className="ml-4">
-              <span className="text-sm">Next Repayment</span>
+              <span className="lg:text-sm text-xs">Next Repayment</span>
               <h1
-                className={`text-lg font-medium ${
+                className={`lg:text-lg text-sm font-medium ${
                   item.is_overdue ? "text-[#FF0000]" : "text-[#273e8e]"
                 }`}
               >
@@ -56,7 +56,7 @@ const RepaymentHistorySection = ({
               {/* Days */}
               <div className="w-[60px] h-[60px] flex flex-col items-center justify-center border border-[#ccc] rounded-[12px] shadow-[0_2px_0_#ccc]">
                 <p className="text-[20px] font-bold leading-none">00</p>
-                <p className="text-xs">Days</p>
+                <p className="lg:text-xs text-xs">Days</p>
               </div>
 
               {/* Colon */}
@@ -65,12 +65,12 @@ const RepaymentHistorySection = ({
               {/* Hours */}
               <div className="w-[60px] h-[60px] flex flex-col items-center justify-center border border-[#ccc] rounded-[12px] shadow-[0_2px_0_#ccc]">
                 <p className="text-[20px] font-bold leading-none">00</p>
-                <p className="text-xs">Hours</p>
+                <p className="lg:text-xs text-xs">Hours</p>
               </div>
             </div>
           )}
 
-          <h1 className="text-sm font-medium text-[#273e8e]">
+          <h1 className="lg:text-sm text-xs font-medium text-[#273e8e]">
             {formatMoney(item.amount)}
           </h1>
         </div>
@@ -82,17 +82,17 @@ const RepaymentHistorySection = ({
           key={item.id}
           className="relative h-[100px] mt-10 flex justify-between items-center w-full py-3 px-2 bg-white border-gray-300 border rounded-2xl z-10"
         >
-          <div className="flex items-center">
+          <div className="flex ">
             <div className="ml-4">
-              <span className="text-sm">Repayment</span>
-              <h1 className="text-lg font-medium text-[#273e8e]">
+              <span className="lg:text-sm text-xs">Repayment</span>
+              <h1 className="lg:text-lg text-sm font-medium text-[#273e8e]">
                 {item.status === "paid"
                   ? `Paid - ${formatDate(item.paid_at)}`
                   : formatDate(item.payment_date)}
               </h1>
             </div>
           </div>
-          <h1 className="text-sm font-medium text-[#273e8e]">
+          <h1 className="lg:text-sm text-xs font-medium text-[#273e8e]">
             {formatMoney(item.amount)}
           </h1>
         </div>

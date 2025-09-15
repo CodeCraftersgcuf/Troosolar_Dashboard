@@ -1,50 +1,14 @@
-// import React from "react";
-// import { Bell } from "lucide-react";
-// import { useLocation, useParams } from "react-router-dom";
-// const TopNavbar = () => {
-//   const name = "Qamardeen AbdulMalik";
-//   const location = useLocation();
-//   const { category } = useParams();
-//   const changeBg =
-//     location.pathname.includes("/tools") ||
-//     location.pathname.includes("/solar-bundles") ||
-//     location.pathname.includes("/homePage") ||
-//     location.pathname.includes(`/product/${category}`);
-//   return (
-//     <div>
-//       <header
-//         className={`flex gap-3 items-center h-[90px] justify-end px-5 sm:pr-10 py-5 ${
-//           changeBg ? "bg-[#273e8e]" : "bg-white"
-//         }`}
-//       >
-//         <button
-//           className={`rounded-lg flex justify-center items-center shadow-md h-10 w-10  transition-colors ${
-//             changeBg ? "bg-[#ffffff]" : "bg-white"
-//           }`}
-//         >
-//           <Bell size={24} />
-//         </button>
-//         <div className="bg-[#e9e9e9] h-16 w-16 rounded-full flex items-center justify-center">
-//           <p className="text-[30px] text-[#909090] font-medium">QA</p>
-//         </div>
-//         <p
-//           className={`${
-//             changeBg ? "text-white" : "text-[#000000]"
-//           } text-lg hidden sm:block`}
-//         >
-//           {name}
-//         </p>
-//       </header>
-//     </div>
-//   );
-// };
-
-// export default TopNavbar;
 import React, { useEffect, useMemo, useState } from "react";
 import { Bell, ShoppingCart } from "lucide-react"; // NEW
 import { useLocation, Link } from "react-router-dom"; // NEW
 
-const CANDIDATE_KEYS = ["user","auth_user","current_user","profile","logged_in_user"];
+const CANDIDATE_KEYS = [
+  "user",
+  "auth_user",
+  "current_user",
+  "profile",
+  "logged_in_user",
+];
 
 const readStoredUser = () => {
   for (const k of CANDIDATE_KEYS) {
@@ -53,7 +17,9 @@ const readStoredUser = () => {
       if (!raw) continue;
       const obj = JSON.parse(raw);
       if (obj && typeof obj === "object") return obj;
-    } catch { /* ignore bad JSON */ }
+    } catch {
+      /* ignore bad JSON */
+    }
   }
   return null;
 };
@@ -81,7 +47,10 @@ const getAvatarUrl = (u) => {
 };
 
 const getInitials = (name) => {
-  const parts = String(name || "").trim().split(/\s+/).slice(0, 2);
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2);
   return parts.map((p) => p[0]?.toUpperCase() || "").join("") || "U";
 };
 
@@ -108,10 +77,10 @@ const TopNavbar = () => {
 
   // Pages where the Cart icon should be visible (EDIT THIS LIST as needed)
   const CART_PATH_PATTERNS = [
-    "/product/",       // product detail pages
-    "/homePage",       // home page
-    "/solar-bundles",  // bundles
-    "/tools",        // add/remove as you wish
+    "/product/", // product detail pages
+    "/homePage", // home page
+    "/solar-bundles", // bundles
+    "/tools", // add/remove as you wish
     // "/shop", "/catalog", "/category/"
   ];
 
@@ -153,7 +122,7 @@ const TopNavbar = () => {
         )}
 
         {/* Avatar */}
-        <div className="bg-[#e9e9e9] h-16 w-16 rounded-full overflow-hidden flex items-center justify-center">
+        <div className="bg-[#e9e9e9] h-11 w-11 rounded-full overflow-hidden flex items-center justify-center">
           {avatar ? (
             <img
               src={avatar}
@@ -167,7 +136,11 @@ const TopNavbar = () => {
         </div>
 
         {/* Name */}
-        <p className={`${changeBg ? "text-white" : "text-[#000000]"} text-lg hidden sm:block`}>
+        <p
+          className={`${
+            changeBg ? "text-white" : "text-[#000000]"
+          } text-lg hidden sm:block`}
+        >
           {name}
         </p>
       </header>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Check, ChevronLeft, Star, Loader2 } from "lucide-react";
 import ReviewModal from "./ReviewModal";
 import { assets } from "../../assets/data";
@@ -11,6 +11,49 @@ const OrderSummary = ({ order, onBack }) => {
   const [orderData, setOrderData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState(null);
+
+  // Fetch existing review for the product
+  const fetchExistingReview = useCallback(async (productId, userInfo) => {
+    if (!productId) return;
+    
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) return;
+
+      const response = await axios.get(API.Product_Reviews, {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        params: {
+          product_id: productId,
+        },
+      });
+
+      if (response.data.status === "success" && response.data.data?.length > 0) {
+        const review = response.data.data[0]; // Get the first review (assuming one review per user per product)
+        setUserReview({
+          id: review.id,
+          rating: review.rating,
+          reviewText: review.review,
+          userName: userInfo?.first_name || "User",
+          userInitials: (userInfo?.first_name?.[0] || "U") + (userInfo?.sur_name?.[0] || ""),
+          date: new Date(review.created_at)
+            .toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "2-digit",
+            })
+            .replace(/\//g, "-"),
+        });
+      }
+    } catch (err) {
+      console.error("Error fetching existing review:", err);
+      // Don't set error for review fetch as it's optional
+    }
+  }, []);
 
   // Fetch order details from API
   useEffect(() => {
@@ -87,6 +130,9 @@ const OrderSummary = ({ order, onBack }) => {
           };
 
           setOrderData(transformedData);
+          
+          // Fetch existing review for this product
+          await fetchExistingReview(data.items?.[0]?.itemable_id, data.include_user_info);
         }
       } catch (err) {
         console.error("Error fetching order details:", err);
@@ -102,23 +148,86 @@ const OrderSummary = ({ order, onBack }) => {
       setError("Order ID not provided");
       setLoading(false);
     }
-  }, [order?.id]);
+  }, [order?.id, fetchExistingReview]);
 
-  const handleReviewSubmit = (reviewData) => {
-    console.log("Review submitted:", reviewData);
-    // Set the user review to display it
-    setUserReview({
-      ...reviewData,
-      userName: "Adewale", // You can get this from user context
-      userInitials: "AD",
-      date: new Date()
-        .toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "2-digit",
-        })
-        .replace(/\//g, "-"),
-    });
+  const handleReviewSubmit = async (reviewData) => {
+    if (!orderData?.rawData?.items?.[0]?.itemable_id) {
+      setReviewError("Product ID not found");
+      return;
+    }
+
+    try {
+      setReviewLoading(true);
+      setReviewError(null);
+      
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        setReviewError("Please log in to submit a review");
+        return;
+      }
+
+      const productId = orderData.rawData.items[0].itemable_id;
+      const payload = {
+        product_id: productId.toString(),
+        review: reviewData.reviewText,
+        rating: reviewData.rating,
+      };
+
+      let response;
+      if (userReview?.id) {
+        // Update existing review
+        response = await axios.put(
+          API.Update_Product_Review(userReview.id),
+          payload,
+          {
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+      } else {
+        // Create new review
+        response = await axios.post(
+          API.Product_Reviews,
+          payload,
+          {
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+      }
+
+      if (response.data.status === "success") {
+        // Update the user review state
+        setUserReview({
+          id: response.data.data?.id || userReview?.id,
+          rating: reviewData.rating,
+          reviewText: reviewData.reviewText,
+          userName: orderData?.includeUserInfo?.first_name || "User",
+          userInitials: (orderData?.includeUserInfo?.first_name?.[0] || "U") + (orderData?.includeUserInfo?.sur_name?.[0] || ""),
+          date: new Date()
+            .toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "2-digit",
+            })
+            .replace(/\//g, "-"),
+        });
+        
+        setShowReviewModal(false);
+        alert(userReview?.id ? "Review updated successfully!" : "Review submitted successfully!");
+      } else {
+        setReviewError("Failed to submit review");
+      }
+    } catch (err) {
+      console.error("Error submitting review:", err);
+      setReviewError(err?.response?.data?.message || err?.message || "Failed to submit review");
+    } finally {
+      setReviewLoading(false);
+    }
   };
 
   // Loading state
@@ -432,6 +541,9 @@ const OrderSummary = ({ order, onBack }) => {
         isOpen={showReviewModal}
         onClose={() => setShowReviewModal(false)}
         onSubmit={handleReviewSubmit}
+        loading={reviewLoading}
+        error={reviewError}
+        existingReview={userReview}
       />
     </div>
   );

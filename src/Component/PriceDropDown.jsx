@@ -95,7 +95,7 @@ const PriceDropDown = ({ onFilter }) => {
           <div className="absolute left-0 z-50 mt-1 w-[400px] bg-white border border-gray-200 rounded-md shadow-lg">
             <div className="relative px-4 py-2 border-b-1 border-gray-500">
               <p className="text-center text-gray-900 py-1 font-medium">
-                Price 
+                Price
               </p>
               <X
                 size={20}
@@ -184,7 +184,7 @@ const PriceDropDown = ({ onFilter }) => {
         className="relative sm:hidden block w-full max-w-[150px] cursor-pointer"
       >
         <div
-          className="px-5 py-5 bg-white border border-black/50 rounded-tr-2xl border-l-0 rounded-br-2xl sm:rounded-2xl shadow-sm hover:border-black/70 transition-colors"
+          className="sm:px-5 px-2 sm:py-5 py-3 bg-white border border-black/50 rounded-tr-2xl border-l-0 rounded-br-2xl sm:rounded-2xl shadow-sm hover:border-black/70 transition-colors"
           onClick={toggleDropdown}
         >
           <div className="flex items-center justify-between w-full font-medium">

@@ -1,12 +1,18 @@
 import React, { useState } from "react";
+import { CheckCircle, XCircle, Loader2 } from "lucide-react";
+
+import API from "../../config/api.config";
+import axios from "axios";
 
 // Sample assets import (you should replace this with your actual import path)
 import { assets } from "../../assets/data";
+
 const documentTypes = [
   { value: "", label: "Select a document" },
-  { value: "cnic", label: "CNIC" },
   { value: "passport", label: "Passport" },
-  { value: "license", label: "Driving License" },
+  { value: "national_id", label: "National ID" },
+  { value: "driver_license", label: "Driver License" },
+  { value: "other", label: "Other" },
 ];
 
 const KycDetails = () => {
@@ -14,6 +20,10 @@ const KycDetails = () => {
     selectedDocument: "",
     selectedFile: null,
   });
+  const [loading, setLoading] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const handleChange = (e) => {
     const { name, value, files } = e.target;
@@ -30,14 +40,74 @@ const KycDetails = () => {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.selectedDocument || !formData.selectedFile) {
-      alert("Please select a document and upload a file.");
+      setErrorMessage("Please select a document and upload a file.");
+      setShowErrorModal(true);
       return;
     }
-    // Submit logic here (e.g. API call)
-    console.log("Submitted:", formData);
+
+    // Validate file type and size
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+
+    if (!allowedTypes.includes(formData.selectedFile.type)) {
+      setErrorMessage("Please upload a valid file (JPG, JPEG, PNG, or PDF).");
+      setShowErrorModal(true);
+      return;
+    }
+
+    if (formData.selectedFile.size > maxSize) {
+      setErrorMessage("File size must be less than 5MB.");
+      setShowErrorModal(true);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const token = localStorage.getItem("access_token");
+      
+      if (!token) {
+        setErrorMessage("Please log in to upload documents.");
+        setShowErrorModal(true);
+        return;
+      }
+
+      const formDataToSend = new FormData();
+      formDataToSend.append('type', formData.selectedDocument);
+      formDataToSend.append('file', formData.selectedFile);
+
+      const response = await axios.post(API.Kyc_Upload, formDataToSend, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.data.status === 'success') {
+        setShowSuccessModal(true);
+        // Reset form
+        setFormData({
+          selectedDocument: "",
+          selectedFile: null,
+        });
+      } else {
+        setErrorMessage(response.data.message || "Upload failed. Please try again.");
+        setShowErrorModal(true);
+      }
+    } catch (error) {
+      console.error("KYC Upload Error:", error);
+      setErrorMessage(
+        error?.response?.data?.message || 
+        error?.message || 
+        "Upload failed. Please try again."
+      );
+      setShowErrorModal(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -116,12 +186,66 @@ const KycDetails = () => {
 
           <button
             type="submit"
-            className="w-full py-4 px-3 bg-[#273e8e] text-white text-sm font-medium rounded-full hover:bg-[#1e3275] transition-colors"
+            disabled={loading}
+            className="w-full py-4 px-3 bg-[#273e8e] text-white text-sm font-medium rounded-full hover:bg-[#1e3275] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            Proceed
+            {loading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Uploading...
+              </>
+            ) : (
+              "Proceed"
+            )}
           </button>
         </form>
       </div>
+
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 bg-opacity-50">
+          <div className="bg-white rounded-2xl p-6 max-w-md mx-4 text-center">
+            <div className="flex justify-center mb-4">
+              <CheckCircle className="w-16 h-16 text-green-500" />
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              Upload Successful!
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Your KYC document has been uploaded successfully. We will review it and get back to you soon.
+            </p>
+            <button
+              onClick={() => setShowSuccessModal(false)}
+              className="w-full py-3 px-4 bg-[#273e8e] text-white font-medium rounded-lg hover:bg-[#1e3275] transition-colors"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Error Modal */}
+      {showErrorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 bg-opacity-50">
+          <div className="bg-white rounded-2xl p-6 max-w-md mx-4 text-center">
+            <div className="flex justify-center mb-4">
+              <XCircle className="w-16 h-16 text-red-500" />
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              Upload Failed
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {errorMessage}
+            </p>
+            <button
+              onClick={() => setShowErrorModal(false)}
+              className="w-full py-3 px-4 bg-[#273e8e] text-white font-medium rounded-lg hover:bg-[#1e3275] transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 };

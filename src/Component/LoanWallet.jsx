@@ -72,7 +72,7 @@ const LoanWallet = () => {
     <div className="bg-[#273e8e] rounded-[16px] px-4 pt-4 pb-3 text-white shadow-md">
       {/* Header: Label & Icon */}
       <div className="flex justify-between items-center mb-2">
-        <p className="text-white/70 text-sm">Loan Wallet</p>
+        <p className="text-white/70 text-xs lg:text-sm">Loan Wallet</p>
         <div className="bg-[#1d3073] h-7 w-7 rounded-md flex items-center justify-center">
           {open ? (
             <Eye
@@ -106,7 +106,7 @@ const LoanWallet = () => {
           <p className="text-white">-</p>
         </div>
 
-        <div className="flex items-center h-[20px] gap-4">
+        <div className="flex items-center h-[20px] gap-4 lg:mt-0 mt-3">
           <div className="w-[50px] h-[50px] flex flex-col items-center justify-center border border-[#ccc] rounded-[12px] shadow-[0_2px_0_#ccc]">
             <p className="text-[20px] font-bold leading-none">00</p>
             <p className="text-xs">Days</p>
@@ -120,7 +120,7 @@ const LoanWallet = () => {
       </div>
 
       {/* CTA Button */}
-      <button 
+      <button
         onClick={() => navigate("/loan")}
         className="bg-white text-[#000] text-sm rounded-full py-3 mt-2 w-full cursor-pointer text-[12px] hover:bg-gray-100 transition-colors"
       >

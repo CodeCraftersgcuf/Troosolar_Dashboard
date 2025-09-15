@@ -46,7 +46,14 @@ const API = {
     Loan_Calculation_finalize: (id) => `${BASE_URL}/loan-calculation-finalized/${id}`,
     Offered_Loan_Calculation: `${BASE_URL}/offered-loan-calculation`,
     Loan_Payment_Relate: `${BASE_URL}/installments/with-history`,
-    Loan_Payment_Repay: (id) => `${BASE_URL}/installments/${id}/pay`, 
+    Loan_Payment_Repay: (id) => `${BASE_URL}/installments/${id}/pay`,
+    Get_All_Addresses: `${BASE_URL}/delivery-address/index`,
+    Update_Address: (id) => `${BASE_URL}/delivery-address/update/${id}`,
+    Delete_Address: (id) => `${BASE_URL}/delivery-address/delete/${id}`,
+    Add_Address: `${BASE_URL}/delivery-address/store`,
+    Product_Reviews: `${BASE_URL}/product-reviews`,
+    Update_Product_Review: (id) => `${BASE_URL}/product-reviews/${id}`,
+    Kyc_Upload: `${BASE_URL}/kyc`,
 
 
 

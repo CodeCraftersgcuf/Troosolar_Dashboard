@@ -5,13 +5,11 @@ import { ContextApi } from "../Context/AppContext";
 /**
  * props:
  * - categories: [{ id, name }]
- * - products: array of products to filter (optional, falls back to context)
+ * - products: array of mapped products to filter (from HomePage)
+ * - onFilteringChange: callback to notify parent when filtering state changes
  */
-const SearchBar = ({ categories = [], products: propProducts }) => {
-  const { products: contextProducts, setFilteredResults } = useContext(ContextApi);
-  
-  // Use prop products if provided, otherwise fall back to context products
-  const products = propProducts || contextProducts;
+const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
+  const { setFilteredResults } = useContext(ContextApi);
 
   // Build dropdown options from API cats
   const dropdownOptions = useMemo(() => {
@@ -47,46 +45,51 @@ const SearchBar = ({ categories = [], products: propProducts }) => {
   // Filter logic (debounced)
   useEffect(() => {
     const delay = setTimeout(() => {
-      let results = products || [];
+      let results = [...products]; // Start with all products
+      const isFilteringActive = selectedValue !== "all" || query.trim() !== "";
+
+      console.log("SearchBar Filtering:", {
+        totalProducts: products.length,
+        selectedValue,
+        query,
+        isFilteringActive,
+        firstProduct: products[0]
+      });
 
       // Category filtering
       if (selectedValue !== "all") {
         const catId = Number(selectedValue);
         results = results.filter((item) => {
           // For mapped products from HomePage (they have categoryId)
-          if (item.categoryId != null) {
-            return Number(item.categoryId) === catId;
-          }
-          // For raw API products (they have category_id)
-          if (item.category_id != null) {
-            return Number(item.category_id) === catId;
-          }
-          // Fallback for mocked products that use `category` string
-          const label = dropdownOptions.find(
-            (o) => o.value === selectedValue
-          )?.label;
-          if (label && item.category) {
-            return String(item.category).toLowerCase() === label.toLowerCase();
-          }
-          return false;
+          return Number(item.categoryId) === catId;
         });
+        console.log("After category filter:", results.length);
       }
 
       // Search filtering
       if (query.trim()) {
         const q = query.trim().toLowerCase();
         results = results.filter((item) => {
-          // Check multiple possible title fields
-          const title = item.heading || item.title || item.name || "";
+          // Check the heading field (which is the mapped title)
+          const title = item.heading || "";
           return String(title).toLowerCase().includes(q);
         });
+        console.log("After search filter:", results.length);
       }
 
+      console.log("Final filtered results:", results.length);
+      
+      // Update filtered results in context
       setFilteredResults(results);
+      
+      // Notify parent about filtering state
+      if (onFilteringChange) {
+        onFilteringChange(isFilteringActive);
+      }
     }, 300);
 
     return () => clearTimeout(delay);
-  }, [query, selectedValue, products, setFilteredResults, dropdownOptions]);
+  }, [query, selectedValue, products, setFilteredResults, onFilteringChange]);
 
   return (
     <div className="flex items-center bg-white rounded-lg shadow-sm border border-gray-200 w-[100%] relative">
@@ -154,6 +157,19 @@ const SearchBar = ({ categories = [], products: propProducts }) => {
           placeholder="Search for products..."
           className="w-full px-2 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none"
         />
+        {(query || selectedValue !== "all") && (
+          <button
+            onClick={() => {
+              setQuery("");
+              setSelectedValue("all");
+              // This will trigger the useEffect and clear filters
+            }}
+            className="ml-2 text-gray-400 hover:text-gray-600 transition-colors"
+            title="Clear filters"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
     </div>
   );

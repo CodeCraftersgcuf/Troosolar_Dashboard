@@ -1,66 +1,3 @@
-// // SolarBundle.jsx (Page Component)
-// import React, { useContext } from 'react'
-// import SideBar from '../Component/SideBar'
-// import TopNavbar from '../Component/TopNavbar'
-// import SearchBar from '../Component/SearchBar'
-// import { Link } from 'react-router-dom'
-// import { ContextApi } from '../Context/AppContext'
-// import SolarBundleComponent from "../Component/SolarBundleComponent"
-
-// const SolarBundle = () => {
-//   const { solarBundleData } = useContext(ContextApi)
-
-//   return (
-//     <div className="flex w-full min-h-screen bg-gray-100">
-//       {/* Sidebar */}
-//       <div className="w-auto">
-//         <SideBar />
-//       </div>
-
-//       {/* Main Content */}
-//       <div className="flex-1 flex flex-col overflow-y-auto">
-//         {/* Top Navigation Section */}
-//         <TopNavbar />
-
-//         {/* Header and Search Section */}
-//         <div className="bg-[#273e8e] border-l-2 border-gray-500 px-6 py-6">
-//           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-//             <div>
-//               <h1 className="text-2xl font-semibold text-white">Solar Bundles</h1>
-//               <p className="text-white">Welcome to the dashboard</p>
-//             </div>
-//             <SearchBar />
-//           </div>
-//         </div>
-
-//         {/* Products Section */}
-//         <div className="px-6 py-6 w-full overflow-scroll">
-//           <h1 className="text-2xl font-semibold text-gray-800 mb-4">All Products</h1>
-//           <div className="grid xl:grid-cols-3 lg:grid-cols-2  md:grid-cols-1 grid-cols-1 gap-12">
-//             {solarBundleData.map((item, index) => (
-//               <Link key={index} to={`/productBundle/details/${item.id}`}>
-//                 <SolarBundleComponent
-//                   id={item.id}
-//                   image={item.image}
-//                   heading={item.heading}
-//                   price={item.price}
-//                   oldPrice={item.oldPrice}
-//                   discount={item.discount}
-//                   borderColor={item.borderColor}
-//                   rating={item.rating}
-//                   bundleTitle={item.bundleTitle}
-//                 />
-//               </Link>
-//             ))}
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   )
-// }
-
-// export default SolarBundle
-// src/pages/SolarBundle.jsx
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import SideBar from "../Component/SideBar";
@@ -90,7 +27,7 @@ const formatNGN = (n) => {
 // convert storage paths to absolute URLs
 const toAbsolute = (path) => {
   if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;             // already absolute
+  if (/^https?:\/\//i.test(path)) return path; // already absolute
   if (path.startsWith("/")) return `${API_ORIGIN}${path}`; // "/storage/xyz.jpg"
   // "bundles/xyz.jpg" or "public/bundles/xyz.jpg"
   const cleaned = path.replace(/^public\//, "");
@@ -99,10 +36,9 @@ const toAbsolute = (path) => {
 
 // map API bundle -> card props
 const mapBundle = (b) => {
-  const image =
-    b?.featured_image
-      ? toAbsolute(b.featured_image)
-      : assets?.placeholderProduct || "/placeholder-product.png";
+  const image = b?.featured_image
+    ? toAbsolute(b.featured_image)
+    : assets?.placeholderProduct || "/placeholder-product.png";
 
   const title = b?.title || `Bundle #${b?.id ?? ""}`;
   const total = Number(b?.total_price ?? 0);
@@ -147,10 +83,16 @@ const SolarBundle = () => {
 
         // support common Laravel shapes
         const root = data?.data ?? data;
-        const arr = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+        const arr = Array.isArray(root)
+          ? root
+          : Array.isArray(root?.data)
+          ? root.data
+          : [];
         setBundles(arr.map(mapBundle));
       } catch (e) {
-        setErr(e?.response?.data?.message || e?.message || "Failed to load bundles.");
+        setErr(
+          e?.response?.data?.message || e?.message || "Failed to load bundles."
+        );
         setBundles([]);
       } finally {
         setLoading(false);
@@ -174,7 +116,9 @@ const SolarBundle = () => {
         <div className="bg-[#273e8e] border-l-2 border-gray-500 px-6 py-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <div>
-              <h1 className="text-2xl font-semibold text-white">Solar Bundles</h1>
+              <h1 className="text-2xl font-semibold text-white">
+                Solar Bundles
+              </h1>
               <p className="text-white">Welcome to the dashboard</p>
             </div>
             <SearchBar />
@@ -183,12 +127,14 @@ const SolarBundle = () => {
 
         {/* Grid */}
         <div className="px-6 py-6 w-full overflow-scroll">
-          <h1 className="text-2xl font-semibold text-gray-800 mb-4">All Bundles</h1>
+          <h1 className="text-2xl font-semibold text-gray-800 mb-4">
+            All Bundles
+          </h1>
 
           {err && <p className="text-red-600 text-sm mb-3">{err}</p>}
           {loading && <p className="text-gray-600 text-sm">Loading…</p>}
 
-          <div className="grid xl:grid-cols-3 lg:grid-cols-2 md:grid-cols-1 grid-cols-1 gap-12">
+          <div className="grid xl:grid-cols-4 lg:grid-cols-4 md:grid-cols-2 grid-cols-1 gap-4">
             {bundles.map((item) => (
               <Link key={item.id} to={`/productBundle/details/${item.id}`}>
                 <SolarBundleComponent

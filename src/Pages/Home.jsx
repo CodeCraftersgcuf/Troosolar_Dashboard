@@ -156,6 +156,26 @@ const getFirstName = (u) => {
   return name.split(/\s+/)[0] || "";
 };
 
+const getAvatarUrl = (u) => {
+  if (!u) return "";
+  return (
+    u.avatar ||
+    u.profile_picture ||
+    u.photo ||
+    u.image_url ||
+    u.avatar_url ||
+    ""
+  );
+};
+
+const getInitials = (name) => {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase() || "").join("") || "U";
+};
+
 /* ---------------- component ---------------- */
 
 const Home = () => {
@@ -274,6 +294,8 @@ const Home = () => {
   );
 
   const firstName = useMemo(() => getFirstName(user) || "there", [user]);
+  const avatar = useMemo(() => getAvatarUrl(user), [user]);
+  const initials = useMemo(() => getInitials(getDisplayName(user)), [user]);
 
   return (
     <div className="flex min-h-screen w-full">
@@ -291,24 +313,35 @@ const Home = () => {
             {/* Greeting / bell */}
             <div className="flex justify-between items-center">
               <div className="flex justify-start gap-2 items-center">
-                <img
-                  className="sm:hidden block"
-                  src={assets.userImage}
-                  alt=""
-                />
+                <div className="sm:hidden bg-[#e9e9e9] h-12 w-12 rounded-full overflow-hidden flex items-center justify-center">
+                  {avatar ? (
+                    <img
+                      src={avatar}
+                      alt={getDisplayName(user)}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <p className="text-[20px] text-[#909090] font-medium">
+                      {initials}
+                    </p>
+                  )}
+                </div>
                 <div>
-                  <h1 className="text-2xl">
+                  <h1 className="text-md lg:text-2xl">
                     Hi,{" "}
                     <span className="sm:text-[#273e8e] text-black">
                       {firstName}
                     </span>
                   </h1>
-                  <p className="mt-1">Welcome to your dashboard</p>
+                  <p className="mt-1 text-xs lg:text-base">
+                    Welcome to your dashboard
+                  </p>
                 </div>
               </div>
 
-              <button className="rounded-lg sm:hidden flex justify-center items-center shadow-md h-10 w-10 bg-white">
-                <Bell size={24} />
+              <button className="rounded-lg sm:hidden flex justify-center items-center shadow-md lg:h-10 lg:w-10 h-8 w-8 bg-white">
+                <Bell size={18} lg:size={24} />
               </button>
             </div>
 
@@ -317,7 +350,7 @@ const Home = () => {
               <div className="flex justify-start items-center sm:hidden gap-3 pt-2">
                 <button
                   onClick={() => setShowWallet(!showWallet)}
-                  className={`border text-[13px] w-[40%] border-[#273e8e] py-3 rounded-full ${
+                  className={`border text-[12px] w-[30%] border-[#273e8e] py-3 rounded-full ${
                     showWallet ? "text-white bg-[#273e8e]" : "text-black "
                   }`}
                 >
@@ -325,7 +358,7 @@ const Home = () => {
                 </button>
                 <button
                   onClick={() => setShowWallet(!showWallet)}
-                  className={`border text-[13px] w-[40%] border-[#273e8e] py-3 rounded-full ${
+                  className={`border text-[11px] w-[35%] border-[#273e8e] py-3 rounded-full ${
                     showWallet ? "text-black " : "text-white bg-[#273e8e]"
                   }`}
                 >
@@ -377,7 +410,11 @@ const Home = () => {
               {!bundlesLoading &&
                 !bundlesErr &&
                 bundles.slice(0, 4).map((item) => (
-                  <Link to={`/productBundle/details/${item.id}`} key={item.id} className="flex-shrink-0">
+                  <Link
+                    to={`/productBundle/details/${item.id}`}
+                    key={item.id}
+                    className="flex-shrink-0"
+                  >
                     <SolarBundleComponent
                       id={item.id}
                       image={item.image}
@@ -415,7 +452,7 @@ const Home = () => {
                     <Link
                       to={`/homePage/product/${item.id}`}
                       key={item.id}
-                      className="w-full max-sm:w-[190px]" // keep card height consistent
+                      className="w-full max-[380px]:w-[160px] min-sm:w-[190px]" // keep card height consistent
                     >
                       <Product
                         id={item.id}

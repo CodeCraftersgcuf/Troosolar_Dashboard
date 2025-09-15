@@ -328,7 +328,7 @@ const LoanPage = () => {
               ) : (
                 <div>
                   <div className="flex justify-between items-center mb-4">
-                    <h1 className="text-lg font-semibold">Loan History</h1>
+                    <h1 className="text-sm lg:text-lg font-semibold">Loan History</h1>
                     <p
                       onClick={() => setToggle(!toggle)}
                       className="cursor-pointer text-[#273e8e] font-medium"
@@ -354,7 +354,7 @@ const LoanPage = () => {
                   />
 
                   <div className="mt-4">
-                    <p>Repayment History</p>
+                    <p className="text-sm lg:text-base">Repayment History</p>
                     <RepaymentHistorySection
                       currentMonth={derived?.current}
                       history={derived?.history}

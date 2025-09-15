@@ -300,6 +300,15 @@ const More = () => {
                     />
                   </div>
 
+                  <div onClick={() => setActiveSection("maintenance")}>
+                    <SidebarOption
+                      colorBg="bg-[#8E8E27]"
+                      icon={Settings}
+                      label="Maintenance"
+                      isSelected={activeSection === "maintenance"}
+                    />
+                  </div>
+
                   <div onClick={() => setShowPasswordPopup(true)}>
                     <SidebarOption
                       colorBg="bg-[#8E2778]"

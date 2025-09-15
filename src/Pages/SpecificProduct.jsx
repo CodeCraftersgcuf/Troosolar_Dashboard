@@ -1,5 +1,3 @@
-
-
 import React, { useEffect, useMemo, useState, useContext } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
@@ -18,7 +16,9 @@ import { assets } from "../assets/data";
 import { SearchIcon, ShoppingCart } from "lucide-react";
 
 const toNumber = (v) =>
-  typeof v === "number" ? v : Number(String(v ?? "").replace(/[^\d.]/g, "")) || 0;
+  typeof v === "number"
+    ? v
+    : Number(String(v ?? "").replace(/[^\d.]/g, "")) || 0;
 
 const formatNGN = (n) => {
   const num = toNumber(n);
@@ -38,7 +38,8 @@ const mapApiProductToCard = (p) => {
     assets?.placeholderProduct ||
     "/placeholder-product.png";
 
-  const heading = p.name || p.title || p.product_name || `Product #${p.id ?? ""}`;
+  const heading =
+    p.name || p.title || p.product_name || `Product #${p.id ?? ""}`;
 
   const priceRaw = p.price ?? p.amount ?? p.sale_price ?? p.product_price;
   const oldRaw = p.compare_at_price ?? p.old_price;
@@ -75,12 +76,20 @@ const extractArray = (payload) => {
   if (Array.isArray(root?.data)) return root.data;
   if (Array.isArray(root?.data?.data)) return root.data.data;
 
-  if (root?.data && typeof root.data === "object" && !Array.isArray(root.data)) {
+  if (
+    root?.data &&
+    typeof root.data === "object" &&
+    !Array.isArray(root.data)
+  ) {
     return Object.values(root.data);
   }
   if (root && typeof root === "object") {
     const candidates = Object.values(root).filter((v) => typeof v === "object");
-    if (candidates.length === 1 && candidates[0] && !Array.isArray(candidates[0])) {
+    if (
+      candidates.length === 1 &&
+      candidates[0] &&
+      !Array.isArray(candidates[0])
+    ) {
       return Object.values(candidates[0]);
     }
   }
@@ -141,7 +150,9 @@ const SpecificProduct = () => {
         };
 
         // 1) try /categories/:id/products (if you have it in api.config)
-        const { data: catResp } = await axios.get(API.CATEGORY_PRODUCTS(id), { headers });
+        const { data: catResp } = await axios.get(API.CATEGORY_PRODUCTS(id), {
+          headers,
+        });
         let rawList = extractArray(catResp);
 
         // 2) Fallback: if empty, pull /products and filter client-side
@@ -230,11 +241,16 @@ const SpecificProduct = () => {
           <div className="px-6 py-6 flex-1 overflow-auto">
             <div className="flex justify-start items-center gap-4 mb-4">
               {/* pass categoryId + result handler */}
-              <BrandDropDown categoryId={id} onFilter={handleBrandFilterResult} />
+              <BrandDropDown
+                categoryId={id}
+                onFilter={handleBrandFilterResult}
+              />
               <PriceDropDown onFilter={handlePriceFilter} />
             </div>
 
-            <h1 className="text-xl font-semibold text-black-800 my-4">{displayCategoryName}</h1>
+            <h1 className="text-xl font-semibold text-black-800 my-4">
+              {displayCategoryName}
+            </h1>
 
             {prodError && (
               <p className="text-red-600 text-sm mb-3">{prodError}</p>
@@ -293,7 +309,10 @@ const SpecificProduct = () => {
             </div>
 
             <div className="flex h-[70px] justify-center items-center mb-4">
-              <BrandDropDown categoryId={id} onFilter={handleBrandFilterResult} />
+              <BrandDropDown
+                categoryId={id}
+                onFilter={handleBrandFilterResult}
+              />
               <div className="h-full flex items-center px-3">
                 <div className="h-[50px] w-[4px] bg-white rounded" />
               </div>

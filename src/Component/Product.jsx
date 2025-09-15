@@ -114,7 +114,7 @@ const Product = ({
   };
 
   return (
-    <div className="relative sm:h-full sm:w-full bg-white border border-gray-200 rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col max-[420]:w-[90%] max-[420]:h-[90%] max-[390px]:w-[85%] max-[390px]:h-[85%] max-[375px]:w-[80%] max-[375px]:h-[80%]">
+    <div className="relative w-full sm:h-full sm:w-full bg-white border border-gray-200 rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col">
       {/* Vertical Hot Deal ribbon (mobile-friendly) */}
       {/* {(isHotDeal || discount) && (
           <div className="absolute left-0 top-6 flex items-start">
@@ -128,7 +128,7 @@ const Product = ({
         )} */}
 
       {/* Image: locked height so grid cards don't collapse on mobile */}
-      <div className="bg-gray-100 h-[190px] sm:h-[180px] flex justify-center items-center rounded-2xl overflow-hidden">
+      <div className="bg-gray-100 h-[140px] sm:h-[180px] flex rounded-2xl overflow-hidden">
         <img
           src={safeImage}
           alt={title || "Product"}
@@ -195,7 +195,7 @@ const Product = ({
         </button>
         <button
           onClick={handleAddToCart}
-          className="h-10 text-[12px] rounded-full bg-[#273e8e] max-sm:text-[8px] max-sm:rounded-2xl  max-sm:h-7 text-white disabled:opacity-60"
+          className="h-10 text-[10px] sm:text-[12px] rounded-full bg-[#273e8e] max-sm:text-[8px] max-sm:rounded-2xl  max-sm:h-7 text-white disabled:opacity-60"
           disabled={!id || adding}
           title={err || ""}
         >

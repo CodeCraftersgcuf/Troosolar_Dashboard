@@ -93,6 +93,8 @@ const HomePage = () => {
   const [apiProducts, setApiProducts] = useState([]);
   const [prodLoading, setProdLoading] = useState(false);
   const [prodError, setProdError] = useState("");
+  const [isFiltering, setIsFiltering] = useState(false);
+  const [searchBarKey, setSearchBarKey] = useState(0); // Key to force SearchBar re-render
 
   // Fetch categories
   useEffect(() => {
@@ -139,6 +141,7 @@ const HomePage = () => {
         setApiProducts(mappedProducts);
         // Initialize filtered results with all products
         setFilteredResults(mappedProducts);
+        setIsFiltering(false); // Reset filtering state
         // keep raw list in context if you use it elsewhere
         registerProducts?.(list);
       } catch (err) {
@@ -166,15 +169,22 @@ const HomePage = () => {
 
   // Enrich cards with category name
   const gridProducts = useMemo(() => {
-    // Use filtered results if available, otherwise use apiProducts
-    const sourceProducts =
-      filteredResults.length > 0 ? filteredResults : apiProducts || [];
+    // Use filteredResults if filtering is active, otherwise use apiProducts
+    const sourceProducts = isFiltering ? filteredResults : apiProducts || [];
+
+    console.log("Grid Products Source:", {
+      filteredResultsLength: filteredResults.length,
+      apiProductsLength: apiProducts.length,
+      sourceProductsLength: sourceProducts.length,
+      firstProduct: sourceProducts[0],
+      isFiltering: isFiltering
+    });
 
     return sourceProducts.map((p) => ({
       ...p,
       categoryName: catMap[p.categoryId] || "Inverter",
     }));
-  }, [filteredResults, apiProducts, catMap]);
+  }, [filteredResults, apiProducts, catMap, isFiltering]);
 
   const baseUrl = "https://troosolar.hmstech.org/";
 
@@ -203,7 +213,12 @@ const HomePage = () => {
               </div>
 
               {/* SearchBar gets full width 841px on desktop via the component */}
-              <SearchBar categories={categories} products={apiProducts} />
+              <SearchBar 
+                key={searchBarKey}
+                categories={categories} 
+                products={apiProducts} 
+                onFilteringChange={setIsFiltering}
+              />
             </div>
 
             {catError && (
@@ -222,28 +237,69 @@ const HomePage = () => {
             )}
             {prodLoading && <p className="text-gray-600 text-sm">Loading…</p>}
 
-            <div className="grid xl:grid-cols-4 lg:grid-cols-4 md:grid-cols-2 grid-cols-1 gap-4">
-              {gridProducts.map((item) => (
-                <Link
-                  key={item.id}
-                  to={`/homePage/product/${item.id}`}
-                  className="w-full"
-                >
-                  <Product
-                    id={item.id}
-                    image={item.image}
-                    heading={item.heading}
-                    price={item.price}
-                    oldPrice={item.oldPrice}
-                    discount={item.discount}
-                    ratingAvg={item.ratingAvg}
-                    ratingCount={item.ratingCount}
-                    categoryName={item.categoryName}
-                    isHotDeal={item.isHotDeal}
-                  />
-                </Link>
-              ))}
-            </div>
+            {gridProducts.length > 0 ? (
+              <div className="grid xl:grid-cols-4 lg:grid-cols-4 md:grid-cols-2 grid-cols-1 gap-4">
+                {gridProducts.map((item) => (
+                  <Link
+                    key={item.id}
+                    to={`/homePage/product/${item.id}`}
+                    className="w-full"
+                  >
+                    <Product
+                      id={item.id}
+                      image={item.image}
+                      heading={item.heading}
+                      price={item.price}
+                      oldPrice={item.oldPrice}
+                      discount={item.discount}
+                      ratingAvg={item.ratingAvg}
+                      ratingCount={item.ratingCount}
+                      categoryName={item.categoryName}
+                      isHotDeal={item.isHotDeal}
+                    />
+                  </Link>
+                ))}
+              </div>
+            ) : isFiltering ? (
+              <div className="text-center py-12">
+                <div className="max-w-md mx-auto">
+                  <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                    <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
+                  <p className="text-gray-500 mb-4">
+                    We couldn't find any products matching your search criteria. Try adjusting your filters or search terms.
+                  </p>
+                  <button
+                    onClick={() => {
+                      // Reset filters by re-rendering SearchBar
+                      setSearchBarKey(prev => prev + 1);
+                      setIsFiltering(false);
+                      setFilteredResults(apiProducts);
+                    }}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-[#273e8e] hover:bg-[#1e327a] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#273e8e]"
+                  >
+                    Clear all filters
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="max-w-md mx-auto">
+                  <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                    <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No products available</h3>
+                  <p className="text-gray-500">
+                    There are currently no products in our catalog. Please check back later.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -273,7 +329,12 @@ const HomePage = () => {
 
             {/* Search */}
             <div className="mt-4">
-              <SearchBar categories={categories} products={apiProducts} />
+              <SearchBar 
+                key={searchBarKey}
+                categories={categories} 
+                products={apiProducts} 
+                onFilteringChange={setIsFiltering}
+              />
             </div>
           </div>
 
@@ -294,28 +355,69 @@ const HomePage = () => {
             )}
             {prodLoading && <p className="text-gray-600 text-sm">Loading…</p>}
 
-            <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2">
-              {gridProducts.map((item) => (
-                <Link
-                  key={item.id}
-                  to={`/homePage/product/${item.id}`}
-                  className="w-full max-sm:w-[190px] "
-                >
-                  <Product
-                    id={item.id}
-                    image={item.image}
-                    heading={item.heading}
-                    price={item.price}
-                    oldPrice={item.oldPrice}
-                    discount={item.discount}
-                    ratingAvg={item.ratingAvg}
-                    ratingCount={item.ratingCount}
-                    categoryName={item.categoryName}
-                    isHotDeal={item.isHotDeal}
-                  />
-                </Link>
-              ))}
-            </div>
+            {gridProducts.length > 0 ? (
+              <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2">
+                {gridProducts.map((item) => (
+                  <Link
+                    key={item.id}
+                    to={`/homePage/product/${item.id}`}
+                    className="w-full  max-[380px]:w-[160px] min-sm:w-[190px]  "
+                  >
+                    <Product
+                      id={item.id}
+                      image={item.image}
+                      heading={item.heading}
+                      price={item.price}
+                      oldPrice={item.oldPrice}
+                      discount={item.discount}
+                      ratingAvg={item.ratingAvg}
+                      ratingCount={item.ratingCount}
+                      categoryName={item.categoryName}
+                      isHotDeal={item.isHotDeal}
+                    />
+                  </Link>
+                ))}
+              </div>
+            ) : isFiltering ? (
+              <div className="text-center py-8">
+                <div className="max-w-sm mx-auto px-4">
+                  <div className="w-20 h-20 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                    <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-base font-medium text-gray-900 mb-2">No products found</h3>
+                  <p className="text-sm text-gray-500 mb-4">
+                    We couldn't find any products matching your search criteria.
+                  </p>
+                  <button
+                    onClick={() => {
+                      // Reset filters by re-rendering SearchBar
+                      setSearchBarKey(prev => prev + 1);
+                      setIsFiltering(false);
+                      setFilteredResults(apiProducts);
+                    }}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-[#273e8e] hover:bg-[#1e327a] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#273e8e]"
+                  >
+                    Clear filters
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="max-w-sm mx-auto px-4">
+                  <div className="w-20 h-20 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                    <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                    </svg>
+                  </div>
+                  <h3 className="text-base font-medium text-gray-900 mb-2">No products available</h3>
+                  <p className="text-sm text-gray-500">
+                    There are currently no products in our catalog.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

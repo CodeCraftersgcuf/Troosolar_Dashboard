@@ -1,92 +1,185 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { ChevronLeft, Edit, Trash2 } from "lucide-react";
+
+import API from "../../config/api.config";
+import axios from "axios";
 
 const UpdateAddress = () => {
   const [addresses, setAddresses] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [formData, setFormData] = useState({
+    title: "",
     address: "",
     state: "",
-    phoneNumber: "",
-    isDefault: false,
+    phone_number: "",
   });
 
-  // Load addresses from localStorage on component mount
-  useEffect(() => {
-    const savedAddresses = localStorage.getItem("userAddresses");
-    if (savedAddresses) {
-      setAddresses(JSON.parse(savedAddresses));
-    }
-  }, []);
+  const token = localStorage.getItem("access_token");
 
-  // Save addresses to localStorage whenever addresses change
+  // Load addresses from API on component mount
+  const loadAddresses = useCallback(async () => {
+    if (!token) {
+      setError("Please log in to view addresses.");
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError("");
+      const response = await axios.get(API.Get_All_Addresses, {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      
+      if (response.data.status === "success" && Array.isArray(response.data.message)) {
+        setAddresses(response.data.message);
+      } else {
+        setError("Failed to load addresses.");
+      }
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || "Failed to load addresses.");
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
   useEffect(() => {
-    localStorage.setItem("userAddresses", JSON.stringify(addresses));
-  }, [addresses]);
+    loadAddresses();
+  }, [loadAddresses]);
 
   const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
+    const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: type === "checkbox" ? checked : value,
+      [name]: value,
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (editingId) {
-      // Update existing address
-      setAddresses((prev) =>
-        prev.map((addr) =>
-          addr.id === editingId ? { ...addr, ...formData, id: editingId } : addr
-        )
-      );
-    } else {
-      // Add new address
-      const newAddress = {
-        id: Date.now(),
-        ...formData,
-      };
-      setAddresses((prev) => [...prev, newAddress]);
+    if (!token) {
+      setError("Please log in to save addresses.");
+      return;
     }
 
-    // Reset form
-    setFormData({
-      address: "",
-      state: "",
-      phoneNumber: "",
-      isDefault: false,
-    });
-    setShowForm(false);
-    setEditingId(null);
-    alert("Address saved successfully!");
+    try {
+      setLoading(true);
+      setError("");
+
+      if (editingId) {
+        // Update existing address
+        const response = await axios.put(
+          API.Update_Address(editingId),
+          formData,
+          {
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (response.data.status === "success") {
+          // Reload addresses to get updated data
+          await loadAddresses();
+          alert("Address updated successfully!");
+        } else {
+          setError("Failed to update address.");
+        }
+      } else {
+        // Add new address
+        const response = await axios.post(
+          API.Add_Address,
+          formData,
+          {
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (response.data.status === "success") {
+          // Reload addresses to get updated data
+          await loadAddresses();
+          alert("Address added successfully!");
+        } else {
+          setError("Failed to add address.");
+        }
+      }
+
+      // Reset form
+      setFormData({
+        title: "",
+        address: "",
+        state: "",
+        phone_number: "",
+      });
+      setShowForm(false);
+      setEditingId(null);
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || "Failed to save address.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleEdit = (address) => {
     setFormData({
+      title: address.title,
       address: address.address,
       state: address.state,
-      phoneNumber: address.phoneNumber,
-      isDefault: address.isDefault,
+      phone_number: address.phone_number,
     });
     setEditingId(address.id);
     setShowForm(true);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
+    if (!token) {
+      setError("Please log in to delete addresses.");
+      return;
+    }
+
     if (window.confirm("Are you sure you want to delete this address?")) {
-      setAddresses((prev) => prev.filter((addr) => addr.id !== id));
+      try {
+        setLoading(true);
+        setError("");
+        
+        const response = await axios.delete(API.Delete_Address(id), {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.data.status === "success") {
+          // Reload addresses to get updated data
+          await loadAddresses();
+          alert("Address deleted successfully!");
+        } else {
+          setError("Failed to delete address.");
+        }
+      } catch (err) {
+        setError(err?.response?.data?.message || err?.message || "Failed to delete address.");
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
   const handleAddNew = () => {
     setFormData({
+      title: "",
       address: "",
       state: "",
-      phoneNumber: "",
-      isDefault: false,
+      phone_number: "",
     });
     setEditingId(null);
     setShowForm(true);
@@ -96,10 +189,10 @@ const UpdateAddress = () => {
     setShowForm(false);
     setEditingId(null);
     setFormData({
+      title: "",
       address: "",
       state: "",
-      phoneNumber: "",
-      isDefault: false,
+      phone_number: "",
     });
   };
 
@@ -124,6 +217,22 @@ const UpdateAddress = () => {
         {/* Form Content */}
         <div className="flex-1">
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Title Field */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Address Title
+              </label>
+              <input
+                type="text"
+                name="title"
+                value={formData.title}
+                onChange={handleInputChange}
+                placeholder="e.g., Home, Office, Work"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent outline-none"
+                required
+              />
+            </div>
+
             {/* Address Field */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -163,42 +272,32 @@ const UpdateAddress = () => {
               </label>
               <input
                 type="tel"
-                name="phoneNumber"
-                value={formData.phoneNumber}
+                name="phone_number"
+                value={formData.phone_number}
                 onChange={handleInputChange}
                 placeholder="Enter your phone number"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent outline-none"
                 required
               />
             </div>
-
-            {/* Default Address Checkbox */}
-            <div className="flex items-center space-x-3">
-              <input
-                type="checkbox"
-                id="isDefault"
-                name="isDefault"
-                checked={formData.isDefault}
-                onChange={handleInputChange}
-                className="w-5 h-5 text-[#273e8e] bg-gray-100 border-gray-300 rounded focus:ring-[#273e8e] focus:ring-2"
-              />
-              <label
-                htmlFor="isDefault"
-                className="text-sm font-medium text-gray-700"
-              >
-                Mark as default address
-              </label>
-            </div>
           </form>
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
 
         {/* Save Button - Fixed at bottom */}
         <div className="mt-auto pt-6">
           <button
             onClick={handleSubmit}
-            className="w-full bg-[#273e8e] text-white py-4 rounded-lg font-medium hover:bg-[#1f2f6e] transition-colors"
+            disabled={loading}
+            className="w-full bg-[#273e8e] text-white py-4 rounded-lg font-medium hover:bg-[#1f2f6e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Save address
+            {loading ? "Saving..." : "Save address"}
           </button>
         </div>
       </div>
@@ -207,6 +306,20 @@ const UpdateAddress = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Error Message */}
+      {error && (
+        <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* Loading State */}
+      {loading && (
+        <div className="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded-lg text-sm">
+          Loading addresses...
+        </div>
+      )}
+
       {/* Address Cards */}
       <div className="flex-1">
         {addresses.length > 0 ? (
@@ -219,6 +332,14 @@ const UpdateAddress = () => {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium text-gray-500">
+                      Title
+                    </span>
+                    <span className="text-sm text-gray-900 font-medium">
+                      {address.title}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-gray-500">
                       Address
                     </span>
                     <span className="text-sm text-gray-900">
@@ -229,14 +350,16 @@ const UpdateAddress = () => {
                     <span className="text-sm font-medium text-gray-500">
                       State
                     </span>
-                    <span className="text-sm text-gray-900">{address.state}</span>
+                    <span className="text-sm text-gray-900">
+                      {address.state}
+                    </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium text-gray-500">
                       Phone number
                     </span>
                     <span className="text-sm text-gray-900">
-                      {address.phoneNumber}
+                      {address.phone_number}
                     </span>
                   </div>
                 </div>

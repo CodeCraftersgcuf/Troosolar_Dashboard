@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { ChevronDown, X } from "lucide-react";
@@ -6,12 +5,12 @@ import API, { BASE_URL } from "../config/api.config";
 
 // Fallbacks in case api.config.js doesn't have these helpers yet
 const CATEGORY_BRANDS = (categoryId) =>
-  (API && API.CATEGORY_BRANDS)
+  API && API.CATEGORY_BRANDS
     ? API.CATEGORY_BRANDS(categoryId)
     : `${BASE_URL}/categories/${categoryId}/brands`;
 
 const BRAND_PRODUCTS = (brandIdsCsv) =>
-  (API && API.BRAND_PRODUCTS)
+  API && API.BRAND_PRODUCTS
     ? API.BRAND_PRODUCTS(brandIdsCsv)
     : `${BASE_URL}/brands/${brandIdsCsv}/products`;
 
@@ -42,7 +41,8 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
   const [selectedIds, setSelectedIds] = useState([]);
 
   const desktopWrapRef = useRef(null);
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
   // Load brands for this category
   useEffect(() => {
@@ -58,7 +58,11 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
           },
         });
 
-        const arr = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+        const arr = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+          ? data
+          : [];
         if (mounted) {
           setBrands(
             arr.map((b) => ({
@@ -72,7 +76,9 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
       } catch (e) {
         if (mounted) {
           setBrands([]);
-          setErr(e?.response?.data?.message || e?.message || "Failed to load brands.");
+          setErr(
+            e?.response?.data?.message || e?.message || "Failed to load brands."
+          );
         }
       } finally {
         mounted && setLoading(false);
@@ -158,8 +164,12 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
       </div>
 
       {/* Loading / Error */}
-      {loading && <div className="px-4 py-3 text-sm text-gray-500">Loading…</div>}
-      {err && !loading && <div className="px-4 py-3 text-sm text-red-600">{err}</div>}
+      {loading && (
+        <div className="px-4 py-3 text-sm text-gray-500">Loading…</div>
+      )}
+      {err && !loading && (
+        <div className="px-4 py-3 text-sm text-red-600">{err}</div>
+      )}
 
       {/* Options */}
       {!loading && !err && (
@@ -257,10 +267,14 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
             aria-expanded={isOpen}
             aria-haspopup="listbox"
           >
-            <span className="text-lg text-gray-500">{selectedLabel}</span>
+            <span className="text-sm lg:text-lg text-gray-500">
+              {selectedLabel}
+            </span>
             <ChevronDown
               size={26}
-              className={`transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+              className={`transition-transform duration-200 ${
+                isOpen ? "rotate-180" : ""
+              }`}
             />
           </button>
 
@@ -281,7 +295,7 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
 
       {/* Mobile */}
       <div className="relative block sm:hidden w-full max-w-[160px]">
-        <div className="px-5 py-5 bg-white border border-r-0 border-black/50 sm:rounded-2xl rounded-tl-2xl rounded-bl-2xl shadow-sm">
+        <div className="sm:px-5 px-2 sm:py-5 py-3 bg-white border border-r-0 border-black/50 sm:rounded-2xl rounded-tl-2xl rounded-bl-2xl shadow-sm">
           <button
             type="button"
             onClick={() => setIsOpen((s) => !s)}
@@ -289,10 +303,14 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
             aria-expanded={isOpen}
             aria-haspopup="listbox"
           >
-            <span className="text-lg text-gray-500">{selectedLabel}</span>
+            <span className="text-sm lg:text-lg text-gray-500">
+              {selectedLabel}
+            </span>
             <ChevronDown
               size={26}
-              className={`transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+              className={`transition-transform duration-200 ${
+                isOpen ? "rotate-180" : ""
+              }`}
             />
           </button>
 

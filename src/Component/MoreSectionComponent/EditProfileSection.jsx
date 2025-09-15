@@ -152,7 +152,7 @@ const EditProfile = () => {
           <p className="text-xs text-gray-500 mt-2">Tap to change photo</p>
         </div>
       )}
-      ;{/* Tab Content */}
+      {/* Tab Content */}
       {activeTab === "profile" ? (
         <form className="space-y-4" onSubmit={onSubmit}>
           <Input

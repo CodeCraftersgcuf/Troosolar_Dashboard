@@ -134,7 +134,7 @@ const SideBar = () => {
       </div>
 
       {/* Mobile Bottom Navigation */}
-      {!["/uploadDocument", "/uploadDetails", "/loanDetails", "/cart", "/linkAccount", "/loanCalculate"].includes(
+      {!["/uploadDocument", "/uploadDetails", "/loanDetails", "/cart", "/linkAccount", "/loanCalculate", "/solar-bundles", "/solar-builder"].includes(
         location.pathname
       ) && (
         <div

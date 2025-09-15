@@ -21,58 +21,62 @@ import SolarBuilder from "./Pages/SolarBuilder";
 import TermsPage from "./Component/MobileSectionResponsive/TermsPage";
 import InverterLoadCalculator from "./Component/InverterLoadCalculator";
 import PrivateRoute from "./Component/PrivateRoute";
+import NotFound from "./Pages/NotFound";
 
 const App = () => {
-  return (
-    <div>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <PrivateRoute>
-              <Home />
-            </PrivateRoute>
-          }
-        />
-        <Route path="/register" element={<Auth />} />
-        <Route path="/login" element={<Auth />} />
-        <Route
-          path="/inverterLoadCalculator"
-          element={<InverterLoadCalculator />}
-        />
-        <Route path="/cart" element={<Cart />} />
-        <Route path="/product/:id" element={<SpecificProduct />} />
-        <Route
-          path="/homePage"
-          element={
-            <PrivateRoute>
-              <HomePage />
-            </PrivateRoute>
-          }
-        />
-        <Route path="/verification" element={<Otp />} />
-        <Route path="/creditscore" element={<CreditScore />} />
-        <Route path="/loan" element={<LoanPage />} />
+return (
+  <div>
+    <Routes>
+      <Route
+        path="/"
+        element={
+          <PrivateRoute>
+            <Home />
+          </PrivateRoute>
+        }
+      />
+      <Route path="/register" element={<Auth />} />
+      <Route path="/login" element={<Auth />} />
+      <Route
+        path="/inverterLoadCalculator"
+        element={<InverterLoadCalculator />}
+      />
+      <Route path="/cart" element={<Cart />} />
+      <Route path="/product/:id" element={<SpecificProduct />} />
+      <Route
+        path="/homePage"
+        element={
+          <PrivateRoute>
+            <HomePage />
+          </PrivateRoute>
+        }
+      />
+      <Route path="/verification" element={<Otp />} />
+      <Route path="/creditscore" element={<CreditScore />} />
+      <Route path="/loan" element={<LoanPage />} />
 
-        <Route path="/tools" element={<Tools />} />
+      <Route path="/tools" element={<Tools />} />
 
-        <Route path="/loanDetails/loanDashboard" element={<LoanDashBoard />} />
-        <Route path="/uploadDocument" element={<UploadDocement />} />
-        <Route path="/uploadDetails" element={<UploadDocement />} />
-        <Route path="/loanDetails" element={<UploadDocement />} />
+      <Route path="/loanDetails/loanDashboard" element={<LoanDashBoard />} />
+      <Route path="/uploadDocument" element={<UploadDocement />} />
+      <Route path="/uploadDetails" element={<UploadDocement />} />
+      <Route path="/loanDetails" element={<UploadDocement />} />
 
-        <Route path="/loanCalculate" element={<LoanCalculation />} />
-        <Route path="/linkAccount" element={<LinkAccount />} />
-        <Route path="/homePage/product/:id" element={<ProductDetails />} />
-        <Route path="/productBundle/details/:id" element={<ProductBundle />} />
+      <Route path="/loanCalculate" element={<LoanCalculation />} />
+      <Route path="/linkAccount" element={<LinkAccount />} />
+      <Route path="/homePage/product/:id" element={<ProductDetails />} />
+      <Route path="/productBundle/details/:id" element={<ProductBundle />} />
 
-        <Route path="/solar-bundles" element={<SolarBundle />} />
-        <Route path="/solar-builder" element={<SolarBuilder />} />
-        <Route path="/more" element={<More />} />
-        <Route path="/terms" element={<TermsPage />} />
-      </Routes>
-    </div>
-  );
+      <Route path="/solar-bundles" element={<SolarBundle />} />
+      <Route path="/solar-builder" element={<SolarBuilder />} />
+      <Route path="/more" element={<More />} />
+      <Route path="/terms" element={<TermsPage />} />
+      
+      {/* 404 Route - Must be last */}
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  </div>
+);
 };
 
 export default App;
