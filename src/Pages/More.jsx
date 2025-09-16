@@ -34,7 +34,7 @@ import {
   Headphones,
   Settings,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 const CANDIDATE_KEYS = [
   "user",
@@ -128,12 +128,21 @@ const More = () => {
   const [showNewPasswordPopup, setShowNewPasswordPopup] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   // user details
   const [user, setUser] = useState(null);
   useEffect(() => {
     setUser(readStoredUser());
   }, []);
+
+  // Handle URL parameter for section navigation
+  useEffect(() => {
+    const section = searchParams.get("section");
+    if (section === "notifications") {
+      setActiveSection("maintenance");
+    }
+  }, [searchParams]);
   const displayName = useMemo(() => getDisplayName(user) || "User", [user]);
   const email = useMemo(() => getEmail(user) || "—", [user]);
   const avatar = useMemo(() => getAvatarUrl(user), [user]);

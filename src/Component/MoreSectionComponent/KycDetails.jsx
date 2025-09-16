@@ -115,16 +115,16 @@ const KycDetails = () => {
       <h1 className="text-center text-lg">KYC Details </h1>
       <div className=" py-4">
         <header className="mb-6">
-          <h1 className="text-2xl  text-gray-800 mb-2">
+          {/* <h1 className="text-2xl  text-gray-800 mb-2">
             Upload Documents (1 <span className="text-gray-400/80">/3</span>)
-          </h1>
+          </h1> */}
           <p className="text-gray-600 text-sm">
             Before you continue your application process, kindly upload required
             documents.
           </p>
-          <div className="w-full bg-gray-400/40 my-7 rounded-full h-3">
+          {/* <div className="w-full bg-gray-400/40 my-7 rounded-full h-3">
             <div className="w-1/3 bg-[#273e8e] h-full rounded-full"></div>
-          </div>
+          </div> */}
         </header>
 
         <form onSubmit={handleSubmit} className="space-y-6">

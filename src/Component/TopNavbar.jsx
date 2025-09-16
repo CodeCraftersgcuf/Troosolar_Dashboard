@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Bell, ShoppingCart } from "lucide-react"; // NEW
-import { useLocation, Link } from "react-router-dom"; // NEW
+import { useLocation, Link, useNavigate } from "react-router-dom"; // NEW
 
 const CANDIDATE_KEYS = [
   "user",
@@ -56,6 +56,7 @@ const getInitials = (name) => {
 
 const TopNavbar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -75,19 +76,21 @@ const TopNavbar = () => {
     location.pathname.includes("/homePage") ||
     location.pathname.includes("/product/"); // covers /product/:id
 
-  // Pages where the Cart icon should be visible (EDIT THIS LIST as needed)
-  const CART_PATH_PATTERNS = [
-    "/product/", // product detail pages
-    "/homePage", // home page
-    "/solar-bundles", // bundles
-    "/tools", // add/remove as you wish
-    // "/shop", "/catalog", "/category/"
-  ];
+  const showCart = useMemo(() => {
+    // Pages where the Cart icon should be visible (EDIT THIS LIST as needed)
+    const CART_PATH_PATTERNS = [
+      "/product/", // product detail pages
+      "/homePage", // home page
+      "/solar-bundles", // bundles
+      "/tools", // add/remove as you wish
+      // "/shop", "/catalog", "/category/"
+    ];
+    return CART_PATH_PATTERNS.some((p) => location.pathname.includes(p));
+  }, [location.pathname]);
 
-  const showCart = useMemo(
-    () => CART_PATH_PATTERNS.some((p) => location.pathname.includes(p)),
-    [location.pathname]
-  );
+  const handleNotificationsClick = () => {
+    navigate("/more?section=notifications");
+  };
 
   return (
     <div>
@@ -98,6 +101,7 @@ const TopNavbar = () => {
       >
         {/* Notifications */}
         <button
+          onClick={handleNotificationsClick}
           className={`rounded-lg flex justify-center items-center shadow-md h-10 w-10 transition-colors ${
             changeBg ? "bg-[#ffffff]" : "bg-white"
           }`}
