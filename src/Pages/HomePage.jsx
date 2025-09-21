@@ -36,29 +36,32 @@ const mapApiProductToCard = (p) => {
   const heading = p?.title || p?.name || `Product #${p?.id ?? ""}`;
 
   const priceRaw = Number(p?.price ?? 0);
-  const discountRaw =
-    p?.discount_price != null ? Number(p.discount_price) : null;
+  const discountRaw = p?.discount_price != null ? Number(p.discount_price) : null;
 
   let isDiscountActive = false;
+  let effectivePrice = priceRaw;
+  let oldPrice = "";
+  let discount = "";
+
+  // Check if there's a meaningful discount
   if (discountRaw != null && discountRaw < priceRaw) {
+    // Check if discount is still valid based on end date
     if (p?.discount_end_date) {
       isDiscountActive = new Date(p.discount_end_date) > new Date();
     } else {
       isDiscountActive = true;
     }
+    
+    if (isDiscountActive) {
+      effectivePrice = discountRaw;
+      oldPrice = formatNGN(priceRaw);
+      const pct = Math.round(((priceRaw - discountRaw) / priceRaw) * 100);
+      discount = `-${pct}%`;
+    }
   }
 
-  const effectiveRaw = isDiscountActive ? discountRaw : priceRaw;
-  const oldRaw = isDiscountActive ? priceRaw : null;
-
-  const price = formatNGN(effectiveRaw);
-  const oldPrice = oldRaw != null ? formatNGN(oldRaw) : "";
-
-  let discount = "";
-  if (isDiscountActive && priceRaw > 0) {
-    const pct = Math.round(((priceRaw - discountRaw) / priceRaw) * 100);
-    discount = `-${pct}%`;
-  }
+  // Pass the effective price as formatted string, and oldPrice/discount for display
+  const price = formatNGN(effectivePrice);
 
   // average rating from reviews[]
   const reviews = Array.isArray(p?.reviews) ? p.reviews : [];
@@ -71,9 +74,9 @@ const mapApiProductToCard = (p) => {
     id: p?.id,
     image,
     heading,
-    price,
-    oldPrice,
-    discount,
+    price, // This is the effective (discounted) price, formatted
+    oldPrice, // This is the original price, formatted (only if there's a discount)
+    discount, // This is the discount percentage (only if there's a discount)
     ratingAvg,
     ratingCount: reviews.length,
     categoryId: p?.category_id,

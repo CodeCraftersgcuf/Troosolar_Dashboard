@@ -89,7 +89,7 @@ const EditProfile = () => {
       if (avatarFile) fd.append("profile_picture", avatarFile);
 
       const token = localStorage.getItem("access_token");
-      await axios.post(API.UPDATE_USER, fd, {
+      const response = await axios.post(API.UPDATE_USER, fd, {
         headers: {
           Accept: "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -98,6 +98,15 @@ const EditProfile = () => {
 
       // keep local user in sync (server returns only submitted fields)
       const current = getLocalUser() || {};
+      
+      // If avatar was uploaded, use the returned path from server response
+      let updatedProfilePicture = current.profile_picture;
+      if (avatarFile && response.data?.data?.profile_picture) {
+        updatedProfilePicture = response.data.data.profile_picture;
+        // Update the preview to show the server URL
+        setAvatarPreview(toAbsolute(updatedProfilePicture));
+      }
+      
       const merged = {
         ...current,
         first_name: form.first_name || current.first_name,
@@ -106,7 +115,7 @@ const EditProfile = () => {
         email: form.email || current.email,
         phone: form.phone || current.phone,
         phone_number: form.phone || current.phone_number,
-        profile_picture: avatarFile ? avatarPreview : current.profile_picture,
+        profile_picture: updatedProfilePicture,
       };
       localStorage.setItem("user", JSON.stringify(merged));
 

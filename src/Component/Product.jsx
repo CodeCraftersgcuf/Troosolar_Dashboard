@@ -66,7 +66,8 @@ const Product = ({
   isHotDeal,
   id,
 }) => {
-  const { addToCart, fetchCartCount, showCartNotificationModal } = useContext(ContextApi);
+  const { addToCart, fetchCartCount, showCartNotificationModal } =
+    useContext(ContextApi);
   const [adding, setAdding] = useState(false);
   const [err, setErr] = useState("");
 
@@ -117,6 +118,16 @@ const Product = ({
     }
   };
 
+  // Debug logging to see what values we're receiving
+  console.log("Product Debug:", {
+    id,
+    heading,
+    price,
+    oldPrice,
+    discount,
+    showingDiscount: !!(oldPrice || discount)
+  });
+
   return (
     <div className="relative w-full sm:h-full sm:w-full bg-white border border-gray-200 rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col">
       {/* Vertical Hot Deal ribbon (mobile-friendly) */}
@@ -155,18 +166,19 @@ const Product = ({
             {price ?? "—"}
           </p>
 
+          {/* Show old price and discount when they exist */}
           {(oldPrice || discount) && (
             <div className="flex items-center gap-2 mt-1">
-              {oldPrice ? (
+              {oldPrice && (
                 <p className="text-gray-400 line-through text-[11px] max-sm:text-[8px]">
                   {oldPrice}
                 </p>
-              ) : null}
-              {discount ? (
+              )}
+              {discount && (
                 <span className="px-2 py-[2px] rounded-full text-[#FFA500] max-sm:text-[8px] text-[10px] bg-[#FFA500]/20 max-sm:px-1 max-sm:py-[1px]">
                   {discount}
                 </span>
-              ) : null}
+              )}
             </div>
           )}
         </div>
