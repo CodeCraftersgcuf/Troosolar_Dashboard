@@ -92,10 +92,12 @@
 // export default CartItems;
 import React, { useContext } from "react";
 import { Minus, Plus, Trash } from "lucide-react";
+import { Link } from "react-router-dom";
 import { ContextApi } from "../Context/AppContext";
 
 const CartItems = ({
   itemId,
+  productId, // NEW: actual product ID for navigation
   name,
   price,
   image,
@@ -127,7 +129,16 @@ const CartItems = ({
 
         {/* Details */}
         <div className="flex-1 min-w-0">
-          <h2 className="text-[13px] sm:text-[15px] leading-5 line-clamp-2">{name}</h2>
+          {productId ? (
+            <Link
+              to={`/homePage/product/${productId}`}
+              className="text-[13px] sm:text-[15px] leading-5 line-clamp-2 hover:text-[#273e8e] hover:underline transition-colors"
+            >
+              {name}
+            </Link>
+          ) : (
+            <h2 className="text-[13px] sm:text-[15px] leading-5 line-clamp-2">{name}</h2>
+          )}
 
           {/* MOBILE: price, then trash + qty under it */}
           {showControls && (

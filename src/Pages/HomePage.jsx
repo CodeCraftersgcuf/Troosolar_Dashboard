@@ -205,9 +205,9 @@ const HomePage = () => {
 
           <div className="bg-[#273e8e] px-6 py-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-6">
-              <div>
+              <div className="min-w-[180px]">
                 <h1 className="text-[16px] text-white">Solar Store</h1>
-                <p className="text-white font-light text-[13px]">
+                <p className="text-white font-light text-[12px]">
                   Welcome to your dashboard
                 </p>
               </div>

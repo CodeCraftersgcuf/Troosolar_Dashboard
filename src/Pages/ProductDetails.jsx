@@ -174,7 +174,7 @@ const mapApiProductToDetails = (p) => {
 export default function ProductDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { addToCart, removeToCart, cartItems, registerProducts } = useContext(ContextApi);
+  const { addToCart, removeToCart, cartItems, registerProducts, fetchCartCount, showCartNotificationModal } = useContext(ContextApi);
 
   const [installUnit, setInstallUnit] = useState(0);
   const [product, setProduct] = useState(null);
@@ -304,6 +304,9 @@ export default function ProductDetails() {
       const serverQty = Number(line?.quantity || 1);
       rememberInstallPrice(product.id, installUnit);
       syncLocalQty(product.id, serverQty);
+      fetchCartCount(); // Refresh global cart count
+      // Show cart notification
+      showCartNotificationModal(product.name || product.title, product.featured_image || product.image);
       toast.success("Added to cart");
     } catch (e) {
       if (e?.response?.status === 409) {
@@ -318,6 +321,9 @@ export default function ProductDetails() {
           );
           rememberInstallPrice(product.id, installUnit);
           syncLocalQty(product.id, newQty);
+          fetchCartCount(); // Refresh global cart count
+          // Show cart notification
+          showCartNotificationModal(product.name || product.title, product.featured_image || product.image);
           toast.success("Cart updated");
         } catch (e2) {
           toast.error(e2?.response?.data?.message || e2.message || "Failed to update cart");
@@ -345,11 +351,13 @@ export default function ProductDetails() {
           { headers: { Accept: "application/json", Authorization: `Bearer ${tok}` } }
         );
         syncLocalQty(product.id, newQty);
+        fetchCartCount(); // Refresh global cart count
       } else {
         await axios.delete(API.CART_ITEM(line.id), {
           headers: { Accept: "application/json", Authorization: `Bearer ${tok}` },
         });
         syncLocalQty(product.id, 0);
+        fetchCartCount(); // Refresh global cart count
       }
     } catch (e) {
       toast.error(e?.response?.data?.message || e.message || "Failed to update cart");

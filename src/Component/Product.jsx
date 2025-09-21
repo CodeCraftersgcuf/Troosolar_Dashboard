@@ -66,7 +66,7 @@ const Product = ({
   isHotDeal,
   id,
 }) => {
-  const { addToCart } = useContext(ContextApi);
+  const { addToCart, fetchCartCount, showCartNotificationModal } = useContext(ContextApi);
   const [adding, setAdding] = useState(false);
   const [err, setErr] = useState("");
 
@@ -105,6 +105,10 @@ const Product = ({
           },
         }
       );
+      // Refresh global cart count after successful addition
+      fetchCartCount();
+      // Show cart notification
+      showCartNotificationModal(heading, safeImage);
     } catch (e) {
       const msg = e?.response?.data?.message || e?.message || "Failed to add.";
       setErr(msg);

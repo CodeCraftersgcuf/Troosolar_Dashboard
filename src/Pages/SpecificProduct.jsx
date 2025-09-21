@@ -224,11 +224,11 @@ const SpecificProduct = () => {
 
           <div className="bg-[#273e8e] border-l-2 border-gray-500 px-6 py-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-              <div>
-                <h1 className="text-2xl font-semibold text-white">
+              <div className="min-w-[140px]">
+                <h1 className="text-md font-semibold text-white">
                   {catLoading ? "Loading…" : displayCategoryName}
                 </h1>
-                <p className="text-white">
+                <p className="text-white text-[12px]">
                   {catError
                     ? "Couldn't load category."
                     : `Shop for ${displayCategoryName}`}

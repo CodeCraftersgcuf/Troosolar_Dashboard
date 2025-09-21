@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useContext } from "react";
 import axios from "axios";
 import { LucideSquarePlus, ChevronLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
@@ -8,6 +8,7 @@ import { RxCrossCircled } from "react-icons/rx";
 import { GiCheckMark } from "react-icons/gi";
 import TopNavbar from "../Component/TopNavbar";
 import API, { BASE_URL } from "../config/api.config";
+import { ContextApi } from "../Context/AppContext";
 
 // helpers
 const toNumber = (v) =>
@@ -108,6 +109,7 @@ const SectionHeading = ({ children }) => (
 
 const Cart = () => {
   const navigate = useNavigate();
+  const { fetchCartCount } = useContext(ContextApi);
 
   // desktop flags
   const [checkout, setCheckOut] = useState(true);
@@ -405,6 +407,8 @@ const Cart = () => {
             : l
         )
       );
+      // Refresh global cart count
+      fetchCartCount();
     } catch {
       await loadCart();
     }
@@ -432,6 +436,8 @@ const Cart = () => {
         },
       });
       setLines((prev) => prev.filter((l) => l.cartLineId !== cartLineId));
+      // Refresh global cart count
+      fetchCartCount();
     } catch {
       await loadCart();
     }
@@ -605,6 +611,7 @@ const Cart = () => {
               amount
             );
             if (confirmed) {
+              fetchCartCount(); // Refresh cart count after successful payment
               goToResult("success");
             } else {
               goToResult("failed");
@@ -801,6 +808,7 @@ const Cart = () => {
                   <CartItems
                     key={line.cartLineId}
                     itemId={line.cartLineId}
+                    productId={line.refId}
                     name={line.name}
                     price={line.unitPrice}
                     image={line.image}
@@ -1219,16 +1227,20 @@ const Cart = () => {
                     )}
                   </p>
 
-                  <div className="w-full text-start text-sm max-w-[350px]">
-                    {firstLine ? (
-                      <CartItems
-                        itemId={firstLine.cartLineId}
-                        name={firstLine.name}
-                        price={firstLine.unitPrice}
-                        image={firstLine.image}
-                        showControls={false}
-                        quantity={firstLine.qty}
-                      />
+                  <div className="w-full text-start text-sm max-w-[350px] space-y-3">
+                    {lines.length > 0 ? (
+                      lines.map((line) => (
+                        <CartItems
+                          key={line.cartLineId}
+                          itemId={line.cartLineId}
+                          productId={line.refId}
+                          name={line.name}
+                          price={line.unitPrice}
+                          image={line.image}
+                          showControls={false}
+                          quantity={line.qty}
+                        />
+                      ))
                     ) : (
                       <div className="bg-white border rounded-xl p-4 text-gray-500">
                         No items
@@ -1309,6 +1321,7 @@ const Cart = () => {
                     <CartItems
                       key={line.cartLineId}
                       itemId={line.cartLineId}
+                      productId={line.refId}
                       name={line.name}
                       price={line.unitPrice}
                       image={line.image}
@@ -1590,10 +1603,15 @@ const Cart = () => {
                     <img
                       src={firstLine.image}
                       alt=""
-                      className="h-16 w-16 object-contain rounded-lg bg-gray-100"
+                      className="h-14 w-14 object-contain rounded bg-gray-100"
                     />
                     <div className="flex-1">
-                      <p className="text-sm">{firstLine.name}</p>
+                      <Link
+                        to={`/homePage/product/${firstLine.refId}`}
+                        className="text-sm line-clamp-2 hover:text-[#273e8e] hover:underline transition-colors"
+                      >
+                        {firstLine.name}
+                      </Link>
                       <p className="text-[#273e8e] font-semibold">
                         N{firstLine.unitPrice.toLocaleString()}
                       </p>
@@ -1727,24 +1745,37 @@ const Cart = () => {
                       </p>
                     )}
 
-                    {/* Product row */}
-                    {firstLine && (
-                      <div className="w-full border rounded-xl p-3 flex items-center gap-3">
-                        <img
-                          src={firstLine.image}
-                          alt=""
-                          className="h-14 w-14 object-contain rounded bg-gray-100"
-                        />
-                        <div className="flex-1">
-                          <p className="text-sm line-clamp-2">
-                            {firstLine.name}
-                          </p>
-                          <p className="text-[#273e8e] font-semibold">
-                            N{firstLine.unitPrice.toLocaleString()}
-                          </p>
+                    {/* Product rows - Show all ordered items */}
+                    <div className="w-full space-y-3">
+                      {lines.length > 0 ? (
+                        lines.map((line) => (
+                          <div key={line.cartLineId} className="border rounded-xl p-3 flex items-center gap-3">
+                            <Link
+                              to={`/homePage/product/${line.refId}`}
+                              className="flex items-center gap-3 w-full"
+                            >
+                              <img
+                                src={line.image}
+                                alt={line.name}
+                                className="h-14 w-14 object-contain rounded bg-gray-100"
+                              />
+                              <div className="flex-1">
+                                <p className="text-sm line-clamp-2 hover:text-[#273e8e] hover:underline transition-colors">
+                                  {line.name}
+                                </p>
+                                <p className="text-[#273e8e] font-semibold">
+                                  N{line.unitPrice.toLocaleString()} x {line.qty}
+                                </p>
+                              </div>
+                            </Link>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="border rounded-xl p-3 text-gray-500 text-center">
+                          No items found
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
 
                     <button className="w-full border rounded-full py-3 text-sm bg-[#F5F7FF]">
                       Leave a review

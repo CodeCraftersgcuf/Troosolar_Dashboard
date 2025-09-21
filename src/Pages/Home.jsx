@@ -158,7 +158,8 @@ const getFirstName = (u) => {
 
 const getAvatarUrl = (u) => {
   if (!u) return "";
-  return (
+  
+  const avatarUrl = (
     u.avatar ||
     u.profile_picture ||
     u.photo ||
@@ -166,6 +167,13 @@ const getAvatarUrl = (u) => {
     u.avatar_url ||
     ""
   );
+  
+  // Check if the URL contains "null" (indicating no actual image)
+  if (avatarUrl && avatarUrl.includes("null")) {
+    return "";
+  }
+  
+  return avatarUrl;
 };
 
 const getInitials = (name) => {

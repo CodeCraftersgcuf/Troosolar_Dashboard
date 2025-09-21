@@ -173,7 +173,9 @@ const SolarBuilder = () => {
           <div className="bg-[#F5F7FF] p-3 sm:p-5 flex flex-col lg:flex-row justify-between items-start gap-5">
             {/* left section */}
             <div className="w-full lg:w-1/2">
-              <h1 className="text-xl sm:text-2xl font-medium">Product Builder</h1>
+              <h1 className="text-xl sm:text-2xl font-medium">
+                Product Builder
+              </h1>
               <Link to="/" className="text-blue-500 underline text-sm">
                 Go Back
               </Link>
@@ -208,6 +210,7 @@ const SolarBuilder = () => {
                     <CartItems
                       key={line.cartLineId}
                       itemId={line.cartLineId}
+                      productId={line.refId}
                       name={line.name}
                       price={line.unitPrice}
                       image={line.image}
@@ -227,13 +230,19 @@ const SolarBuilder = () => {
 
               <div className="bg-white rounded-2xl border-[2px] mt-2 border-gray-400/40 w-full p-4">
                 <div className="flex justify-between items-center p-2">
-                  <span className="text-gray-500/70 text-sm sm:text-base">Items</span>
-                  <span className="text-gray-800 text-base sm:text-lg">{itemCount}</span>
+                  <span className="text-gray-500/70 text-sm sm:text-base">
+                    Items
+                  </span>
+                  <span className="text-gray-800 text-base sm:text-lg">
+                    {itemCount}
+                  </span>
                 </div>
                 <hr className="text-gray-400/40 p-2" />
 
                 <div className="flex justify-between items-center p-2">
-                  <span className="text-gray-500/70 text-sm sm:text-base">Total</span>
+                  <span className="text-gray-500/70 text-sm sm:text-base">
+                    Total
+                  </span>
                   <span className="text-[#273e8e] font-semibold text-base sm:text-lg">
                     N{amountTotal.toLocaleString()}
                   </span>

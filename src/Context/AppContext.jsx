@@ -1,14 +1,62 @@
-import { createContext, useState, useCallback } from "react";
+import { createContext, useState, useCallback, useEffect } from "react";
 import { products } from "../assets/data";
 import { solarBundleData } from "../assets/data";
 import toast from "react-hot-toast";
+import axios from "axios";
+import API from "../config/api.config";
 
 export const ContextApi = createContext();
 
 export const ContextProvider = (props) => {
   const [filteredResults, setFilteredResults] = useState([]);
   const [cartItems, setCartItems] = useState({});
+  const [cartCount, setCartCount] = useState(0);
   const [productCatalog, setProductCatalog] = useState({}); // ✅ global catalog (id -> minimal product)
+  
+  // Cart notification state
+  const [showCartNotification, setShowCartNotification] = useState(false);
+  const [notificationProduct, setNotificationProduct] = useState(null);
+
+  // Fetch cart count from API
+  const fetchCartCount = useCallback(async () => {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      setCartCount(0);
+      return;
+    }
+
+    try {
+      const { data } = await axios.get(API.CART, {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      
+      const cartItems = Array.isArray(data?.data) ? data.data : [];
+      const totalCount = cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+      setCartCount(totalCount);
+    } catch (error) {
+      console.error("Failed to fetch cart count:", error);
+      setCartCount(0);
+    }
+  }, []);
+
+  // Load cart count on mount and when token changes
+  useEffect(() => {
+    fetchCartCount();
+  }, [fetchCartCount]);
+
+  // Cart notification functions
+  const showCartNotificationModal = (productName, productImage) => {
+    setNotificationProduct({ name: productName, image: productImage });
+    setShowCartNotification(true);
+  };
+
+  const hideCartNotificationModal = () => {
+    setShowCartNotification(false);
+    setNotificationProduct(null);
+  };
 
   const addToCart = (itemId) => {
     const id = String(itemId);
@@ -117,8 +165,16 @@ export const ContextProvider = (props) => {
     solarBundleData,
 
     cartItems,
+    cartCount,
     addToCart,
     removeToCart,
+    fetchCartCount,
+
+    // Cart notification
+    showCartNotification,
+    notificationProduct,
+    showCartNotificationModal,
+    hideCartNotificationModal,
 
     filteredResults,
     setFilteredResults,

@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useContext } from "react";
 import { Bell, ShoppingCart } from "lucide-react"; // NEW
 import { useLocation, Link, useNavigate } from "react-router-dom"; // NEW
+import { ContextApi } from "../Context/AppContext";
 
 const CANDIDATE_KEYS = [
   "user",
@@ -36,14 +37,21 @@ const getDisplayName = (u) => {
 
 const getAvatarUrl = (u) => {
   if (!u) return "";
-  return (
+
+  const avatarUrl =
     u.avatar ||
     u.profile_picture ||
     u.photo ||
     u.image_url ||
     u.avatar_url ||
-    ""
-  );
+    "";
+
+  // Check if the URL contains "null" (indicating no actual image)
+  if (avatarUrl && (avatarUrl.includes("null") || avatarUrl === "blob:http")) {
+    return "";
+  }
+
+  return avatarUrl;
 };
 
 const getInitials = (name) => {
@@ -58,6 +66,7 @@ const TopNavbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const { cartCount } = useContext(ContextApi);
 
   useEffect(() => {
     setUser(readStoredUser());
@@ -115,13 +124,18 @@ const TopNavbar = () => {
         {showCart && (
           <Link
             to="/cart"
-            className={`rounded-lg flex justify-center items-center shadow-md h-10 w-10 transition-colors ${
+            className={`relative rounded-lg flex justify-center items-center shadow-md h-10 w-10 transition-colors ${
               changeBg ? "bg-[#ffffff]" : "bg-white"
             }`}
             aria-label="Cart"
             title="Cart"
           >
             <ShoppingCart size={24} />
+            {cartCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
+                {cartCount > 99 ? "99+" : cartCount}
+              </span>
+            )}
           </Link>
         )}
 

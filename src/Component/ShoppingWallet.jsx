@@ -1,5 +1,5 @@
 import { Eye, EyeOff, X } from "lucide-react";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { assets } from "../assets/data";
 import axios from "axios";
 import API from "../config/api.config";
@@ -9,6 +9,44 @@ const ShoppingWallet = () => {
   const [showDialog, setShowDialog] = useState(false);
   const [amountInput, setAmountInput] = useState("1000");
   const [loading, setLoading] = useState(false);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [balance, setBalance] = useState(0);
+  const [lastTransaction, setLastTransaction] = useState(0);
+
+  // Fetch wallet data on component mount
+  useEffect(() => {
+    const fetchWallet = async () => {
+      setWalletLoading(true);
+      try {
+        const token = localStorage.getItem("access_token");
+        if (!token) {
+          return;
+        }
+
+        const { data } = await axios.get(API.LOAN_WALLET, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        // Extract shop_balance from the API response
+        const walletData = data?.data;
+        if (walletData && typeof walletData === "object") {
+          setBalance(Number(walletData["shop_balance"] || 0));
+          // For now, set last transaction same as balance (you can modify this based on your needs)
+          setLastTransaction(Number(walletData["shop_balance"] || 0));
+        }
+      } catch (error) {
+        console.error("Failed to fetch wallet data:", error);
+        // Keep default values (0) on error
+      } finally {
+        setWalletLoading(false);
+      }
+    };
+
+    fetchWallet();
+  }, []);
 
   // Load Flutterwave script once when needed
   const ensureFlutterwave = () =>
@@ -132,14 +170,14 @@ const ShoppingWallet = () => {
 
       {/* Balance */}
       <h1 className="text-xl font-bold -tracking-tighter mb-2">
-        {open ? "******" : "N1,000,000"}
+        {walletLoading ? "Loading..." : (open ? "******" : `N${Number(balance || 0).toLocaleString()}`)}
       </h1>
 
       <div className="flex  min-h-[70px] flex-row justify-between items-start sm:items-center bg-[#1d3073] py-3 px-3 rounded-md gap-3">
         {/* Loan Info */}
         <div className="flex flex-col gap-2 text-sm leading-tight">
           <p className="text-white/80 text-xs">Last Transaction</p>
-          <p className="text-white">{open ? "******" : "N1,000,000"}</p>
+          <p className="text-white">{walletLoading ? "Loading..." : (open ? "******" : `N${Number(lastTransaction || 0).toLocaleString()}`)}</p>
         </div>
         <div className="h-10 w-10 bg-white flex justify-center  items-center rounded-full">
           <img src={assets.greenTick} className="h-4 w-4 rotate-12" alt="" />

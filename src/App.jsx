@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useContext } from "react";
 import { Route, Routes } from "react-router-dom";
 import Auth from "./Pages/Auth";
 import Otp from "./Pages/Otp";
@@ -22,11 +22,19 @@ import TermsPage from "./Component/MobileSectionResponsive/TermsPage";
 import InverterLoadCalculator from "./Component/InverterLoadCalculator";
 import PrivateRoute from "./Component/PrivateRoute";
 import NotFound from "./Pages/NotFound";
+import CartNotification from "./Component/CartNotification";
+import { ContextApi } from "./Context/AppContext";
 
 const App = () => {
-return (
-  <div>
-    <Routes>
+  const { 
+    showCartNotification, 
+    notificationProduct, 
+    hideCartNotificationModal 
+  } = useContext(ContextApi);
+
+  return (
+    <div>
+      <Routes>
       <Route
         path="/"
         element={
@@ -75,6 +83,14 @@ return (
       {/* 404 Route - Must be last */}
       <Route path="*" element={<NotFound />} />
     </Routes>
+    
+    {/* Global Cart Notification Modal */}
+    <CartNotification
+      isOpen={showCartNotification}
+      onClose={hideCartNotificationModal}
+      productName={notificationProduct?.name}
+      productImage={notificationProduct?.image}
+    />
   </div>
 );
 };
