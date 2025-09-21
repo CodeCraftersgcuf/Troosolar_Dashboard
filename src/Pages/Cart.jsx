@@ -551,7 +551,7 @@ const Cart = () => {
   // ─────────────────────────────
   // Payment Confirmation
   // ─────────────────────────────
-  const confirmPayment = async (orderId, txId, amount) => {
+  const confirmPayment = async (orderId, txId, amount, type = "direct") => {
     if (!token) return false;
     try {
       const { data } = await axios.post(
@@ -559,7 +559,8 @@ const Cart = () => {
         {
           amount: String(amount),
           orderId: Number(orderId),
-          txId: String(txId),
+          txId: String(txId || ""), // can be blank; server generates for wallet
+          type, // <<< IMPORTANT: pass wallet/direct
         },
         {
           headers: {
@@ -621,9 +622,16 @@ const Cart = () => {
               fetchCartCount(); // Refresh cart count after successful payment
               goToResult("success");
             } else {
+              // Payment confirmation failed - show error and don't clear cart
+              console.error("Payment confirmation failed for order:", orderId);
+              alert(
+                "Payment verification failed. Please contact support if amount was debited."
+              );
               goToResult("failed");
             }
           } else {
+            // Flutterwave payment itself failed
+            console.error("Flutterwave payment failed:", response);
             goToResult("failed");
           }
           setProcessingPayment(false);
@@ -639,6 +647,126 @@ const Cart = () => {
       console.error("Payment init failed:", e);
       setProcessingPayment(false);
       alert("Failed to initialize payment. Please try again.");
+    }
+  };
+
+  // ─────────────────────────────
+  // Buy By Loan (create order -> confirm with wallet)
+  // ─────────────────────────────
+  // ─────────────────────────────
+  // Buy By Loan (precheck wallet -> create order -> confirm wallet payment)
+  // ─────────────────────────────
+  const handleBuyByLoan = async () => {
+    if (!token) return alert("Please log in first.");
+    if (!selectedAddressId) {
+      setOpenPicker(true);
+      alert(
+        "Please select or add a delivery address before placing the order."
+      );
+      return;
+    }
+    if (lines.length === 0) return alert("Your cart is empty.");
+
+    const itemsPayload = lines.map((l) => {
+      const typeForOrder =
+        typeByRefId.get(String(l.refId)) || normalizeTypeForOrder(l.type);
+      return {
+        itemable_type: typeForOrder, // "Product" or "Bundles"
+        itemable_id: Number(l.refId),
+        quantity: Number(l.qty) || 1,
+      };
+    });
+
+    // --- 0) PRECHECK WALLET BALANCE (do NOT create order if not enough) ---
+    try {
+      const walletResp = await axios.get(WALLET_URL, {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const wb =
+        walletResp?.data?.data?.loan_balance ??
+        walletResp?.data?.loan_balance ??
+        0;
+      const loanBalance = Number(wb) || 0;
+      const estimatedTotal = Number(grandTotal) || 0;
+
+      if (estimatedTotal > loanBalance) {
+        // mirror your backend error message
+        alert("you don't have that much loan");
+        // optionally reflect failed state in UI
+        setPaymentResult("failed");
+        setMobileStep("result");
+        setCheckOutPayment(true);
+        return;
+      }
+    } catch (e) {
+      console.error("Wallet precheck failed:", e);
+      alert("Unable to verify loan balance. Please try again.");
+      return;
+    }
+
+    setPlacingOrder(true);
+    try {
+      // 1) Create order (only after precheck passes)
+      const { data } = await axios.post(
+        ORDERS_URL,
+        {
+          delivery_address_id: Number(selectedAddressId),
+          // optional: mark intent; backend may ignore but clearer for logs
+          payment_method: "wallet",
+          items: itemsPayload,
+        },
+        {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (data?.status !== "success" || !data?.data) {
+        alert("Order could not be prepared. Please try again.");
+        return;
+      }
+
+      // 2) Confirm payment via wallet
+      const createdOrder = data.data;
+      const amount = Number(createdOrder.total_price) || grandTotal;
+
+      const ok = await confirmPayment(createdOrder.id, "", amount, "wallet");
+      if (!ok) {
+        // Backend may still reject (e.g., race condition) — show the exact error UX
+        console.error(
+          "Wallet payment confirmation failed for order:",
+          createdOrder.id
+        );
+        alert("you don't have that much loan");
+        setPaymentResult("failed");
+        setMobileStep("result");
+        setCheckOutPayment(true);
+        return;
+      }
+
+      // Success UI
+      setOrderData(createdOrder);
+      setPaymentResult("success");
+      setMobileStep("result");
+      setCheckOutPayment(true);
+
+      // refresh cart count since order is paid
+      fetchCartCount();
+    } catch (e) {
+      const msg =
+        e?.response?.data?.message || e?.message || "Failed to place order.";
+      console.error("Buy by loan error:", e);
+      alert(msg);
+      setPaymentResult("failed");
+      setMobileStep("result");
+      setCheckOutPayment(true);
+    } finally {
+      setPlacingOrder(false);
     }
   };
 
@@ -1189,11 +1317,18 @@ const Cart = () => {
 
                 <div className="grid grid-cols-2 gap-3">
                   <button
-                    onClick={() => setCheckOut(true)}
-                    className="py-3 border border-gray-300 rounded-full text-sm hover:bg-gray-100 transition"
+                    onClick={handleBuyByLoan}
+                    className="py-3 border border-gray-300 rounded-full text-sm hover:bg-gray-100 transition disabled:opacity-60"
+                    disabled={
+                      lines.length === 0 ||
+                      summaryLoading ||
+                      placingOrder ||
+                      processingPayment
+                    }
                   >
-                    Buy By Loan
+                    {placingOrder ? "Processing…" : "Buy By Loan"}
                   </button>
+
                   <button
                     onClick={handlePlaceOrder}
                     className="py-3 bg-[#273e8e] text-white rounded-full text-sm hover:bg-[#1f2f6e] transition disabled:opacity-60"
