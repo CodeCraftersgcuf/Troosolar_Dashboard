@@ -165,6 +165,9 @@ const Cart = () => {
   const [orderData, setOrderData] = useState(null);
   const [processingPayment, setProcessingPayment] = useState(false);
 
+  // Add installation toggle state
+  const [includeInstallation, setIncludeInstallation] = useState(true);
+
   const token =
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
@@ -469,7 +472,11 @@ const Cart = () => {
   const installationToShow =
     installationTotal > 0 ? installationTotal : serverInstallPrice;
   const deliveryToShow = serverDeliveryPrice || 0;
-  const grandTotal = itemsTotalToShow + deliveryToShow + installationToShow;
+  // Only include installation cost if the checkbox is checked
+  const grandTotal =
+    itemsTotalToShow +
+    deliveryToShow +
+    (includeInstallation ? installationToShow : 0);
 
   const firstLine = lines[0];
 
@@ -841,10 +848,7 @@ const Cart = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <button className="py-4 border border-[#273e8e] text-[#273e8e] rounded-full text-sm hover:bg-[#273e8e]/10 transition">
-                    Buy By Loan
-                  </button>
+                <div className="grid grid-cols-1 gap-3">
                   <button
                     onClick={handleCheckoutClick}
                     className="py-4 bg-[#273e8e] text-white rounded-full text-sm hover:bg-[#1f2f6e] transition disabled:opacity-60"
@@ -1106,10 +1110,23 @@ const Cart = () => {
                   </h1>
 
                   <div className="flex items-start gap-3">
-                    <div className="p-1 rounded-full border">
-                      <div className="h-3 w-3 rounded-full bg-[#273e8e]"></div>
+                    <div>
+                      <input
+                        type="checkbox"
+                        checked={includeInstallation}
+                        onChange={(e) =>
+                          setIncludeInstallation(e.target.checked)
+                        }
+                        className="h-3 w-3 rounded accent-[#273e8e] cursor-pointer"
+                      />
                     </div>
-                    <div className="w-full border-[1px] bg-white  border-gray-300 rounded-xl p-4 space-y-3">
+                    <div
+                      className={`w-full border-[1px] rounded-xl p-4 space-y-3 ${
+                        includeInstallation
+                          ? "bg-white border-gray-300"
+                          : "bg-gray-100 border-gray-400"
+                      }`}
+                    >
                       <div className="bg-yellow-50 border-2 border-yellow-400 rounded-lg py-2 px-2">
                         <p className="text-yellow-600">
                           Installation will be carried out by one of our skilled
@@ -1125,7 +1142,13 @@ const Cart = () => {
                       <hr className="border-gray-300" />
                       <div className="flex justify-between text-[#00000080] text-sm">
                         <span>Price</span>
-                        <span className="text-[#273E8E]">
+                        <span
+                          className={`text-[#273E8E] ${
+                            !includeInstallation
+                              ? "line-through opacity-50"
+                              : ""
+                          }`}
+                        >
                           N
                           {(installationTotal > 0
                             ? installationTotal
@@ -1169,7 +1192,7 @@ const Cart = () => {
                     onClick={() => setCheckOut(true)}
                     className="py-3 border border-gray-300 rounded-full text-sm hover:bg-gray-100 transition"
                   >
-                    Back
+                    Buy By Loan
                   </button>
                   <button
                     onClick={handlePlaceOrder}
@@ -1552,6 +1575,17 @@ const Cart = () => {
                 <SectionHeading>Installation</SectionHeading>
 
                 <div className="bg-white border border-gray-400 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center gap-3 mb-3">
+                    <input
+                      type="checkbox"
+                      checked={includeInstallation}
+                      onChange={(e) => setIncludeInstallation(e.target.checked)}
+                      className="h-4 w-4 rounded accent-[#273e8e] cursor-pointer"
+                    />
+                    <span className="text-sm font-medium text-gray-700">
+                      Include installation service
+                    </span>
+                  </div>
                   <div className="rounded-lg border-2 border-yellow-400 bg-yellow-50 p-3 text-[12px] text-yellow-700">
                     Installation will be carried one of our skilled technician
                   </div>
@@ -1563,7 +1597,11 @@ const Cart = () => {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-[#00000080]">Price</span>
-                    <span className="text-[#273e8e]">
+                    <span
+                      className={`text-[#273e8e] ${
+                        !includeInstallation ? "line-through opacity-50" : ""
+                      }`}
+                    >
                       N
                       {(installationTotal > 0
                         ? installationTotal
@@ -1655,6 +1693,17 @@ const Cart = () => {
 
                 <SectionHeading>Installation</SectionHeading>
                 <div className="bg-white border rounded-2xl border-gray-400 p-4 space-y-3">
+                  <div className="flex items-center gap-3 mb-3">
+                    <input
+                      type="checkbox"
+                      checked={includeInstallation}
+                      onChange={(e) => setIncludeInstallation(e.target.checked)}
+                      className="h-4 w-4 rounded accent-[#273e8e] cursor-pointer"
+                    />
+                    <span className="text-xs font-medium text-gray-700">
+                      Include installation service
+                    </span>
+                  </div>
                   <div className="rounded-lg border-2 border-yellow-400 bg-yellow-50 p-3 text-[12px] text-yellow-700">
                     Installation will be carried one of our skilled
                     techniciasssn
@@ -1667,7 +1716,11 @@ const Cart = () => {
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-[#00000080]">Price</span>
-                    <span className="text-[#273e8e]">
+                    <span
+                      className={`text-[#273e8e] ${
+                        !includeInstallation ? "line-through opacity-50" : ""
+                      }`}
+                    >
                       N
                       {(installationTotal > 0
                         ? installationTotal
@@ -1749,7 +1802,10 @@ const Cart = () => {
                     <div className="w-full space-y-3">
                       {lines.length > 0 ? (
                         lines.map((line) => (
-                          <div key={line.cartLineId} className="border rounded-xl p-3 flex items-center gap-3">
+                          <div
+                            key={line.cartLineId}
+                            className="border rounded-xl p-3 flex items-center gap-3"
+                          >
                             <Link
                               to={`/homePage/product/${line.refId}`}
                               className="flex items-center gap-3 w-full"
@@ -1764,7 +1820,8 @@ const Cart = () => {
                                   {line.name}
                                 </p>
                                 <p className="text-[#273e8e] font-semibold">
-                                  N{line.unitPrice.toLocaleString()} x {line.qty}
+                                  N{line.unitPrice.toLocaleString()} x{" "}
+                                  {line.qty}
                                 </p>
                               </div>
                             </Link>
