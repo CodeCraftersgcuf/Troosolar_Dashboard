@@ -1,13 +1,19 @@
 import React, { useContext, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
-import toast from "react-hot-toast";
 import { assets } from "../assets/data";
 import SideBar from "../Component/SideBar";
 import TopNavbar from "../Component/TopNavbar";
 import LoanPopUp from "../Component/LoanPopUp";
 import { BsExclamationTriangle } from "react-icons/bs";
-import { Minus, Plus, Star, ChevronLeft, ChevronRight, ShoppingCart } from "lucide-react";
+import {
+  Minus,
+  Plus,
+  Star,
+  ChevronLeft,
+  ChevronRight,
+  ShoppingCart,
+} from "lucide-react";
 import { ContextApi } from "../Context/AppContext";
 import API from "../config/api.config";
 
@@ -55,7 +61,9 @@ const Stars = ({ value = 0, size = 20 }) => {
           <Star
             key={i}
             size={size}
-            className={filled ? "fill-[#273e8e] text-[#273e8e]" : "text-gray-300"}
+            className={
+              filled ? "fill-[#273e8e] text-[#273e8e]" : "text-gray-300"
+            }
           />
         );
       })}
@@ -85,7 +93,8 @@ const ImageSwiper = ({ images, productTitle, baseUrl }) => {
   }
 
   const nextImage = () => setCurrentIndex((p) => (p + 1) % images.length);
-  const prevImage = () => setCurrentIndex((p) => (p - 1 + images.length) % images.length);
+  const prevImage = () =>
+    setCurrentIndex((p) => (p - 1 + images.length) % images.length);
   const currentImage = images[currentIndex];
 
   return (
@@ -137,11 +146,14 @@ const mapApiProductToDetails = (p) => {
     "/placeholder-product.png";
 
   const priceRaw = toNum(p?.price, 0);
-  const discountRaw = p?.discount_price != null ? toNum(p.discount_price, null) : null;
+  const discountRaw =
+    p?.discount_price != null ? toNum(p.discount_price, null) : null;
 
   let isDiscountActive = false;
   if (discountRaw != null && discountRaw < priceRaw) {
-    isDiscountActive = p?.discount_end_date ? new Date(p.discount_end_date) > new Date() : true;
+    isDiscountActive = p?.discount_end_date
+      ? new Date(p.discount_end_date) > new Date()
+      : true;
   }
 
   const effectiveRaw = isDiscountActive ? discountRaw : priceRaw;
@@ -162,8 +174,12 @@ const mapApiProductToDetails = (p) => {
         ? `-${Math.round(((priceRaw - discountRaw) / priceRaw) * 100)}%`
         : "",
     categoryId: p?.category_id,
-    details: safeArray(p?.details).map((d) => d?.detail).filter(Boolean),
-    gallery: safeArray(p?.images).map((i) => i?.image).filter(Boolean),
+    details: safeArray(p?.details)
+      .map((d) => d?.detail)
+      .filter(Boolean),
+    gallery: safeArray(p?.images)
+      .map((i) => i?.image)
+      .filter(Boolean),
     stockText: `${current}/${total}`,
     stockPct,
     topDeal: !!p?.top_deal,
@@ -174,7 +190,14 @@ const mapApiProductToDetails = (p) => {
 export default function ProductDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { addToCart, removeToCart, cartItems, registerProducts, fetchCartCount, showCartNotificationModal } = useContext(ContextApi);
+  const {
+    addToCart,
+    removeToCart,
+    cartItems,
+    registerProducts,
+    fetchCartCount,
+    showCartNotificationModal,
+  } = useContext(ContextApi);
 
   const [installUnit, setInstallUnit] = useState(0);
   const [product, setProduct] = useState(null);
@@ -183,6 +206,7 @@ export default function ProductDetails() {
   const [err, setErr] = useState("");
   const [showReview, setShowReview] = useState(true);
   const [balance] = useState(false);
+  const [addingToCart, setAddingToCart] = useState(false); // NEW: Loading state for add to cart
 
   // categories (for name)
   const [categories, setCategories] = useState([]);
@@ -191,7 +215,10 @@ export default function ProductDetails() {
       try {
         const t = localStorage.getItem("access_token");
         const { data } = await axios.get(API.CATEGORIES, {
-          headers: { Accept: "application/json", ...(t ? { Authorization: `Bearer ${t}` } : {}) },
+          headers: {
+            Accept: "application/json",
+            ...(t ? { Authorization: `Bearer ${t}` } : {}),
+          },
         });
         setCategories(Array.isArray(data?.data) ? data.data : []);
       } catch {}
@@ -199,7 +226,8 @@ export default function ProductDetails() {
   }, []);
   const catMap = useMemo(() => {
     const m = {};
-    for (const c of categories) if (c?.id) m[c.id] = c?.name || c?.title || c?.category_name || "";
+    for (const c of categories)
+      if (c?.id) m[c.id] = c?.name || c?.title || c?.category_name || "";
     return m;
   }, [categories]);
 
@@ -212,7 +240,10 @@ export default function ProductDetails() {
       try {
         const t = localStorage.getItem("access_token");
         const { data } = await axios.get(API.PRODUCT_BY_ID(id), {
-          headers: { Accept: "application/json", ...(t ? { Authorization: `Bearer ${t}` } : {}) },
+          headers: {
+            Accept: "application/json",
+            ...(t ? { Authorization: `Bearer ${t}` } : {}),
+          },
         });
         const raw = data?.data ?? data;
         registerProducts?.(raw);
@@ -235,7 +266,12 @@ export default function ProductDetails() {
           setReviews(serverReviews);
         }
       } catch (e) {
-        if (on) setErr(e?.response?.data?.message || e?.message || "Failed to load product.");
+        if (on)
+          setErr(
+            e?.response?.data?.message ||
+              e?.message ||
+              "Failed to load product."
+          );
       } finally {
         on && setLoading(false);
       }
@@ -290,47 +326,77 @@ export default function ProductDetails() {
   };
 
   const handleAddToCart = async () => {
-    if (!product?.id) return;
+    if (!product?.id || addingToCart) return;
     const tok = localStorage.getItem("access_token");
     if (!tok) return toast.error("Please log in to add items to cart.");
 
+    setAddingToCart(true);
     try {
       await axios.post(
         API.CART,
-        { itemable_type: "product", itemable_id: Number(product.id), quantity: 1 },
-        { headers: { Accept: "application/json", Authorization: `Bearer ${tok}` } }
+        {
+          itemable_type: "product",
+          itemable_id: Number(product.id),
+          quantity: 1,
+        },
+        {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${tok}`,
+          },
+        }
       );
       const line = await fetchCartAndFindLine(tok, product.id);
       const serverQty = Number(line?.quantity || 1);
       rememberInstallPrice(product.id, installUnit);
       syncLocalQty(product.id, serverQty);
       fetchCartCount(); // Refresh global cart count
-      // Show cart notification
-      showCartNotificationModal(product.name || product.title, product.featured_image || product.image);
-      toast.success("Added to cart");
+      // Show cart notification with correct product data
+      showCartNotificationModal(
+        product.heading,
+        product.image
+      );
+      // Removed toast.success - only show loading indicator
     } catch (e) {
       if (e?.response?.status === 409) {
         try {
           const line = await fetchCartAndFindLine(tok, product.id);
-          if (!line) return toast.error("Item in cart, but couldn't locate to update.");
+          if (!line) {
+            toast.error("Item in cart, but couldn't locate to update.");
+            return;
+          }
           const newQty = Number(line.quantity || 0) + 1;
           await axios.put(
             API.CART_ITEM(line.id),
             { quantity: newQty },
-            { headers: { Accept: "application/json", Authorization: `Bearer ${tok}` } }
+            {
+              headers: {
+                Accept: "application/json",
+                Authorization: `Bearer ${tok}`,
+              },
+            }
           );
           rememberInstallPrice(product.id, installUnit);
           syncLocalQty(product.id, newQty);
           fetchCartCount(); // Refresh global cart count
-          // Show cart notification
-          showCartNotificationModal(product.name || product.title, product.featured_image || product.image);
-          toast.success("Cart updated");
+          // Show cart notification with correct product data
+          showCartNotificationModal(
+            product.heading,
+            product.image
+          );
+          // Removed toast.success - only show loading indicator
         } catch (e2) {
-          toast.error(e2?.response?.data?.message || e2.message || "Failed to update cart");
+          toast.error(
+            e2?.response?.data?.message || e2.message || "Failed to update cart"
+          );
         }
       } else {
-        toast.error(e?.response?.data?.message || e.message || "Failed to add to cart");
+        toast.error(
+          e?.response?.data?.message || e.message || "Failed to add to cart"
+        );
       }
+    } finally {
+      setAddingToCart(false);
     }
   };
 
@@ -348,19 +414,29 @@ export default function ProductDetails() {
         await axios.put(
           API.CART_ITEM(line.id),
           { quantity: newQty },
-          { headers: { Accept: "application/json", Authorization: `Bearer ${tok}` } }
+          {
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${tok}`,
+            },
+          }
         );
         syncLocalQty(product.id, newQty);
         fetchCartCount(); // Refresh global cart count
       } else {
         await axios.delete(API.CART_ITEM(line.id), {
-          headers: { Accept: "application/json", Authorization: `Bearer ${tok}` },
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${tok}`,
+          },
         });
         syncLocalQty(product.id, 0);
         fetchCartCount(); // Refresh global cart count
       }
     } catch (e) {
-      toast.error(e?.response?.data?.message || e.message || "Failed to update cart");
+      toast.error(
+        e?.response?.data?.message || e.message || "Failed to update cart"
+      );
     }
   };
 
@@ -379,7 +455,10 @@ export default function ProductDetails() {
       <div className="min-h-screen bg-[#F5F7FF] flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 mb-4">{err || "Product not found."}</p>
-          <button onClick={() => navigate(-1)} className="px-4 py-2 rounded-full bg-[#273e8e] text-white">
+          <button
+            onClick={() => navigate(-1)}
+            className="px-4 py-2 rounded-full bg-[#273e8e] text-white"
+          >
             Go Back
           </button>
         </div>
@@ -416,8 +495,13 @@ export default function ProductDetails() {
 
           <div className="p-4 sm:p-6">
             <div className="flex items-center justify-between mb-4">
-              <h1 className="text-xl sm:text-2xl font-medium">{categoryName}</h1>
-              <Link to="/homePage" className="text-blue-600 hover:underline text-sm sm:text-base">
+              <h1 className="text-xl sm:text-2xl font-medium">
+                {categoryName}
+              </h1>
+              <Link
+                to="/homePage"
+                className="text-blue-600 hover:underline text-sm sm:text-base"
+              >
                 Go Back
               </Link>
             </div>
@@ -426,7 +510,11 @@ export default function ProductDetails() {
               {/* Left */}
               <div className="w-full lg:w-1/2">
                 <ImageSwiper
-                  images={product.gallery?.length ? product.gallery.map((img) => ({ image: img })) : [{ image: product.image }]}
+                  images={
+                    product.gallery?.length
+                      ? product.gallery.map((img) => ({ image: img }))
+                      : [{ image: product.image }]
+                  }
                   productTitle={product.heading}
                   baseUrl="https://troosolar.hmstech.org"
                 />
@@ -435,19 +523,30 @@ export default function ProductDetails() {
                   <div className="grid grid-cols-2 gap-4">
                     <button
                       onClick={handleAddToCart}
-                      className="py-4 border text-[#273E8E] border-[#273e8e] rounded-full hover:bg-[#273e8e]/10 transition"
+                      disabled={addingToCart}
+                      className="py-4 border text-[#273E8E] border-[#273e8e] rounded-full hover:bg-[#273e8e]/10 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
-                      Add To Cart
+                      {addingToCart && (
+                        <div className="w-4 h-4 border-2 border-[#273e8e] border-t-transparent rounded-full animate-spin"></div>
+                      )}
+                      {addingToCart ? "Adding..." : "Add To Cart"}
                     </button>
-                    <Link to="/cart" className="py-4 bg-[#273e8e] text-white rounded-full text-center hover:bg-[#273e8e]/90 transition">
+                    <Link
+                      to="/cart"
+                      className="py-4 bg-[#273e8e] text-white rounded-full text-center hover:bg-[#273e8e]/90 transition"
+                    >
                       Buy Now
                     </Link>
                   </div>
                   <div className="p-4 mt-6 bg-[#FFFF0033] rounded-lg">
                     <p className="text-[#E8A91D] text-[14px] pb-5">
-                      Don't have the finances to proceed? Take a loan and repay at your convenience
+                      Don't have the finances to proceed? Take a loan and repay
+                      at your convenience
                     </p>
-                    <Link to="/loan" className="bg-[#E8A91D] py-2 px-6 text-white rounded-full text-[13px] hover:bg-[#E8A91D]/90 transition">
+                    <Link
+                      to="/loan"
+                      className="bg-[#E8A91D] py-2 px-6 text-white rounded-full text-[13px] hover:bg-[#E8A91D]/90 transition"
+                    >
                       Apply
                     </Link>
                   </div>
@@ -457,29 +556,46 @@ export default function ProductDetails() {
               {/* Right */}
               <div className="w-full lg:w-1/2">
                 <div className="border-2 border-[#273e8e] bg-white p-4 rounded-xl">
-                  <h1 className="text-lg sm:text-xl font-medium">{product.heading}</h1>
+                  <h1 className="text-lg sm:text-xl font-medium">
+                    {product.heading}
+                  </h1>
 
                   <div className="mt-3">
-                    <h2 className="text-xl sm:text-2xl text-[#273e8e] font-bold">{product.price}</h2>
+                    <h2 className="text-xl sm:text-2xl text-[#273e8e] font-bold">
+                      {product.price}
+                    </h2>
 
                     <div className="flex items-center gap-2 mt-1">
-                      {product.oldPrice && <p className="text-gray-400 line-through text-sm">{product.oldPrice}</p>}
+                      {product.oldPrice && (
+                        <p className="text-gray-400 line-through text-sm">
+                          {product.oldPrice}
+                        </p>
+                      )}
                       {product.discount && (
-                        <span className="px-2 py-1 rounded-full text-orange-500 text-xs bg-orange-100">{product.discount}</span>
+                        <span className="px-2 py-1 rounded-full text-orange-500 text-xs bg-orange-100">
+                          {product.discount}
+                        </span>
                       )}
                     </div>
 
                     <div className="flex justify-between items-center mt-3">
                       <div className="flex items-center">
                         <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div className="h-full bg-green-500" style={{ width: `${product.stockPct}%` }} />
+                          <div
+                            className="h-full bg-green-500"
+                            style={{ width: `${product.stockPct}%` }}
+                          />
                         </div>
-                        <p className="text-xs text-gray-500 ml-2">{product.stockText}</p>
+                        <p className="text-xs text-gray-500 ml-2">
+                          {product.stockText}
+                        </p>
                       </div>
 
                       <div className="flex items-center gap-2">
                         <Stars value={average} size={18} />
-                        <span className="text-xs text-gray-500">{totalReviews ? `${totalReviews}` : ""}</span>
+                        <span className="text-xs text-gray-500">
+                          {totalReviews ? `${totalReviews}` : ""}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -491,7 +607,9 @@ export default function ProductDetails() {
                       key={tab}
                       onClick={() => setShowReview(i === 0)}
                       className={`flex-1 w-[66] h-[55] rounded-[100px] text-sm ${
-                        (showReview && i === 0) || (!showReview && i === 1) ? "bg-[#273e8e] text-white" : "text-gray-500"
+                        (showReview && i === 0) || (!showReview && i === 1)
+                          ? "bg-[#273e8e] text-white"
+                          : "text-gray-500"
                       }`}
                     >
                       {tab}
@@ -499,18 +617,29 @@ export default function ProductDetails() {
                   ))}
                 </div>
 
-                <h2 className="text-md font-medium mt-4 text-gray-800">{showReview ? "Product Details" : "Reviews"}</h2>
+                <h2 className="text-md font-medium mt-4 text-gray-800">
+                  {showReview ? "Product Details" : "Reviews"}
+                </h2>
 
                 <div className="mt-4">
                   {showReview ? (
                     <div className="border border-[#ccc] bg-white p-4 rounded-xl space-y-3">
-                      {(product.details?.length ? product.details : Array(6).fill("Premium quality")).map((txt, i, arr) => (
+                      {(product.details?.length
+                        ? product.details
+                        : Array(6).fill("Premium quality")
+                      ).map((txt, i, arr) => (
                         <React.Fragment key={i}>
                           <div className="flex items-center gap-3">
-                            <img src={assets.light} className="h-5 w-5" alt="Feature" />
+                            <img
+                              src={assets.light}
+                              className="h-5 w-5"
+                              alt="Feature"
+                            />
                             <p className="text-sm sm:text-base">{txt}</p>
                           </div>
-                          {i < arr.length - 1 && <hr className="border-gray-200" />}
+                          {i < arr.length - 1 && (
+                            <hr className="border-gray-200" />
+                          )}
                         </React.Fragment>
                       ))}
                     </div>
@@ -519,7 +648,11 @@ export default function ProductDetails() {
                       <div className="rounded-2xl border border-gray-300 bg-white p-4">
                         <Stars value={average} size={28} />
                         <div className="flex justify-between items-center mt-2 text-sm text-gray-800">
-                          <span>{Number.isFinite(average) ? average.toFixed(1) : "0.0"}</span>
+                          <span>
+                            {Number.isFinite(average)
+                              ? average.toFixed(1)
+                              : "0.0"}
+                          </span>
                           <span>{totalReviews} Reviews</span>
                         </div>
                       </div>
@@ -527,45 +660,69 @@ export default function ProductDetails() {
                       <div className="rounded-2xl border border-gray-300 bg-white">
                         {reviews.length ? (
                           reviews.map((r, idx) => (
-                            <div key={r.id || `${r.user_id}-${r.created_at}-${idx}`} className="p-4">
+                            <div
+                              key={
+                                r.id || `${r.user_id}-${r.created_at}-${idx}`
+                              }
+                              className="p-4"
+                            >
                               <div className="flex justify-between items-center">
                                 <div className="flex items-center gap-3">
                                   <div className="h-12 w-12 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-sm font-medium">
                                     {initials(r.name)}
                                   </div>
                                   <div>
-                                    <p className="font-medium text-gray-900">{r.name || "User"}</p>
+                                    <p className="font-medium text-gray-900">
+                                      {r.name || "User"}
+                                    </p>
                                     <div className="mt-0.5">
-                                      <Stars value={toNum(r.rating, 0)} size={16} />
+                                      <Stars
+                                        value={toNum(r.rating, 0)}
+                                        size={16}
+                                      />
                                     </div>
                                   </div>
                                 </div>
-                                <span className="text-xs text-gray-500">{fmtDate(r.created_at)}</span>
+                                <span className="text-xs text-gray-500">
+                                  {fmtDate(r.created_at)}
+                                </span>
                               </div>
-                              <p className="mt-3 text-sm sm:text-base text-gray-800">{r.review}</p>
-                              {idx < reviews.length - 1 && <div className="h-px bg-gray-200 mt-4 mx-2" />}
+                              <p className="mt-3 text-sm sm:text-base text-gray-800">
+                                {r.review}
+                              </p>
+                              {idx < reviews.length - 1 && (
+                                <div className="h-px bg-gray-200 mt-4 mx-2" />
+                              )}
                             </div>
                           ))
                         ) : (
-                          <div className="p-6 text-sm text-gray-500">No reviews yet.</div>
+                          <div className="p-6 text-sm text-gray-500">
+                            No reviews yet.
+                          </div>
                         )}
                       </div>
                     </div>
                   )}
                 </div>
 
-                <div className="h-[70px] p-4 border bg-white border-[#ccc] mt-4 rounded-2xl flex justify-between items-center">
+                {/* <div className="h-[70px] p-4 border bg-white border-[#ccc] mt-4 rounded-2xl flex justify-between items-center">
                   Quantity
                   <div className="flex gap-4 items-center">
-                    <button onClick={handleDecrease} className="h-10 flex justify-center items-center w-10 bg-[#273e8e] rounded-md text-white">
+                    <button
+                      onClick={handleDecrease}
+                      className="h-10 flex justify-center items-center w-10 bg-[#273e8e] rounded-md text-white"
+                    >
                       <Minus size={20} color="white" />
                     </button>
                     <div className="px-7">{qtyInCart}</div>
-                    <button onClick={handleAddToCart} className="h-10 flex justify-center items-center w-10 bg-[#273e8e] rounded-md text-white">
+                    <button
+                      onClick={handleAddToCart}
+                      className="h-10 flex justify-center items-center w-10 bg-[#273e8e] rounded-md text-white"
+                    >
                       <Plus size={20} color="white" />
                     </button>
                   </div>
-                </div>
+                </div> */}
               </div>
               {/* /Right */}
             </div>
@@ -598,7 +755,9 @@ export default function ProductDetails() {
             >
               <ChevronLeft color="black" />
             </button>
-            <p className="absolute top-4 left-1/2 -translate-x-1/2 text-black text-sm mt-[10px]">{categoryName}</p>
+            <p className="absolute top-4 left-1/2 -translate-x-1/2 text-black text-sm mt-[10px]">
+              {categoryName}
+            </p>
             <Link
               to="/cart"
               className="absolute top-4 right-4 h-9 w-9 rounded-lg bg-[#fff] border border-white/10 flex items-center justify-center"
@@ -611,7 +770,11 @@ export default function ProductDetails() {
           {/* Image */}
           <div className="-mt-3 px-4 ">
             <ImageSwiper
-              images={product.gallery?.length ? product.gallery.map((img) => ({ image: img })) : [{ image: product.image }]}
+              images={
+                product.gallery?.length
+                  ? product.gallery.map((img) => ({ image: img }))
+                  : [{ image: product.image }]
+              }
               productTitle={product.heading}
               baseUrl="https://troosolar.hmstech.org"
             />
@@ -624,9 +787,15 @@ export default function ProductDetails() {
 
               <div className="mt-2 flex items-start justify-between">
                 <div>
-                  <p className="text-[#273e8e] font-bold text-xl">{product.price}</p>
+                  <p className="text-[#273e8e] font-bold text-xl">
+                    {product.price}
+                  </p>
                   <div className="flex items-center gap-2 mt-1">
-                    {product.oldPrice && <p className="text-gray-400 line-through text-xs">{product.oldPrice}</p>}
+                    {product.oldPrice && (
+                      <p className="text-gray-400 line-through text-xs">
+                        {product.oldPrice}
+                      </p>
+                    )}
                     {product.discount && (
                       <span className="px-2 py-0.5 rounded-full text-orange-500 text-[10px] bg-orange-100">
                         {product.discount}
@@ -636,7 +805,11 @@ export default function ProductDetails() {
                 </div>
                 <div className="mt-1 flex items-center gap-2">
                   <Stars value={average} size={16} />
-                  {totalReviews ? <span className="text-xs text-gray-500">({totalReviews})</span> : null}
+                  {totalReviews ? (
+                    <span className="text-xs text-gray-500">
+                      ({totalReviews})
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
@@ -655,7 +828,9 @@ export default function ProductDetails() {
                   key={tab}
                   onClick={() => setShowReview(i === 0)}
                   className={`flex-1 py-2 rounded-full text-sm ${
-                    (showReview && i === 0) || (!showReview && i === 1) ? "bg-[#273e8e] text-white" : "text-gray-500"
+                    (showReview && i === 0) || (!showReview && i === 1)
+                      ? "bg-[#273e8e] text-white"
+                      : "text-gray-500"
                   }`}
                 >
                   {tab}
@@ -667,10 +842,17 @@ export default function ProductDetails() {
             <div className="mt-4">
               {showReview ? (
                 <div className="border border-[#ccc] bg-white p-4 rounded-xl space-y-3">
-                  {(product.details?.length ? product.details : Array(6).fill("Premium quality")).map((txt, i, arr) => (
+                  {(product.details?.length
+                    ? product.details
+                    : Array(6).fill("Premium quality")
+                  ).map((txt, i, arr) => (
                     <React.Fragment key={i}>
                       <div className="flex items-center gap-3">
-                        <img src={assets.light} className="h-5 w-5" alt="Feature" />
+                        <img
+                          src={assets.light}
+                          className="h-5 w-5"
+                          alt="Feature"
+                        />
                         <p className="text-sm">{txt}</p>
                       </div>
                       {i < arr.length - 1 && <hr className="border-gray-200" />}
@@ -682,34 +864,49 @@ export default function ProductDetails() {
                   <div className="rounded-2xl border border-gray-300 bg-white p-4">
                     <Stars value={average} size={24} />
                     <div className="flex justify-between items-center mt-2 text-sm text-gray-800">
-                      <span>{Number.isFinite(average) ? average.toFixed(1) : "0.0"}</span>
+                      <span>
+                        {Number.isFinite(average) ? average.toFixed(1) : "0.0"}
+                      </span>
                       <span>{totalReviews} Reviews</span>
                     </div>
                   </div>
                   <div className="rounded-2xl border border-gray-300 bg-white">
                     {reviews.length ? (
                       reviews.map((r, idx) => (
-                        <div key={r.id || `${r.user_id}-${r.created_at}-${idx}`} className="p-4">
+                        <div
+                          key={r.id || `${r.user_id}-${r.created_at}-${idx}`}
+                          className="p-4"
+                        >
                           <div className="flex justify-between items-center">
                             <div className="flex items-center gap-3">
                               <div className="h-12 w-12 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-sm font-medium">
                                 {initials(r.name)}
                               </div>
                               <div>
-                                <p className="font-medium text-gray-900">{r.name || "User"}</p>
+                                <p className="font-medium text-gray-900">
+                                  {r.name || "User"}
+                                </p>
                                 <div className="mt-0.5">
                                   <Stars value={toNum(r.rating, 0)} size={16} />
                                 </div>
                               </div>
                             </div>
-                            <span className="text-xs text-gray-500">{fmtDate(r.created_at)}</span>
+                            <span className="text-xs text-gray-500">
+                              {fmtDate(r.created_at)}
+                            </span>
                           </div>
-                          <p className="mt-3 text-sm text-gray-800">{r.review}</p>
-                          {idx < reviews.length - 1 && <div className="h-px bg-gray-200 mt-4 mx-2" />}
+                          <p className="mt-3 text-sm text-gray-800">
+                            {r.review}
+                          </p>
+                          {idx < reviews.length - 1 && (
+                            <div className="h-px bg-gray-200 mt-4 mx-2" />
+                          )}
                         </div>
                       ))
                     ) : (
-                      <div className="p-6 text-sm text-gray-500">No reviews yet.</div>
+                      <div className="p-6 text-sm text-gray-500">
+                        No reviews yet.
+                      </div>
                     )}
                   </div>
                 </div>
@@ -720,12 +917,23 @@ export default function ProductDetails() {
             <div className="h-[70px] p-4 border mt-4 rounded-2xl flex justify-between items-center bg-white">
               Quantity
               <div className="flex gap-4 items-center">
-                <button onClick={handleDecrease} className="h-10 flex justify-center items-center w-10 bg-[#273e8e] rounded-md text-white">
+                <button
+                  onClick={handleDecrease}
+                  className="h-10 flex justify-center items-center w-10 bg-[#273e8e] rounded-md text-white"
+                >
                   <Minus size={20} color="white" />
                 </button>
                 {qtyInCart}
-                <button onClick={handleAddToCart} className="h-10 flex justify-center items-center w-10 bg-[#273e8e] rounded-md text-white">
-                  <Plus size={20} color="white" />
+                <button
+                  onClick={handleAddToCart}
+                  disabled={addingToCart}
+                  className="h-10 flex justify-center items-center w-10 bg-[#273e8e] rounded-md text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {addingToCart ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Plus size={20} color="white" />
+                  )}
                 </button>
               </div>
             </div>
@@ -733,10 +941,20 @@ export default function ProductDetails() {
             {/* Actions */}
             <div className="mt-6 space-y-4 pb-8">
               <div className="grid grid-cols-2 gap-4">
-                <button onClick={handleAddToCart} className="py-3 border border-[#273e8e] rounded-full hover:bg-[#273e8e]/10 transition">
-                  Add To Cart
+                <button
+                  onClick={handleAddToCart}
+                  disabled={addingToCart}
+                  className="py-3 border border-[#273e8e] rounded-full hover:bg-[#273e8e]/10 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {addingToCart && (
+                    <div className="w-4 h-4 border-2 border-[#273e8e] border-t-transparent rounded-full animate-spin"></div>
+                  )}
+                  {addingToCart ? "Adding..." : "Add To Cart"}
                 </button>
-                <Link to="/cart" className="py-3 bg-[#273e8e] text-white rounded-full text-center hover:bg-[#273e8e]/90 transition">
+                <Link
+                  to="/cart"
+                  className="py-3 bg-[#273e8e] text-white rounded-full text-center hover:bg-[#273e8e]/90 transition"
+                >
                   Buy Now
                 </Link>
               </div>

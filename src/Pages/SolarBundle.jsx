@@ -1,12 +1,14 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import { Link, useLocation } from "react-router-dom";
 import SideBar from "../Component/SideBar";
 import TopNavbar from "../Component/TopNavbar";
 import SearchBar from "../Component/SearchBar";
-import { Link } from "react-router-dom";
 import SolarBundleComponent from "../Component/SolarBundleComponent";
 import API, { BASE_URL } from "../config/api.config";
 import { assets } from "../assets/data";
+
+// --- utils -------------------------------------------------------------
 
 // turn BASE_URL (http://localhost:8000/api) into API origin (http://localhost:8000)
 const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, "");
@@ -47,7 +49,7 @@ const mapBundle = (b) => {
 
   const price = formatNGN(showDiscount ? discount : total);
   const oldPrice = showDiscount ? formatNGN(total) : "";
-  const pct = showDiscount ? Math.round((1 - discount / total) * 100) : 0;
+  const pct = showDiscount && total > 0 ? Math.round((1 - discount / total) * 100) : 0;
   const badge = showDiscount ? `-${pct}%` : "";
 
   return {
@@ -63,7 +65,22 @@ const mapBundle = (b) => {
   };
 };
 
+// normalize API response to an array
+const normalizeBundles = (data) => {
+  const root = data?.data ?? data;
+  if (Array.isArray(root)) return root;              // /api/bundles (all)
+  if (Array.isArray(root?.data)) return root.data;   // alt shape
+  if (root && typeof root === "object") return [root]; // /api/bundles?q=... (single)
+  return [];
+};
+
+// ----------------------------------------------------------------------
+
 const SolarBundle = () => {
+  const location = useLocation();
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const qParam = searchParams.get("q")?.trim();
+
   const [bundles, setBundles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -74,21 +91,21 @@ const SolarBundle = () => {
       setErr("");
       try {
         const token = localStorage.getItem("access_token");
-        const { data } = await axios.get(API.BUNDLES, {
+
+        // decide URL based on presence of ?q=
+        const url = qParam && !Number.isNaN(Number(qParam))
+          ? `${API.BUNDLES}?q=${encodeURIComponent(qParam)}`
+          : API.BUNDLES;
+
+        const { data } = await axios.get(url, {
           headers: {
             Accept: "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
         });
 
-        // support common Laravel shapes
-        const root = data?.data ?? data;
-        const arr = Array.isArray(root)
-          ? root
-          : Array.isArray(root?.data)
-          ? root.data
-          : [];
-        setBundles(arr.map(mapBundle));
+        const arr = normalizeBundles(data).map(mapBundle);
+        setBundles(arr);
       } catch (e) {
         setErr(
           e?.response?.data?.message || e?.message || "Failed to load bundles."
@@ -98,11 +115,12 @@ const SolarBundle = () => {
         setLoading(false);
       }
     };
+
     fetchBundles();
-  }, []);
+  }, [qParam]);
 
   return (
-    <div className="flex w-full min-h-screen bg-gray-100">
+    <div className="flex w/full min-h-screen bg-gray-100">
       {/* Sidebar */}
       <div className="w-auto">
         <SideBar />
@@ -115,11 +133,13 @@ const SolarBundle = () => {
         {/* Header and Search */}
         <div className="bg-[#273e8e] border-l-2 border-gray-500 px-6 py-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-            <div>
-              <h1 className="text-2xl font-semibold text-white">
-                Solar Bundles
-              </h1>
-              <p className="text-white">Welcome to the dashboard</p>
+            <div className="min-w-[180px]">
+              <h1 className="text-md font-semibold text-white">Solar Bundles</h1>
+              <p className="text-white text-xs">
+                {qParam
+                  ? `Closest match for total output ≈ ${qParam}`
+                  : "Welcome to the dashboard"}
+              </p>
             </div>
             <SearchBar />
           </div>
@@ -128,7 +148,7 @@ const SolarBundle = () => {
         {/* Grid */}
         <div className="px-6 py-6 w-full overflow-scroll">
           <h1 className="text-2xl font-semibold text-gray-800 mb-4">
-            All Bundles
+            {qParam ? "Recommended Bundle" : "All Bundles"}
           </h1>
 
           {err && <p className="text-red-600 text-sm mb-3">{err}</p>}
@@ -153,7 +173,9 @@ const SolarBundle = () => {
 
             {!loading && !err && bundles.length === 0 && (
               <div className="text-gray-500 bg-white border rounded-xl p-4">
-                No bundles found.
+                {qParam
+                  ? "No matching bundle found for that target."
+                  : "No bundles found."}
               </div>
             )}
           </div>

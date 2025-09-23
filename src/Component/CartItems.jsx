@@ -97,7 +97,7 @@ import { ContextApi } from "../Context/AppContext";
 
 const CartItems = ({
   itemId,
-  productId, // NEW: actual product ID for navigation
+  productId,
   name,
   price,
   image,
@@ -106,6 +106,7 @@ const CartItems = ({
   onIncrement,
   onDecrement,
   onDelete,
+  linkPath, // NEW: custom link path
 }) => {
   const { addToCart, removeToCart, cartItems } = useContext(ContextApi);
 
@@ -117,6 +118,9 @@ const CartItems = ({
   const handleDelete = () => onDelete && onDelete(itemId);
 
   const formatted = typeof price === "number" ? price.toLocaleString() : String(price);
+
+  const defaultPath = `/homePage/product/${productId}`;
+  const finalPath = linkPath || defaultPath;
 
   return (
     <div className="w-full bg-white rounded-2xl border border-gray-300 p-3 ">
@@ -131,7 +135,7 @@ const CartItems = ({
         <div className="flex-1 min-w-0">
           {productId ? (
             <Link
-              to={`/homePage/product/${productId}`}
+              to={finalPath}
               className="text-[13px] sm:text-[15px] leading-5 line-clamp-2 hover:text-[#273e8e] hover:underline transition-colors"
             >
               {name}

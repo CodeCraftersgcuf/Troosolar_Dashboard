@@ -54,7 +54,7 @@ const mapCartItem = (ci) => {
   return {
     cartLineId: ci.id,
     refId: ci.itemable_id,
-    type: ci.itemable_type,
+    type: ci.type || ci.itemable_type, // Use ci.type first, fallback to ci.itemable_type
     name: title,
     image: toAbsolute(image),
     qty,
@@ -952,6 +952,11 @@ const Cart = () => {
                     onIncrement={increment}
                     onDecrement={decrement}
                     onDelete={removeLine}
+                    linkPath={
+                      line.type === "bundle" 
+                        ? `/productBundle/details/${line.refId}`
+                        : `/homePage/product/${line.refId}`
+                    }
                   />
                 ))
               )}
@@ -1397,6 +1402,11 @@ const Cart = () => {
                           image={line.image}
                           showControls={false}
                           quantity={line.qty}
+                          linkPath={
+                            line.type === "bundle" 
+                              ? `/productBundle/details/${line.refId}`
+                              : `/homePage/product/${line.refId}`
+                          }
                         />
                       ))
                     ) : (
@@ -1488,6 +1498,11 @@ const Cart = () => {
                       onIncrement={increment}
                       onDecrement={decrement}
                       onDelete={removeLine}
+                      linkPath={
+                        line.type === "bundle" 
+                          ? `/productBundle/details/${line.refId}`
+                          : `/homePage/product/${line.refId}`
+                      }
                     />
                   ))
                 )}
@@ -1780,7 +1795,11 @@ const Cart = () => {
                     />
                     <div className="flex-1">
                       <Link
-                        to={`/homePage/product/${firstLine.refId}`}
+                        to={
+                          firstLine.type === "bundle" 
+                            ? `/productBundle/details/${firstLine.refId}`
+                            : `/homePage/product/${firstLine.refId}`
+                        }
                         className="text-sm line-clamp-2 hover:text-[#273e8e] hover:underline transition-colors"
                       >
                         {firstLine.name}
@@ -1942,7 +1961,11 @@ const Cart = () => {
                             className="border rounded-xl p-3 flex items-center gap-3"
                           >
                             <Link
-                              to={`/homePage/product/${line.refId}`}
+                              to={
+                                line.type === "bundle" 
+                                  ? `/productBundle/details/${line.refId}`
+                                  : `/homePage/product/${line.refId}`
+                              }
                               className="flex items-center gap-3 w-full"
                             >
                               <img
