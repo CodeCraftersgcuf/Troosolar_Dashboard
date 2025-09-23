@@ -81,7 +81,7 @@ const mapBundleDetail = (b) => {
   ];
 
   const totalLoad = b.total_load ?? "";
-  const inverterRating = b.inverter_rating ?? "";
+  const inverterRating = b.inver_rating ?? "";
   const totalOutput = b.total_output ?? "";
 
   return {
@@ -169,6 +169,8 @@ const ProductBundle = () => {
   if (!productData) return <div className="p-6">Not found.</div>;
 
   console.log("productData Imagesss", productData.heroImage);
+
+  // mapBundleDetail()
 
   return (
     <div className="flex min-h-screen w-full relative bg-[#F5F7FF]">
@@ -343,7 +345,7 @@ const ProductBundle = () => {
                     <div className="bg-[#273E8E] text-white px-4 py-2 flex flex-col justify-between">
                       <div className="text-sm text-left">Inverter Rating</div>
                       <div className="text-3xl bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center h-[60%] mt-1">
-                        {productData.inverterRating || "—"}
+                        {productData.inver_rating || "—"}
                         <span className="text-xs ml-1 mt-2">VA</span>
                       </div>
                     </div>
@@ -375,13 +377,13 @@ const ProductBundle = () => {
             <div className="sm:hidden">
               {/* Top bar — less vertical space */}
               <div className="px-3 pt-2 pb-2 flex items-center justify-between">
-                <button
+                {/* <button
                   onClick={() => navigate(-1)}
                   aria-label="Back"
                   className="h-10 w-10 rounded-full bg-white border border-gray-200 flex items-center justify-center shadow-sm"
                 >
-                  <ChevronLeft size={20} /> {/* ← chevron */}
-                </button>
+                  <ChevronLeft size={20} /> 
+                </button> */}
                 <p className="text-[12px] font-medium text-[#0F172A]">
                   Recommended bundles
                 </p>
