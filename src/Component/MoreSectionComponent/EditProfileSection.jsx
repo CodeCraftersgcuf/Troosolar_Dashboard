@@ -14,6 +14,10 @@ const toAbsolute = (p) => {
   if (!p) return "";
   if (/^https?:\/\//i.test(p)) return p;
   if (p.startsWith("/")) return `${API_ORIGIN}${p}`;
+  // If it's just a filename, treat as /public/users/{filename}
+  if (/^[a-zA-Z0-9_\-.]+\.(jpg|jpeg|png|gif)$/i.test(p)) {
+    return `${API_ORIGIN}/public/users/${p}`;
+  }
   // common: "users/xyz.jpg" saved in public/
   return `${API_ORIGIN}/${p}`;
 };
@@ -24,6 +28,14 @@ const getLocalUser = () => {
   } catch {
     return null;
   }
+};
+
+const getInitials = (name) => {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase() || "").join("") || "U";
 };
 
 const EditProfile = () => {
@@ -106,7 +118,8 @@ const EditProfile = () => {
         // Update the preview to show the server URL
         setAvatarPreview(toAbsolute(updatedProfilePicture));
       }
-      
+
+      // Always store the filename, but display using toAbsolute
       const merged = {
         ...current,
         first_name: form.first_name || current.first_name,
@@ -115,7 +128,7 @@ const EditProfile = () => {
         email: form.email || current.email,
         phone: form.phone || current.phone,
         phone_number: form.phone || current.phone_number,
-        profile_picture: updatedProfilePicture,
+        profile_picture: updatedProfilePicture, // store filename only
       };
       localStorage.setItem("user", JSON.stringify(merged));
 
@@ -131,6 +144,9 @@ const EditProfile = () => {
     }
   };
 
+  // Get initials from name for fallback
+  const initials = getInitials(form.first_name + " " + form.surname);
+
   return (
     <div className="w-full sm:bg-white bg-[#F5F7FF] p-4">
       {/* Tabs */}
@@ -140,14 +156,14 @@ const EditProfile = () => {
         <div className="flex flex-col items-center mb-6">
           <label htmlFor="avatar" className="cursor-pointer">
             <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center text-xl font-bold text-gray-400 overflow-hidden">
-              {avatarPreview ? (
+              {avatarPreview && !avatarPreview.includes("null") ? (
                 <img
                   src={avatarPreview}
                   alt="profile"
                   className="w-full h-full object-cover"
                 />
               ) : (
-                "QA"
+                <span className="text-[30px] text-[#909090] font-medium">{initials}</span>
               )}
             </div>
             <input

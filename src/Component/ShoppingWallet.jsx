@@ -5,7 +5,7 @@ import axios from "axios";
 import API from "../config/api.config";
 
 const ShoppingWallet = () => {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [amountInput, setAmountInput] = useState("1000");
   const [loading, setLoading] = useState(false);

@@ -5,7 +5,7 @@ import axios from "axios";
 import API from "../config/api.config";
 
 const LoanWallet = () => {
-  const [open, setOpen] = useState(true); // true => mask (kept your behavior)
+  const [open, setOpen] = useState(false); // true => mask (kept your behavior)
   const location = useLocation();
   const navigate = useNavigate();
 

@@ -97,7 +97,7 @@ const SideBar = () => {
 
         {/* Menu Items */}
         <nav>
-          {!menuOpen && <h1 className="p-4 text-[16px]">General</h1>}
+          {/* {!menuOpen && <h1 className="p-4 text-[16px]">General</h1>} */}
           <ul className="space-y-2">
             {Sidebar_links.map((x, index) => (
               <li key={index}>

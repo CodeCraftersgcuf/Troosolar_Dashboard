@@ -188,7 +188,9 @@ const More = () => {
   const handleSaveNewPassword = () => {
     setShowNewPasswordPopup(false);
     // Show success message
-    alert("Password reset successfully! You can now login with your new password.");
+    alert(
+      "Password reset successfully! You can now login with your new password."
+    );
   };
 
   const renderActiveSection = () => {
@@ -237,7 +239,7 @@ const More = () => {
 
                 <div className="bg-[#273e8e] shadow-2xl h-[150px] text-white rounded-2xl p-4 mb-6  flex py-7 justify-start items-center gap-3">
                   <div className="w-14 h-14 rounded-full bg-[#e9e9e9] text-[#909090] flex items-center justify-center text-lg font-semibold mb-2 overflow-hidden">
-                    {avatar ? (
+                    {avatar && !avatar.includes("null") ? (
                       <img
                         src={avatar}
                         alt={displayName}

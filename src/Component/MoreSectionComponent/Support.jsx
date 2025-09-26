@@ -3,6 +3,7 @@ import axios from "axios";
 import { PiTicket } from "react-icons/pi";
 import { ChevronLeft } from "lucide-react";
 import NewTicket from "./NewTicket";
+import MessageSection from "./MessageSection";
 import API, { BASE_URL } from "../../config/api.config";
 
 const TABS = ["Pending", "Answered", "Closed"];
@@ -33,6 +34,7 @@ const TICKETS_URL = API.TICKETS || `${BASE_URL}/website/tickets`;
 const Support = () => {
   const [activeTab, setActiveTab] = useState("Pending");
   const [newTicket, setNewTicket] = useState(false);
+  const [showChat, setShowChat] = useState(false); // NEW: chat view toggle
 
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -106,6 +108,11 @@ const Support = () => {
     }
   };
 
+  // When a ticket is selected, open chat view
+  useEffect(() => {
+    if (selectedId) setShowChat(true);
+  }, [selectedId]);
+
   return (
     <>
       {/* Desktop View */}
@@ -113,8 +120,17 @@ const Support = () => {
         <div className="bg-white rounded-xl shadow-lg border-gray-300 border p-6 w-full max-w-2xl">
           {newTicket ? (
             <NewTicket
-              onCancel={() => setNewTicket(false)} // back button closes the composer
-              onCreated={handleAfterCreate} // just refresh tickets; don't close
+              onCancel={() => setNewTicket(false)}
+              onCreated={handleAfterCreate}
+            />
+          ) : showChat && selectedTicket ? (
+            <MessageSection
+              ticket={selectedTicket}
+              messages={selectedTicket.messages}
+              onBack={() => {
+                setShowChat(false);
+                setSelectedId(null);
+              }}
             />
           ) : (
             <div>
@@ -131,7 +147,6 @@ const Support = () => {
                   Refresh
                 </button>
               </div>
-
               {/* Tabs */}
               <div className="flex border-2 border-gray-300/30 rounded-full justify-start gap-2 p-3 mb-6 w-full max-w-[70%]">
                 {TABS.map((tab) => (
@@ -151,7 +166,6 @@ const Support = () => {
                   </button>
                 ))}
               </div>
-
               {/* Tickets List */}
               <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
                 {loading && (
@@ -159,24 +173,24 @@ const Support = () => {
                     Loading…
                   </div>
                 )}
-
                 {!loading && err && (
                   <div className="text-center text-red-600 py-10">{err}</div>
                 )}
-
                 {!loading && !err && filteredTickets.length === 0 && (
                   <p className="text-center text-gray-500 py-10">
                     No tickets in this category.
                   </p>
                 )}
-
                 {!loading &&
                   !err &&
                   filteredTickets.length > 0 &&
                   filteredTickets.map(({ id, created_at, status, subject }) => (
                     <div
                       key={id}
-                      onClick={() => setSelectedId(id)}
+                      onClick={() => {
+                        setSelectedId(id);
+                        setShowChat(true);
+                      }}
                       className="flex items-center justify-between bg-white rounded-2xl p-4 border-gray-400 border transition-shadow duration-200 hover:shadow-sm cursor-pointer"
                     >
                       <div className="flex items-center space-x-4">
@@ -212,53 +226,7 @@ const Support = () => {
                     </div>
                   ))}
               </div>
-
-              {/* Conversation for selected ticket */}
-              {selectedTicket ? (
-                <div className="mt-6 border rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-medium text-gray-800">
-                      Ticket #{selectedTicket.id} — Messages
-                    </h3>
-                    <button
-                      onClick={() => setSelectedId(null)}
-                      className="text-xs text-blue-600 hover:underline"
-                    >
-                      Close
-                    </button>
-                  </div>
-                  <div className="max-h-56 overflow-y-auto space-y-3">
-                    {selectedTicket.messages &&
-                    selectedTicket.messages.length > 0 ? (
-                      selectedTicket.messages.map((m, i) => {
-                        const isAdmin =
-                          String(m.sender || "").toLowerCase() === "admin";
-                        return (
-                          <div
-                            key={i}
-                            className={`p-3 rounded-xl text-sm ${
-                              isAdmin
-                                ? "bg-indigo-50 text-indigo-900"
-                                : "bg-gray-100 text-gray-800"
-                            }`}
-                          >
-                            <div className="text-[11px] opacity-70 mb-1">
-                              {isAdmin ? "Support" : "You"} •{" "}
-                              {formatWhen(m.created_at)}
-                            </div>
-                            <div>{m.message}</div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <div className="text-gray-500 text-sm">
-                        No messages yet.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : null}
-
+              {/* Conversation for selected ticket (removed, handled by MessageSection) */}
               {/* Create Ticket Button */}
               <div
                 onClick={() => setNewTicket(true)}
@@ -270,13 +238,21 @@ const Support = () => {
           )}
         </div>
       </div>
-
       {/* Mobile View */}
       <div className="sm:hidden block min-h-screen bg-[#f5f6ff] pb-20">
         {newTicket ? (
           <NewTicket
             onCancel={() => setNewTicket(false)}
             onCreated={handleAfterCreate}
+          />
+        ) : showChat && selectedTicket ? (
+          <MessageSection
+            ticket={selectedTicket}
+            messages={selectedTicket.messages}
+            onBack={() => {
+              setShowChat(false);
+              setSelectedId(null);
+            }}
           />
         ) : (
           <>
@@ -303,7 +279,6 @@ const Support = () => {
                   ))}
                 </div>
               </div>
-
               {/* Tickets List */}
               <div className="space-y-3">
                 {loading && (
@@ -311,24 +286,24 @@ const Support = () => {
                     Loading…
                   </div>
                 )}
-
                 {!loading && err && (
                   <div className="text-center text-red-600 py-10">{err}</div>
                 )}
-
                 {!loading && !err && filteredTickets.length === 0 && (
                   <p className="text-center text-gray-500 py-10">
                     No tickets in this category.
                   </p>
                 )}
-
                 {!loading &&
                   !err &&
                   filteredTickets.length > 0 &&
                   filteredTickets.map(({ id, created_at, status }) => (
                     <div
                       key={id}
-                      onClick={() => setSelectedId(id)}
+                      onClick={() => {
+                        setSelectedId(id);
+                        setShowChat(true);
+                      }}
                       className="bg-gray-50 rounded-xl py-3 px-4 border-1 border-gray-500 flex items-center justify-between cursor-pointer"
                     >
                       <div className="flex items-center space-x-3">
@@ -358,54 +333,7 @@ const Support = () => {
                     </div>
                   ))}
               </div>
-
-              {/* Conversation for selected ticket */}
-              {selectedTicket ? (
-                <div className="mt-6 border rounded-xl p-4 bg-gray-50">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-medium text-gray-800">
-                      Ticket #{selectedTicket.id} — Messages
-                    </h3>
-                    <button
-                      onClick={() => setSelectedId(null)}
-                      className="text-xs text-blue-600 hover:underline"
-                    >
-                      Close
-                    </button>
-                  </div>
-                  <div className="max-h-56 overflow-y-auto space-y-3">
-                    {selectedTicket.messages &&
-                    selectedTicket.messages.length > 0 ? (
-                      selectedTicket.messages.map((m, i) => {
-                        const isAdmin =
-                          String(m.sender || "").toLowerCase() === "admin";
-                        return (
-                          <div
-                            key={i}
-                            className={`p-3 rounded-xl text-sm ${
-                              isAdmin
-                                ? "bg-indigo-50 text-indigo-900"
-                                : "bg-white text-gray-800"
-                            }`}
-                          >
-                            <div className="text-[11px] opacity-70 mb-1">
-                              {isAdmin ? "Support" : "You"} •{" "}
-                              {formatWhen(m.created_at)}
-                            </div>
-                            <div>{m.message}</div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <div className="text-gray-500 text-sm">
-                        No messages yet.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : null}
             </div>
-
             {/* Fixed Bottom Button */}
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#f5f6ff] border-t border-gray-200">
               <button
@@ -423,3 +351,4 @@ const Support = () => {
 };
 
 export default Support;
+         

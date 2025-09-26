@@ -108,10 +108,16 @@ const Auth = () => {
         const user = data?.user || data?.data?.user || null;
 
         if (token) localStorage.setItem("access_token", token);
+
         if (user) {
+          // Capitalize the first letter of first_name
+          const capitalizedFirstName =
+            user.first_name.charAt(0).toUpperCase() + user.first_name.slice(1);
+
           // Construct the new profile picture URL based on the user's ID
           const updatedUser = {
             ...user,
+            first_name: capitalizedFirstName,
             profile_picture: `https://troosolar.hmstech.org/public/users/${user.profile_picture}`,
           };
 

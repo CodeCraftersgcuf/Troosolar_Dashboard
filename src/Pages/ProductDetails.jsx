@@ -352,10 +352,7 @@ export default function ProductDetails() {
       syncLocalQty(product.id, serverQty);
       fetchCartCount(); // Refresh global cart count
       // Show cart notification with correct product data
-      showCartNotificationModal(
-        product.heading,
-        product.image
-      );
+      showCartNotificationModal(product.heading, product.image);
       // Removed toast.success - only show loading indicator
     } catch (e) {
       if (e?.response?.status === 409) {
@@ -380,10 +377,7 @@ export default function ProductDetails() {
           syncLocalQty(product.id, newQty);
           fetchCartCount(); // Refresh global cart count
           // Show cart notification with correct product data
-          showCartNotificationModal(
-            product.heading,
-            product.image
-          );
+          showCartNotificationModal(product.heading, product.image);
           // Removed toast.success - only show loading indicator
         } catch (e2) {
           toast.error(
@@ -606,7 +600,7 @@ export default function ProductDetails() {
                     <button
                       key={tab}
                       onClick={() => setShowReview(i === 0)}
-                      className={`flex-1 w-[66] h-[55] rounded-[100px] text-sm ${
+                      className={`flex-1 w-[66] h-[45] rounded-[100px] text-sm ${
                         (showReview && i === 0) || (!showReview && i === 1)
                           ? "bg-[#273e8e] text-white"
                           : "text-gray-500"
