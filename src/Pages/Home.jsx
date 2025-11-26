@@ -10,6 +10,7 @@ import { Bell } from "lucide-react";
 import Product from "../Component/Product";
 import { Link } from "react-router-dom";
 import SolarBundleComponent from "../Component/SolarBundleComponent";
+import ServiceCards from "../Component/ServiceCards";
 import HrLine from "../Component/MobileSectionResponsive/HrLine";
 import API, { BASE_URL } from "../config/api.config";
 
@@ -138,7 +139,7 @@ const readStoredUser = () => {
       if (!raw) continue;
       const obj = JSON.parse(raw);
       if (obj && typeof obj === "object") return obj;
-    } catch {}
+    } catch { }
   }
   return null;
 };
@@ -158,7 +159,7 @@ const getFirstName = (u) => {
 
 const getAvatarUrl = (u) => {
   if (!u) return "";
-  
+
   const avatarUrl = (
     u.avatar ||
     u.profile_picture ||
@@ -167,12 +168,12 @@ const getAvatarUrl = (u) => {
     u.avatar_url ||
     ""
   );
-  
+
   // Check if the URL contains "null" (indicating no actual image)
   if (avatarUrl && avatarUrl.includes("null")) {
     return "";
   }
-  
+
   return avatarUrl;
 };
 
@@ -222,8 +223,8 @@ const Home = () => {
         const arr = Array.isArray(root)
           ? root
           : Array.isArray(root?.data)
-          ? root.data
-          : [];
+            ? root.data
+            : [];
         setBundles(arr.map(mapBundle));
       } catch (e) {
         setBundlesErr(
@@ -252,7 +253,7 @@ const Home = () => {
           ? catRes.data.data
           : [];
         setCategories(catList);
-      } catch {}
+      } catch { }
     })();
   }, []);
 
@@ -273,8 +274,8 @@ const Home = () => {
       } catch (err) {
         setProdError(
           err?.response?.data?.message ||
-            err?.message ||
-            "Failed to load products."
+          err?.message ||
+          "Failed to load products."
         );
       } finally {
         setProdLoading(false);
@@ -353,22 +354,25 @@ const Home = () => {
               </button>
             </div>
 
+            {/* Service Cards (New Flow Entry Points) */}
+            <div className="mt-6">
+              <ServiceCards />
+            </div>
+
             {/* Wallets / banner */}
             <div className="grid items-center md:grid-cols-2 grid-cols-1 xl:grid-cols-3 gap-5 mt-4">
               <div className="flex justify-start items-center sm:hidden gap-3 pt-2">
                 <button
                   onClick={() => setShowWallet(!showWallet)}
-                  className={`border text-[12px] w-[30%] border-[#273e8e] py-3 rounded-full ${
-                    showWallet ? "text-white bg-[#273e8e]" : "text-black "
-                  }`}
+                  className={`border text-[12px] w-[30%] border-[#273e8e] py-3 rounded-full ${showWallet ? "text-white bg-[#273e8e]" : "text-black "
+                    }`}
                 >
                   Loan Wallet
                 </button>
                 <button
                   onClick={() => setShowWallet(!showWallet)}
-                  className={`border text-[11px] w-[35%] border-[#273e8e] py-3 rounded-full ${
-                    showWallet ? "text-black " : "text-white bg-[#273e8e]"
-                  }`}
+                  className={`border text-[11px] w-[35%] border-[#273e8e] py-3 rounded-full ${showWallet ? "text-black " : "text-white bg-[#273e8e]"
+                    }`}
                 >
                   Shopping Wallet
                 </button>

@@ -1,6 +1,10 @@
 import React, { useContext } from "react";
 import { Route, Routes } from "react-router-dom";
 import Auth from "./Pages/Auth";
+import LandingPage from "./Pages/LandingPage";
+import BNPLFlow from "./Pages/BNPL/BNPLFlow";
+import BuyNowFlow from "./Pages/BuyNow/BuyNowFlow";
+import SolarShop from "./Pages/SolarShop";
 import Otp from "./Pages/Otp";
 import Home from "./Pages/Home";
 import HomePage from "./Pages/HomePage";
@@ -26,73 +30,87 @@ import CartNotification from "./Component/CartNotification";
 import { ContextApi } from "./Context/AppContext";
 
 const App = () => {
-  const { 
-    showCartNotification, 
-    notificationProduct, 
-    hideCartNotificationModal 
+  const {
+    showCartNotification,
+    notificationProduct,
+    hideCartNotificationModal
   } = useContext(ContextApi);
 
   return (
     <div>
       <Routes>
-      <Route
-        path="/"
-        element={
-          <PrivateRoute>
-            <Home />
-          </PrivateRoute>
-        }
+        <Route
+          path="/"
+          element={
+            <PrivateRoute>
+              <Home />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <PrivateRoute>
+              <Home />
+            </PrivateRoute>
+          }
+        />
+
+        {/* New Flow Routes */}
+        <Route path="/bnpl/*" element={<BNPLFlow />} />
+        <Route path="/buy-now/*" element={<BuyNowFlow />} />
+        <Route path="/shop" element={<SolarShop />} />
+
+        <Route path="/register" element={<Auth />} />
+        <Route path="/login" element={<Auth />} />
+        <Route
+          path="/inverterLoadCalculator"
+          element={<InverterLoadCalculator />}
+        />
+        <Route path="/cart" element={<Cart />} />
+        <Route path="/product/:id" element={<SpecificProduct />} />
+        <Route
+          path="/homePage"
+          element={
+            <PrivateRoute>
+              <HomePage />
+            </PrivateRoute>
+          }
+        />
+        <Route path="/verification" element={<Otp />} />
+        <Route path="/creditscore" element={<CreditScore />} />
+        <Route path="/loan" element={<LoanPage />} />
+
+        <Route path="/tools" element={<Tools />} />
+
+        <Route path="/loanDetails/loanDashboard" element={<LoanDashBoard />} />
+        <Route path="/uploadDocument" element={<UploadDocement />} />
+        <Route path="/uploadDetails" element={<UploadDocement />} />
+        <Route path="/loanDetails" element={<UploadDocement />} />
+
+        <Route path="/loanCalculate" element={<LoanCalculation />} />
+        <Route path="/linkAccount" element={<LinkAccount />} />
+        <Route path="/homePage/product/:id" element={<ProductDetails />} />
+        <Route path="/productBundle/details/:id" element={<ProductBundle />} />
+
+        <Route path="/solar-bundles" element={<SolarBundle />} />
+        <Route path="/solar-builder" element={<SolarBuilder />} />
+        <Route path="/more" element={<More />} />
+        <Route path="/terms" element={<TermsPage />} />
+
+        {/* 404 Route - Must be last */}
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+
+      {/* Global Cart Notification Modal */}
+      <CartNotification
+        isOpen={showCartNotification}
+        onClose={hideCartNotificationModal}
+        productName={notificationProduct?.name}
+        productImage={notificationProduct?.image}
       />
-      <Route path="/register" element={<Auth />} />
-      <Route path="/login" element={<Auth />} />
-      <Route
-        path="/inverterLoadCalculator"
-        element={<InverterLoadCalculator />}
-      />
-      <Route path="/cart" element={<Cart />} />
-      <Route path="/product/:id" element={<SpecificProduct />} />
-      <Route
-        path="/homePage"
-        element={
-          <PrivateRoute>
-            <HomePage />
-          </PrivateRoute>
-        }
-      />
-      <Route path="/verification" element={<Otp />} />
-      <Route path="/creditscore" element={<CreditScore />} />
-      <Route path="/loan" element={<LoanPage />} />
-
-      <Route path="/tools" element={<Tools />} />
-
-      <Route path="/loanDetails/loanDashboard" element={<LoanDashBoard />} />
-      <Route path="/uploadDocument" element={<UploadDocement />} />
-      <Route path="/uploadDetails" element={<UploadDocement />} />
-      <Route path="/loanDetails" element={<UploadDocement />} />
-
-      <Route path="/loanCalculate" element={<LoanCalculation />} />
-      <Route path="/linkAccount" element={<LinkAccount />} />
-      <Route path="/homePage/product/:id" element={<ProductDetails />} />
-      <Route path="/productBundle/details/:id" element={<ProductBundle />} />
-
-      <Route path="/solar-bundles" element={<SolarBundle />} />
-      <Route path="/solar-builder" element={<SolarBuilder />} />
-      <Route path="/more" element={<More />} />
-      <Route path="/terms" element={<TermsPage />} />
-      
-      {/* 404 Route - Must be last */}
-      <Route path="*" element={<NotFound />} />
-    </Routes>
-    
-    {/* Global Cart Notification Modal */}
-    <CartNotification
-      isOpen={showCartNotification}
-      onClose={hideCartNotificationModal}
-      productName={notificationProduct?.name}
-      productImage={notificationProduct?.image}
-    />
-  </div>
-);
+    </div >
+  );
 };
 
 export default App;
