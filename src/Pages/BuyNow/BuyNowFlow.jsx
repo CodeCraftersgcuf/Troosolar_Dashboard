@@ -1,10 +1,25 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar } from 'lucide-react';
+import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader } from 'lucide-react';
+import axios from 'axios';
+import API from '../../config/api.config';
 
 const BuyNowFlow = () => {
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
+    const [loading, setLoading] = useState(false);
+    const [invoiceDetails, setInvoiceDetails] = useState(null);
+    const [orderId, setOrderId] = useState(null);
+    const [calendarSlots, setCalendarSlots] = useState([]);
+    
+    // Configuration data from API
+    const [addOns, setAddOns] = useState([]);
+    const [states, setStates] = useState([]);
+    const [deliveryLocations, setDeliveryLocations] = useState([]);
+    const [selectedStateId, setSelectedStateId] = useState(null);
+    const [selectedAddOns, setSelectedAddOns] = useState([]);
+    const [configLoading, setConfigLoading] = useState(false);
+
     const [formData, setFormData] = useState({
         customerType: '',
         productCategory: '', // 'full-kit', 'inverter-battery', 'battery-only', 'inverter-only', 'panels-only'
@@ -14,6 +29,8 @@ const BuyNowFlow = () => {
         includeInsurance: false,
         address: '',
         state: '',
+        stateId: null,
+        deliveryLocationId: null,
     });
 
     // --- Handlers ---
@@ -58,9 +75,117 @@ const BuyNowFlow = () => {
         }
     };
 
-    const handleCheckoutSubmit = () => {
-        setStep(5); // Invoice
+    const handleCheckoutSubmit = async () => {
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                alert("Please login to continue");
+                navigate('/login');
+                return;
+            }
+
+            const payload = {
+                customer_type: formData.customerType,
+                product_category: formData.productCategory,
+                installer_choice: formData.installerChoice,
+                include_insurance: formData.includeInsurance,
+                amount: formData.selectedProductPrice
+            };
+
+            // Add optional fields if available (only if they exist)
+            if (formData.stateId) payload.state_id = formData.stateId;
+            if (formData.deliveryLocationId) payload.delivery_location_id = formData.deliveryLocationId;
+            if (selectedAddOns.length > 0) payload.add_on_ids = selectedAddOns;
+
+            const response = await axios.post(API.BUY_NOW_CHECKOUT, payload, {
+                headers: { 
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json'
+                }
+            });
+
+            if (response.data.status === 'success') {
+                setInvoiceDetails(response.data.data);
+                setOrderId(response.data.data.order_id);
+                setStep(5);
+            }
+        } catch (error) {
+            console.error("Checkout Error:", error);
+            const errorMessage = error.response?.data?.message || 
+                                (error.response?.data?.errors ? JSON.stringify(error.response.data.errors) : null) ||
+                                "Failed to process checkout. Please check all required fields.";
+            alert(errorMessage);
+        } finally {
+            setLoading(false);
+        }
     };
+
+    const fetchCalendarSlots = async () => {
+        try {
+            const token = localStorage.getItem('access_token');
+            const date = new Date().toISOString().split('T')[0];
+            const response = await axios.get(`${API.CALENDAR_SLOTS}?type=installation&payment_date=${date}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (response.data.status === 'success') {
+                setCalendarSlots(response.data.data.slots);
+            }
+        } catch (error) {
+            console.error("Calendar Error:", error);
+        }
+    };
+
+    // Fetch configuration data when component mounts or before Step 4
+    React.useEffect(() => {
+        const fetchConfig = async () => {
+            setConfigLoading(true);
+            try {
+                const [addOnsRes, statesRes] = await Promise.all([
+                    axios.get(API.CONFIG_ADD_ONS, { params: { type: 'buy_now' } }).catch(() => ({ data: { status: 'error' }, status: 404 })),
+                    axios.get(API.CONFIG_STATES).catch(() => ({ data: { status: 'error' }, status: 404 }))
+                ]);
+
+                // Only set data if API call was successful (not 404)
+                if (addOnsRes.status !== 404 && addOnsRes.data?.status === 'success') {
+                    setAddOns(addOnsRes.data.data || []);
+                }
+                if (statesRes.status !== 404 && statesRes.data?.status === 'success') {
+                    setStates(statesRes.data.data || []);
+                }
+            } catch (error) {
+                // Silently fail - APIs may not be implemented yet
+                console.log("Configuration APIs not available yet:", error.message);
+            } finally {
+                setConfigLoading(false);
+            }
+        };
+        fetchConfig();
+    }, []);
+
+    // Fetch delivery locations when state is selected
+    React.useEffect(() => {
+        if (selectedStateId) {
+            const fetchDeliveryLocations = async () => {
+                try {
+                    const response = await axios.get(API.CONFIG_DELIVERY_LOCATIONS(selectedStateId));
+                    if (response.data.status === 'success') {
+                        setDeliveryLocations(response.data.data || []);
+                    }
+                } catch (error) {
+                    console.error("Failed to fetch delivery locations:", error);
+                }
+            };
+            fetchDeliveryLocations();
+        }
+    }, [selectedStateId]);
+
+    React.useEffect(() => {
+        if (step === 5) {
+            fetchCalendarSlots();
+        }
+    }, [step]);
 
     // --- Render Steps ---
 
@@ -195,25 +320,109 @@ const BuyNowFlow = () => {
                 </div>
             </div>
 
-            {/* Insurance Option */}
+            {/* Add-Ons Section */}
             <div className="mb-8">
-                <h3 className="text-lg font-bold mb-4 text-gray-800">Additional Protection</h3>
-                <label className={`flex items-start p-4 rounded-xl border-2 cursor-pointer transition-all ${formData.includeInsurance ? 'border-[#273e8e] bg-blue-50' : 'border-gray-200'
-                    }`}>
-                    <input
-                        type="checkbox"
-                        className="mt-1 h-5 w-5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded"
-                        checked={formData.includeInsurance}
-                        onChange={(e) => setFormData({ ...formData, includeInsurance: e.target.checked })}
-                    />
-                    <div className="ml-3">
-                        <span className="font-bold text-gray-800 flex items-center">
-                            <Shield size={18} className="mr-2 text-[#273e8e]" /> Include Insurance
-                        </span>
-                        <p className="text-sm text-gray-500 mt-1">Protect your investment against damage and theft.</p>
-                    </div>
-                </label>
+                <h3 className="text-lg font-bold mb-4 text-gray-800">Additional Services</h3>
+                <div className="space-y-3">
+                    {/* Insurance Option (always show) */}
+                    <label className={`flex items-start p-4 rounded-xl border-2 cursor-pointer transition-all ${formData.includeInsurance ? 'border-[#273e8e] bg-blue-50' : 'border-gray-200'
+                        }`}>
+                        <input
+                            type="checkbox"
+                            className="mt-1 h-5 w-5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded"
+                            checked={formData.includeInsurance}
+                            onChange={(e) => setFormData({ ...formData, includeInsurance: e.target.checked })}
+                        />
+                        <div className="ml-3">
+                            <span className="font-bold text-gray-800 flex items-center">
+                                <Shield size={18} className="mr-2 text-[#273e8e]" /> Include Insurance
+                            </span>
+                            <p className="text-sm text-gray-500 mt-1">Protect your investment against damage and theft (0.5% of product price).</p>
+                        </div>
+                    </label>
+
+                    {/* Other Add-Ons from API */}
+                    {addOns.filter(addon => !addon.is_compulsory_buy_now).map((addon) => (
+                        <label
+                            key={addon.id}
+                            className={`flex items-start p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedAddOns.includes(addon.id) ? 'border-[#273e8e] bg-blue-50' : 'border-gray-200'
+                                }`}
+                        >
+                            <input
+                                type="checkbox"
+                                className="mt-1 h-5 w-5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded"
+                                checked={selectedAddOns.includes(addon.id)}
+                                onChange={(e) => {
+                                    if (e.target.checked) {
+                                        setSelectedAddOns([...selectedAddOns, addon.id]);
+                                    } else {
+                                        setSelectedAddOns(selectedAddOns.filter(id => id !== addon.id));
+                                    }
+                                }}
+                            />
+                            <div className="ml-3 flex-1">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <span className="font-bold text-gray-800">{addon.title}</span>
+                                        <p className="text-sm text-gray-500 mt-1">{addon.description}</p>
+                                    </div>
+                                    <span className="font-bold text-[#273e8e] ml-4">
+                                        {addon.calculation_type === 'percentage' 
+                                            ? `${addon.calculation_value}%`
+                                            : `₦${Number(addon.price || 0).toLocaleString()}`
+                                        }
+                                    </span>
+                                </div>
+                            </div>
+                        </label>
+                    ))}
+                </div>
             </div>
+
+            {/* State and Delivery Location Selection */}
+            {states.length > 0 && (
+                <div className="mb-8">
+                    <h3 className="text-lg font-bold mb-4 text-gray-800">Delivery Location</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
+                            <select
+                                value={formData.stateId || ''}
+                                onChange={(e) => {
+                                    const stateId = e.target.value ? Number(e.target.value) : null;
+                                    setFormData({ ...formData, stateId, deliveryLocationId: null });
+                                    setSelectedStateId(stateId);
+                                }}
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-[#273e8e]"
+                            >
+                                <option value="">Select State</option>
+                                {states.filter(s => s.is_active).map((state) => (
+                                    <option key={state.id} value={state.id}>
+                                        {state.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        {selectedStateId && deliveryLocations.length > 0 && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Delivery Location</label>
+                                <select
+                                    value={formData.deliveryLocationId || ''}
+                                    onChange={(e) => setFormData({ ...formData, deliveryLocationId: e.target.value ? Number(e.target.value) : null })}
+                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-[#273e8e]"
+                                >
+                                    <option value="">Select Location</option>
+                                    {deliveryLocations.filter(loc => loc.is_active).map((location) => (
+                                        <option key={location.id} value={location.id}>
+                                            {location.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             <button
                 onClick={handleCheckoutSubmit}
@@ -228,94 +437,39 @@ const BuyNowFlow = () => {
         </div>
     );
 
-    const renderStep5 = () => {
-        const basePrice = formData.selectedProductPrice;
-        const installationFee = formData.installerChoice === 'troosolar' ? 50000 : 0;
-        const insuranceFee = formData.includeInsurance ? basePrice * 0.005 : 0;
-        // Material cost, delivery, inspection are fixed for demo if TrooSolar installs
-        const materialCost = formData.installerChoice === 'troosolar' ? 50000 : 0;
-        const deliveryFee = 25000;
-        const inspectionFee = formData.installerChoice === 'troosolar' ? 10000 : 0;
 
-        const total = basePrice + installationFee + insuranceFee + materialCost + deliveryFee + inspectionFee;
-
-        return (
-            <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-                <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Final Invoice</h2>
-
+    const renderStep5 = () => (
+        <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+            <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Invoice #{orderId}</h2>
+            {invoiceDetails && (
                 <div className="space-y-4 mb-8">
-                    <div className="flex justify-between items-center">
-                        <div className="flex items-center">
-                            <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                <Sun size={24} className="text-gray-600" />
-                            </div>
-                            <div>
-                                <p className="font-bold text-gray-800">Solar System Bundle</p>
-                                <p className="text-sm text-gray-500">Selected Product</p>
-                            </div>
-                        </div>
-                        <span className="font-bold">₦{new Intl.NumberFormat('en-NG').format(basePrice)}</span>
+                    <div className="flex justify-between">
+                        <span>Product Price</span>
+                        <span>₦{invoiceDetails.product_price.toLocaleString()}</span>
                     </div>
-
-                    <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
-                        <span>Delivery/Logistics</span>
-                        <span>₦{deliveryFee.toLocaleString()}</span>
+                    <div className="flex justify-between">
+                        <span>Installation Fee</span>
+                        <span>₦{invoiceDetails.installation_fee.toLocaleString()}</span>
                     </div>
-
-                    {formData.installerChoice === 'troosolar' && (
-                        <>
-                            <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
-                                <span>Material Cost</span>
-                                <span>₦{materialCost.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
-                                <span>Installation Fee</span>
-                                <span>₦{installationFee.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
-                                <span>Inspection Fee</span>
-                                <span>₦{inspectionFee.toLocaleString()}</span>
-                            </div>
-                        </>
-                    )}
-
-                    {formData.includeInsurance && (
-                        <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
-                            <span>Insurance (0.5%)</span>
-                            <span>₦{insuranceFee.toLocaleString()}</span>
-                        </div>
-                    )}
-
-                    <div className="border-t pt-4 mt-4">
-                        <div className="flex justify-between items-center text-xl font-bold">
-                            <span>Total Amount Due</span>
-                            <span className="text-[#273e8e]">₦{total.toLocaleString()}</span>
-                        </div>
+                    <div className="flex justify-between">
+                        <span>Delivery Fee</span>
+                        <span>₦{invoiceDetails.delivery_fee.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span>Insurance</span>
+                        <span>₦{invoiceDetails.insurance_fee.toLocaleString()}</span>
+                    </div>
+                    <div className="border-t pt-4 font-bold text-xl flex justify-between">
+                        <span>Total</span>
+                        <span className="text-[#273e8e]">₦{invoiceDetails.total.toLocaleString()}</span>
                     </div>
                 </div>
-
-                {formData.installerChoice === 'troosolar' && (
-                    <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg mb-6 flex items-start">
-                        <CheckCircle className="text-yellow-600 mr-3 mt-1" size={20} />
-                        <p className="text-sm text-yellow-700">
-                            Note: Installation fees may change after site inspection. Any difference will be updated and shared with you for a one-off payment before installation.
-                        </p>
-                    </div>
-                )}
-
-                <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6 flex items-start">
-                    <Calendar className="text-blue-600 mr-3 mt-1" size={20} />
-                    <p className="text-sm text-blue-700">
-                        Once payment is confirmed, you will be able to book a date for the audit/installation. Available slots will be 72 hours after payment confirmation.
-                    </p>
-                </div>
-
-                <button className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors">
-                    Pay Now
-                </button>
-            </div>
-        );
-    };
+            )}
+            <button className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold">
+                Proceed to Payment
+            </button>
+        </div>
+    );
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">

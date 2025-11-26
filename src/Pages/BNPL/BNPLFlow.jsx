@@ -1,11 +1,23 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Upload, CreditCard, Camera, Clock, Download, AlertCircle, Calendar } from 'lucide-react';
+import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Upload, CreditCard, Camera, Clock, Download, AlertCircle, Calendar, Loader } from 'lucide-react';
 import LoanCalculator from '../../Component/LoanCalculator';
+import axios from 'axios';
+import API from '../../config/api.config';
 
 const BNPLFlow = () => {
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
+    const [customerTypes, setCustomerTypes] = useState([]);
+    const [auditTypes, setAuditTypes] = useState([]);
+    const [loanConfig, setLoanConfig] = useState(null);
+    const [addOns, setAddOns] = useState([]);
+    const [states, setStates] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [applicationId, setApplicationId] = useState(null);
+    const [applicationStatus, setApplicationStatus] = useState('pending');
+    const [guarantorId, setGuarantorId] = useState(null);
+
     const [formData, setFormData] = useState({
         customerType: '',
         productCategory: '', // 'full-kit', 'inverter-battery', 'battery-only', 'inverter-only', 'panels-only'
@@ -13,6 +25,7 @@ const BNPLFlow = () => {
         auditType: '', // 'home-office', 'commercial'
         address: '',
         state: '',
+        stateId: null,
         houseNo: '',
         landmark: '',
         floors: '',
@@ -31,6 +44,57 @@ const BNPLFlow = () => {
         bankStatement: null,
         livePhoto: null,
     });
+
+    // --- Effects ---
+    React.useEffect(() => {
+        const fetchConfig = async () => {
+            try {
+                const [custRes, auditRes, loanConfigRes, addOnsRes, statesRes] = await Promise.all([
+                    axios.get(API.CONFIG_CUSTOMER_TYPES).catch(() => ({ data: { status: 'error' }, status: 404 })),
+                    axios.get(API.CONFIG_AUDIT_TYPES).catch(() => ({ data: { status: 'error' }, status: 404 })),
+                    axios.get(API.CONFIG_LOAN_CONFIGURATION).catch(() => ({ data: { status: 'error' }, status: 404 })),
+                    axios.get(API.CONFIG_ADD_ONS, { params: { type: 'bnpl' } }).catch(() => ({ data: { status: 'error' }, status: 404 })),
+                    axios.get(API.CONFIG_STATES).catch(() => ({ data: { status: 'error' }, status: 404 }))
+                ]);
+                
+                // Only set data if API call was successful (not 404)
+                if (custRes.status !== 404 && custRes.data?.status === 'success') {
+                    setCustomerTypes(custRes.data.data);
+                }
+                if (auditRes.status !== 404 && auditRes.data?.status === 'success') {
+                    setAuditTypes(auditRes.data.data);
+                }
+                if (loanConfigRes.status !== 404 && loanConfigRes.data?.status === 'success') {
+                    setLoanConfig(loanConfigRes.data.data);
+                }
+                if (addOnsRes.status !== 404 && addOnsRes.data?.status === 'success') {
+                    setAddOns(addOnsRes.data.data || []);
+                }
+                if (statesRes.status !== 404 && statesRes.data?.status === 'success') {
+                    setStates(statesRes.data.data || []);
+                }
+            } catch (error) {
+                // Silently fail - APIs may not be implemented yet
+                console.log("Configuration APIs not available yet:", error.message);
+            }
+            
+            // Fallback to defaults if APIs fail or return 404
+            if (customerTypes.length === 0) {
+                setCustomerTypes([
+                    { id: 'residential', label: 'For Residential' },
+                    { id: 'sme', label: 'For SMEs' },
+                    { id: 'commercial', label: 'Commercial & Industrial' }
+                ]);
+            }
+            if (auditTypes.length === 0) {
+                setAuditTypes([
+                    { id: 'home-office', label: 'Home / Office' },
+                    { id: 'commercial', label: 'Commercial / Industrial' }
+                ]);
+            }
+        };
+        fetchConfig();
+    }, []);
 
     // --- Handlers ---
 
@@ -87,16 +151,6 @@ const BNPLFlow = () => {
         setStep(10); // Credit Check Method
     };
 
-    const handleCreditCheckSelect = (method) => {
-        setFormData({ ...formData, creditCheckMethod: method });
-        setStep(11); // Application Form
-    };
-
-    const handleApplicationSubmit = (e) => {
-        e.preventDefault();
-        setStep(12); // Wait Screen
-    };
-
     // --- Render Steps ---
 
     const renderStep1 = () => (
@@ -105,27 +159,24 @@ const BNPLFlow = () => {
                 Who are you purchasing for?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-                <button onClick={() => handleCustomerTypeSelect('residential')} className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center">
-                    <div className="bg-blue-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
-                        <Home size={40} className="text-[#273e8e]" />
-                    </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800">For Residential</h3>
-                    <p className="text-gray-500 text-sm">Power your home with clean energy.</p>
-                </button>
-                <button onClick={() => handleCustomerTypeSelect('sme')} className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center">
-                    <div className="bg-blue-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
-                        <Building2 size={40} className="text-[#273e8e]" />
-                    </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800">For SMEs</h3>
-                    <p className="text-gray-500 text-sm">Reliable power for your small business.</p>
-                </button>
-                <button onClick={() => handleCustomerTypeSelect('commercial')} className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center">
-                    <div className="bg-blue-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
-                        <Factory size={40} className="text-[#273e8e]" />
-                    </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800">Commercial & Industrial</h3>
-                    <p className="text-gray-500 text-sm">Large-scale energy solutions.</p>
-                </button>
+                {(customerTypes.length > 0 ? customerTypes : [
+                    { id: 'residential', label: 'For Residential' },
+                    { id: 'sme', label: 'For SMEs' },
+                    { id: 'commercial', label: 'Commercial & Industrial' }
+                ]).map((type) => (
+                    <button
+                        key={type.id}
+                        onClick={() => handleCustomerTypeSelect(type.id)}
+                        className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center"
+                    >
+                        <div className="bg-blue-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
+                            {type.id === 'residential' && <Home size={40} className="text-[#273e8e]" />}
+                            {type.id === 'sme' && <Building2 size={40} className="text-[#273e8e]" />}
+                            {type.id === 'commercial' && <Factory size={40} className="text-[#273e8e]" />}
+                        </div>
+                        <h3 className="text-xl font-bold mb-2 text-gray-800">{type.label}</h3>
+                    </button>
+                ))}
             </div>
         </div>
     );
@@ -175,396 +226,397 @@ const BNPLFlow = () => {
                         <Zap size={40} className="text-yellow-600" />
                     </div>
                     <h3 className="text-xl font-bold mb-2 text-gray-800">Choose my solar system</h3>
-                    <p className="text-gray-500 text-sm">Select from our curated bundles.</p>
                 </button>
                 <button onClick={() => handleOptionSelect('build-system')} className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center">
                     <div className="bg-purple-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
                         <Wrench size={40} className="text-purple-600" />
                     </div>
                     <h3 className="text-xl font-bold mb-2 text-gray-800">Build My System</h3>
-                    <p className="text-gray-500 text-sm">Customize your own setup.</p>
                 </button>
                 <button onClick={() => handleOptionSelect('audit')} className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center">
                     <div className="bg-green-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
                         <FileText size={40} className="text-green-600" />
                     </div>
                     <h3 className="text-xl font-bold mb-2 text-gray-800">Request Professional Audit</h3>
-                    <p className="text-gray-500 text-sm">Get an expert assessment (Paid Service).</p>
                 </button>
             </div>
         </div>
     );
 
     const renderStep4 = () => (
-        <div className="animate-fade-in max-w-3xl mx-auto">
+        <div className="animate-fade-in">
             <button onClick={() => setStep(3)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
             <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
                 Select Audit Type
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <button onClick={() => handleAuditTypeSelect('home-office')} className="bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-xl p-6 hover:shadow-lg transition-all text-left flex items-center">
-                    <Home size={32} className="text-[#273e8e] mr-4" />
-                    <div>
-                        <h3 className="text-lg font-bold text-gray-800">Home / Office</h3>
-                        <p className="text-gray-500 text-sm">For residential and small office spaces.</p>
-                    </div>
-                </button>
-                <button onClick={() => handleAuditTypeSelect('commercial')} className="bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-xl p-6 hover:shadow-lg transition-all text-left flex items-center">
-                    <Factory size={32} className="text-[#273e8e] mr-4" />
-                    <div>
-                        <h3 className="text-lg font-bold text-gray-800">Commercial / Industrial</h3>
-                        <p className="text-gray-500 text-sm">For large facilities and factories.</p>
-                    </div>
-                </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+                {(auditTypes.length > 0 ? auditTypes : [
+                    { id: 'home-office', label: 'Home / Office' },
+                    { id: 'commercial', label: 'Commercial / Industrial' }
+                ]).map((type) => (
+                    <button
+                        key={type.id}
+                        onClick={() => handleAuditTypeSelect(type.id)}
+                        className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center"
+                    >
+                        <div className="bg-blue-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
+                            <FileText size={40} className="text-[#273e8e]" />
+                        </div>
+                        <h3 className="text-xl font-bold mb-2 text-gray-800">{type.label}</h3>
+                    </button>
+                ))}
             </div>
         </div>
     );
 
     const renderStep5 = () => (
-        <div className="animate-fade-in max-w-2xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+        <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
             <button onClick={() => setStep(4)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Property Details</h2>
             <form onSubmit={handleAddressSubmit} className="space-y-4">
+                <input type="text" placeholder="Address" required className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, address: e.target.value })} />
+                <input type="text" placeholder="State" required className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, state: e.target.value })} />
+                <input type="text" placeholder="Landmark" className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, landmark: e.target.value })} />
                 <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-                        <input
-                            type="text"
-                            required
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent"
-                            placeholder="e.g. Lagos"
-                            value={formData.state}
-                            onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">House No.</label>
-                        <input
-                            type="text"
-                            required
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent"
-                            placeholder="e.g. 12B"
-                            value={formData.houseNo}
-                            onChange={(e) => setFormData({ ...formData, houseNo: e.target.value })}
-                        />
-                    </div>
+                    <input type="number" placeholder="Floors" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, floors: e.target.value })} />
+                    <input type="number" placeholder="Rooms" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, rooms: e.target.value })} />
                 </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Street Name</label>
-                    <input
-                        type="text"
-                        required
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent"
-                        placeholder="Enter street name"
-                        value={formData.address}
-                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Landmark</label>
-                    <input
-                        type="text"
-                        required
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent"
-                        placeholder="Nearby landmark"
-                        value={formData.landmark}
-                        onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
-                    />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">No. of Floors</label>
-                        <input
-                            type="number"
-                            required
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent"
-                            placeholder="0"
-                            value={formData.floors}
-                            onChange={(e) => setFormData({ ...formData, floors: e.target.value })}
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">No. of Rooms</label>
-                        <input
-                            type="number"
-                            required
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent"
-                            placeholder="0"
-                            value={formData.rooms}
-                            onChange={(e) => setFormData({ ...formData, rooms: e.target.value })}
-                        />
-                    </div>
-                </div>
-                <button type="submit" className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors mt-6">
-                    Generate Invoice
+                <button type="submit" className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors">
+                    Continue
                 </button>
             </form>
         </div>
     );
 
     const renderStep6 = () => (
-        <div className="animate-fade-in max-w-2xl mx-auto bg-white p-12 rounded-2xl shadow-sm border border-gray-100 text-center">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <CheckCircle size={40} className="text-green-600" />
+        <div className="animate-fade-in max-w-3xl mx-auto text-center">
+            <div className="bg-yellow-50 border border-yellow-200 p-8 rounded-2xl">
+                <AlertCircle size={64} className="text-yellow-600 mx-auto mb-6" />
+                <h2 className="text-2xl font-bold mb-4 text-gray-800">Commercial Audit Request</h2>
+                <p className="text-gray-600 mb-6">
+                    Commercial and industrial audits require manual review by our team. 
+                    We will contact you within 24-48 hours to discuss your requirements.
+                </p>
+                <button onClick={() => navigate('/')} className="bg-[#273e8e] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors">
+                    Return to Dashboard
+                </button>
             </div>
-            <h2 className="text-2xl font-bold mb-4 text-gray-800">Request Received</h2>
-            <p className="text-gray-600 text-lg mb-8">
-                Our team will contact you within 24 - 48 hours to discuss your energy audit for your Commercial/Industrial facility.
-            </p>
-            <button onClick={() => navigate('/')} className="bg-[#273e8e] text-white px-8 py-3 rounded-lg font-medium hover:bg-[#1a2b6b] transition-colors">
-                Return to Home
-            </button>
         </div>
     );
 
     const renderStep7 = () => (
-        <div className="animate-fade-in max-w-2xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+        <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Audit Invoice</h2>
             <div className="space-y-4 mb-8">
                 <div className="flex justify-between">
-                    <span className="text-gray-600">Audit Fee (Base)</span>
+                    <span>Audit Fee</span>
                     <span className="font-bold">₦50,000</span>
                 </div>
-                <div className="flex justify-between">
-                    <span className="text-gray-600">Logistics ({formData.state})</span>
-                    <span className="font-bold">₦15,000</span>
-                </div>
-                <div className="flex justify-between pt-4 border-t text-lg">
-                    <span className="font-bold">Total</span>
-                    <span className="font-bold text-[#273e8e]">₦65,000</span>
+                <div className="border-t pt-4 font-bold text-xl flex justify-between">
+                    <span>Total</span>
+                    <span className="text-[#273e8e]">₦50,000</span>
                 </div>
             </div>
-
-            <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6 flex items-start">
-                <Calendar className="text-blue-600 mr-3 mt-1" size={20} />
-                <p className="text-sm text-blue-700">
-                    Once payment is confirmed, you will be able to book a date for the audit. Available slots will be 48 hours after payment confirmation.
-                </p>
-            </div>
-
             <button className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors">
                 Proceed to Payment
             </button>
         </div>
     );
 
-    const renderStep8 = () => (
-        <div className="animate-fade-in max-w-4xl mx-auto">
-            <button onClick={() => setStep(formData.optionType ? 3 : 2)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
-                <ArrowLeft size={16} className="mr-2" /> Back
-            </button>
-            <div className="mb-6">
-                <h2 className="text-2xl font-bold text-[#273e8e]">Loan Calculator</h2>
-                <p className="text-gray-500">
-                    Estimated for product value: <span className="font-bold text-black">₦{new Intl.NumberFormat('en-NG').format(formData.selectedProductPrice)}</span>
-                </p>
-                {formData.selectedProductPrice < 1500000 && (
-                    <div className="mt-4 bg-red-50 border border-red-200 p-4 rounded-lg flex items-start">
-                        <AlertCircle className="text-red-600 mr-3 mt-1" size={20} />
-                        <p className="text-sm text-red-700">
-                            Your order total does not meet the minimum ₦1.5m amount required for credit financing. To qualify for Buy Now, Pay Later, please add more items to your cart.
-                        </p>
-                    </div>
-                )}
+    const renderStep8 = () => {
+        // Calculate total amount including compulsory add-ons (Insurance for BNPL)
+        const insuranceAddOn = addOns.find(a => a.is_compulsory_bnpl);
+        const insuranceFee = insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
+            ? (formData.selectedProductPrice * insuranceAddOn.calculation_value) / 100
+            : (insuranceAddOn?.price || 0);
+        
+        const totalAmount = formData.selectedProductPrice + insuranceFee + 50000 + 50000 + 25000 + 10000; // Product + Insurance + Material + Installation + Delivery + Inspection
+
+        return (
+            <div className="animate-fade-in max-w-4xl mx-auto">
+                <button onClick={() => setStep(formData.optionType ? 3 : 2)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                    <ArrowLeft size={16} className="mr-2" /> Back
+                </button>
+                <LoanCalculator 
+                    totalAmount={totalAmount} 
+                    onConfirm={handleLoanConfirm}
+                    loanConfig={loanConfig}
+                />
             </div>
-            <LoanCalculator
-                totalAmount={formData.selectedProductPrice}
-                onConfirm={handleLoanConfirm}
-            />
-        </div>
-    );
+        );
+    };
 
     const renderStep10 = () => (
-        <div className="animate-fade-in max-w-4xl mx-auto">
+        <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
             <button onClick={() => setStep(8)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
-            <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
-                Credit Check & Verification
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <button onClick={() => handleCreditCheckSelect('auto')} className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center">
-                    <div className="bg-blue-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
-                        <CreditCard size={40} className="text-[#273e8e]" />
+            <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Credit Check Method</h2>
+            <div className="space-y-4">
+                <button
+                    onClick={() => {
+                        setFormData({ ...formData, creditCheckMethod: 'auto' });
+                        setStep(11);
+                    }}
+                    className={`w-full p-6 rounded-xl border-2 text-left transition-all ${formData.creditCheckMethod === 'auto'
+                        ? 'border-[#273e8e] bg-blue-50'
+                        : 'border-gray-200 hover:border-blue-200'
+                        }`}
+                >
+                    <div className="flex items-center mb-2">
+                        <CheckCircle size={20} className={formData.creditCheckMethod === 'auto' ? 'text-[#273e8e]' : 'text-gray-300'} />
+                        <span className="ml-2 font-bold text-gray-800">Automatic (BVN Verification)</span>
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800">Automatic Credit Check</h3>
-                    <p className="text-gray-500 text-sm mb-4">
-                        Fast and secure. Requires a small non-refundable fee.
-                    </p>
-                    <span className="bg-[#273e8e] text-white px-4 py-2 rounded-full text-sm font-bold">
-                        Pay Fee
-                    </span>
+                    <p className="text-sm text-gray-500 ml-7">Fast and automated credit check using your BVN.</p>
                 </button>
-
-                <button onClick={() => handleCreditCheckSelect('manual')} className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center">
-                    <div className="bg-purple-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
-                        <Upload size={40} className="text-purple-600" />
+                <button
+                    onClick={() => {
+                        setFormData({ ...formData, creditCheckMethod: 'manual' });
+                        setStep(11);
+                    }}
+                    className={`w-full p-6 rounded-xl border-2 text-left transition-all ${formData.creditCheckMethod === 'manual'
+                        ? 'border-[#273e8e] bg-blue-50'
+                        : 'border-gray-200 hover:border-blue-200'
+                        }`}
+                >
+                    <div className="flex items-center mb-2">
+                        <CheckCircle size={20} className={formData.creditCheckMethod === 'manual' ? 'text-[#273e8e]' : 'text-gray-300'} />
+                        <span className="ml-2 font-bold text-gray-800">Manual (Bank Statement Review)</span>
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800">Manual Upload</h3>
-                    <p className="text-gray-500 text-sm mb-4">
-                        Upload your 12-month bank statement manually.
-                    </p>
-                    <span className="bg-purple-600 text-white px-4 py-2 rounded-full text-sm font-bold">
-                        Upload File
-                    </span>
+                    <p className="text-sm text-gray-500 ml-7">Manual review of your bank statements (takes longer).</p>
                 </button>
             </div>
         </div>
     );
+    const submitApplication = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                alert("Please login to continue");
+                navigate('/login');
+                return;
+            }
+
+            // Step 1: Create loan calculation first (required by backend)
+            let loanCalculationId = null;
+            if (formData.loanDetails) {
+                try {
+                    const loanCalcPayload = {
+                        product_amount: formData.selectedProductPrice,
+                        loan_amount: formData.loanDetails.totalRepayment,
+                        repayment_duration: formData.loanDetails.tenor
+                    };
+                    
+                    const loanCalcResponse = await axios.post(API.LOAN_CALCULATION, loanCalcPayload, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json'
+                        }
+                    });
+
+                    if (loanCalcResponse.data?.data?.id) {
+                        loanCalculationId = loanCalcResponse.data.data.id;
+                    } else if (loanCalcResponse.data?.id) {
+                        loanCalculationId = loanCalcResponse.data.id;
+                    }
+                } catch (calcError) {
+                    console.error("Loan calculation error:", calcError);
+                    // Continue anyway - backend might handle it differently
+                }
+            }
+
+            // Step 2: Submit BNPL application
+            const formDataToSend = new FormData();
+
+            // Basic Fields
+            formDataToSend.append('customer_type', formData.customerType);
+            formDataToSend.append('product_category', formData.productCategory);
+            formDataToSend.append('loan_amount', formData.loanDetails?.totalRepayment || formData.selectedProductPrice);
+            formDataToSend.append('repayment_duration', formData.loanDetails?.tenor || 6);
+            formDataToSend.append('credit_check_method', formData.creditCheckMethod || 'auto');
+            
+            // Add loan calculation ID if available
+            if (loanCalculationId) {
+                formDataToSend.append('loan_calculation_id', loanCalculationId);
+            }
+
+            // Personal Details
+            formDataToSend.append('personal_details[full_name]', formData.fullName);
+            formDataToSend.append('personal_details[bvn]', formData.bvn);
+            formDataToSend.append('personal_details[phone]', formData.phone);
+            formDataToSend.append('personal_details[email]', formData.email);
+            formDataToSend.append('personal_details[social_media]', formData.socialMedia || '');
+
+            // Property Details - Always send all fields (backend requires estate fields when property_details is present)
+            formDataToSend.append('property_details[state]', formData.state || '');
+            formDataToSend.append('property_details[address]', formData.address || '');
+            formDataToSend.append('property_details[landmark]', formData.landmark || '');
+            formDataToSend.append('property_details[floors]', formData.floors || '');
+            formDataToSend.append('property_details[rooms]', formData.rooms || '');
+            formDataToSend.append('property_details[is_gated_estate]', formData.isGatedEstate ? 1 : 0);
+            // Always send estate fields (required by backend when property_details is present)
+            formDataToSend.append('property_details[estate_name]', formData.isGatedEstate ? (formData.estateName || '') : '');
+            formDataToSend.append('property_details[estate_address]', formData.isGatedEstate ? (formData.estateAddress || '') : '');
+            
+            // Add state_id and add_on_ids if available
+            if (formData.stateId) formDataToSend.append('state_id', formData.stateId);
+            
+            // Add compulsory BNPL add-ons (Insurance)
+            const compulsoryAddOns = addOns.filter(a => a.is_compulsory_bnpl).map(a => a.id);
+            if (compulsoryAddOns.length > 0) {
+                compulsoryAddOns.forEach(id => formDataToSend.append('add_on_ids[]', id));
+            }
+
+            // Files
+            if (formData.bankStatement) formDataToSend.append('bank_statement', formData.bankStatement);
+            if (formData.livePhoto) formDataToSend.append('live_photo', formData.livePhoto);
+
+            const response = await axios.post(API.BNPL_APPLY, formDataToSend, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+
+            if (response.data.status === 'success') {
+                setApplicationId(response.data.data.loan_application.id);
+                setApplicationStatus(response.data.data.loan_application.status);
+                setStep(12); // Go to Status/Pending screen
+            }
+        } catch (error) {
+            console.error("Application Submit Error:", error);
+            const errorMessage = error.response?.data?.message || 
+                                (error.response?.data?.errors ? JSON.stringify(error.response.data.errors) : null) ||
+                                "Failed to submit application. Please check all required fields.";
+            alert(errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const renderStep11 = () => (
-        <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-            <button onClick={() => setStep(10)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
-                <ArrowLeft size={16} className="mr-2" /> Back
-            </button>
-            <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Application Form</h2>
-            <form onSubmit={handleApplicationSubmit} className="space-y-6">
-
-                {/* Personal Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                        <input
-                            type="text"
-                            required
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent"
-                            value={formData.fullName}
-                            onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">BVN</label>
-                        <input
-                            type="text"
-                            required
-                            maxLength="11"
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent"
-                            value={formData.bvn}
-                            onChange={(e) => setFormData({ ...formData, bvn: e.target.value })}
-                        />
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                        <input
-                            type="email"
-                            required
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent"
-                            value={formData.email}
-                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                        <input
-                            type="tel"
-                            required
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent"
-                            value={formData.phone}
-                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        />
-                    </div>
-                </div>
-
+        <div className="animate-fade-in max-w-4xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+            <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Final Application</h2>
+            <form onSubmit={submitApplication} className="space-y-6">
+                {/* Personal Details Section */}
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Social Media Handle (Facebook/Instagram)</label>
-                    <input
-                        type="text"
-                        required
-                        placeholder="@username"
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent"
-                        value={formData.socialMedia}
-                        onChange={(e) => setFormData({ ...formData, socialMedia: e.target.value })}
-                    />
+                    <h3 className="text-lg font-bold mb-4 text-gray-800 border-b pb-2">Personal Details</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input type="text" placeholder="Full Name" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, fullName: e.target.value })} />
+                        <input type="text" placeholder="BVN" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, bvn: e.target.value })} />
+                        <input type="tel" placeholder="Phone Number" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, phone: e.target.value })} />
+                        <input type="email" placeholder="Email Address" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, email: e.target.value })} />
+                        <input type="text" placeholder="Social Media Handle *" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, socialMedia: e.target.value })} />
+                        <p className="text-xs text-gray-500 col-span-2">* Social media handle is required for verification</p>
+                    </div>
                 </div>
 
-                {/* Address & Estate */}
-                <div className="border-t pt-4">
-                    <label className="flex items-center space-x-3 mb-4">
-                        <input
-                            type="checkbox"
-                            className="h-5 w-5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded"
-                            checked={formData.isGatedEstate}
-                            onChange={(e) => setFormData({ ...formData, isGatedEstate: e.target.checked })}
-                        />
-                        <span className="text-gray-700 font-medium">Do you live in a gated estate?</span>
-                    </label>
-
+                {/* Property Details Section */}
+                <div>
+                    <h3 className="text-lg font-bold mb-4 text-gray-800 border-b pb-2">Property Details</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {states.length > 0 ? (
+                            <select
+                                required
+                                className="p-3 border rounded-lg"
+                                onChange={e => {
+                                    const stateId = e.target.value ? Number(e.target.value) : null;
+                                    const selectedState = states.find(s => s.id === stateId);
+                                    setFormData({ ...formData, state: selectedState?.name || '', stateId });
+                                }}
+                            >
+                                <option value="">Select State</option>
+                                {states.filter(s => s.is_active).map((state) => (
+                                    <option key={state.id} value={state.id}>{state.name}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <input type="text" placeholder="State" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, state: e.target.value })} />
+                        )}
+                        <input type="text" placeholder="Address" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, address: e.target.value })} />
+                        <input type="text" placeholder="Landmark" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, landmark: e.target.value })} />
+                        <input type="number" placeholder="Floors" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, floors: e.target.value })} />
+                        <input type="number" placeholder="Rooms" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, rooms: e.target.value })} />
+                    </div>
+                    <div className="mt-4">
+                        <label className="flex items-center space-x-2">
+                            <input type="checkbox" checked={formData.isGatedEstate} onChange={e => setFormData({ ...formData, isGatedEstate: e.target.checked })} />
+                            <span>Is this in a gated estate?</span>
+                        </label>
+                    </div>
                     {formData.isGatedEstate && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg animate-fade-in">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Estate Name</label>
-                                <input
-                                    type="text"
-                                    required
-                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent"
-                                    value={formData.estateName}
-                                    onChange={(e) => setFormData({ ...formData, estateName: e.target.value })}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Estate Address</label>
-                                <input
-                                    type="text"
-                                    required
-                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#273e8e] focus:border-transparent"
-                                    value={formData.estateAddress}
-                                    onChange={(e) => setFormData({ ...formData, estateAddress: e.target.value })}
-                                />
-                            </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            <input 
+                                type="text" 
+                                placeholder="Estate Name *" 
+                                required={formData.isGatedEstate}
+                                className="p-3 border rounded-lg" 
+                                onChange={e => setFormData({ ...formData, estateName: e.target.value })} 
+                            />
+                            <input 
+                                type="text" 
+                                placeholder="Estate Address *" 
+                                required={formData.isGatedEstate}
+                                className="p-3 border rounded-lg" 
+                                onChange={e => setFormData({ ...formData, estateAddress: e.target.value })} 
+                            />
                         </div>
                     )}
                 </div>
 
-                {/* Uploads */}
-                <div className="border-t pt-4 space-y-4">
-                    {formData.creditCheckMethod === 'manual' && (
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Upload 12-Month Bank Statement</label>
-                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#273e8e] transition-colors cursor-pointer">
-                                <Upload className="mx-auto text-gray-400 mb-2" />
-                                <p className="text-sm text-gray-500">Click to upload PDF, JPG, or PNG</p>
-                            </div>
+                {/* File Uploads */}
+                <div>
+                    <h3 className="text-lg font-bold mb-4 text-gray-800 border-b pb-2">Required Documents</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                            <p className="mb-2 font-medium">Bank Statement (Last 6 Months)</p>
+                            <input type="file" required accept=".pdf,.jpg,.png" onChange={e => setFormData({ ...formData, bankStatement: e.target.files[0] })} />
                         </div>
-                    )}
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Live Photo Verification</label>
-                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#273e8e] transition-colors cursor-pointer bg-gray-50">
-                            <Camera className="mx-auto text-gray-400 mb-2" />
-                            <p className="text-sm text-gray-500">Take a live photo</p>
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                            <p className="mb-2 font-medium">Live Photo / Selfie</p>
+                            <input type="file" required accept=".jpg,.png" onChange={e => setFormData({ ...formData, livePhoto: e.target.files[0] })} />
                         </div>
                     </div>
                 </div>
 
-                <button type="submit" className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors mt-6">
-                    Submit Application
+                <button 
+                    type="submit" 
+                    disabled={loading || (formData.isGatedEstate && (!formData.estateName || !formData.estateAddress))} 
+                    className={`w-full py-4 rounded-xl font-bold transition-colors ${
+                        loading || (formData.isGatedEstate && (!formData.estateName || !formData.estateAddress))
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
+                    }`}
+                >
+                    {loading ? 'Submitting...' : 'Submit Application'}
                 </button>
+                {formData.isGatedEstate && (!formData.estateName || !formData.estateAddress) && (
+                    <p className="text-sm text-red-600 mt-2 text-center">
+                        Please fill in Estate Name and Estate Address
+                    </p>
+                )}
             </form>
         </div>
     );
 
     const renderStep12 = () => (
-        <div className="animate-fade-in max-w-2xl mx-auto bg-white p-12 rounded-2xl shadow-sm border border-gray-100 text-center">
-            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Clock size={40} className="text-[#273e8e]" />
+        <div className="animate-fade-in max-w-3xl mx-auto text-center">
+            <h2 className="text-3xl font-bold mb-8 text-[#273e8e]">Application Submitted</h2>
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-blue-100">
+                <Clock size={64} className="text-[#273e8e] mx-auto mb-6 animate-pulse" />
+                <p className="text-xl font-medium text-gray-800 mb-4">Your application is under review.</p>
+                <p className="text-gray-600 mb-8">We are processing your details. This usually takes 24-48 hours.</p>
+                <button onClick={() => window.location.reload()} className="text-[#273e8e] font-bold hover:underline">
+                    Check Status Again
+                </button>
             </div>
-            <h2 className="text-2xl font-bold mb-4 text-gray-800">Application Under Review</h2>
-            <p className="text-gray-600 text-lg mb-8">
-                We are reviewing your application. You will receive feedback within 24 - 48 hours.
-            </p>
-            <button
-                onClick={() => setStep(13)} // Simulate Approval
-                className="text-sm text-gray-400 underline hover:text-[#273e8e]"
-            >
-                [Demo: Simulate Approval]
-            </button>
         </div>
     );
 
@@ -591,30 +643,132 @@ const BNPLFlow = () => {
         </div>
     );
 
+    const handleGuarantorInvite = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('access_token');
+            const response = await axios.post(API.BNPL_GUARANTOR_INVITE, {
+                loan_application_id: applicationId,
+                full_name: formData.guarantorName,
+                phone: formData.guarantorPhone,
+                email: formData.guarantorEmail,
+                relationship: formData.guarantorRelationship
+            }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            if (response.data.status === 'success') {
+                setGuarantorId(response.data.data.id);
+                alert("Guarantor details saved. You can now download the form.");
+            }
+        } catch (error) {
+            console.error("Guarantor Invite Error:", error);
+            alert("Failed to save guarantor details.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleGuarantorUpload = async (file) => {
+        if (!file) return;
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('access_token');
+            const uploadData = new FormData();
+            uploadData.append('guarantor_id', guarantorId);
+            uploadData.append('signed_form', file);
+
+            const response = await axios.post(API.BNPL_GUARANTOR_UPLOAD, uploadData, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+
+            if (response.data.status === 'success') {
+                setStep(21); // Proceed to Invoice
+            }
+        } catch (error) {
+            console.error("Guarantor Upload Error:", error);
+            alert("Failed to upload guarantor form.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const renderStep17 = () => (
         <div className="animate-fade-in max-w-2xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-            <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Guarantor Form</h2>
-            <p className="text-gray-600 mb-6">
-                Please download the Guarantor Form below, have it signed by your guarantor, and bring it along with undated signed cheques on the day of installation.
-            </p>
+            <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Guarantor Information</h2>
 
-            <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg mb-6 flex items-start">
-                <AlertCircle className="text-yellow-600 mr-3 mt-1" size={20} />
-                <p className="text-sm text-yellow-700">
-                    Note: A credit check will also be conducted on your guarantor. If your guarantor does not qualify, your loan will not be disbursed.
-                </p>
-            </div>
+            {!guarantorId ? (
+                <form onSubmit={handleGuarantorInvite} className="space-y-4">
+                    <p className="text-gray-600 mb-4">Please provide details of your guarantor.</p>
+                    <input
+                        type="text"
+                        placeholder="Guarantor Full Name"
+                        required
+                        className="w-full p-3 border rounded-lg"
+                        onChange={(e) => setFormData({ ...formData, guarantorName: e.target.value })}
+                    />
+                    <input
+                        type="tel"
+                        placeholder="Guarantor Phone"
+                        required
+                        className="w-full p-3 border rounded-lg"
+                        onChange={(e) => setFormData({ ...formData, guarantorPhone: e.target.value })}
+                    />
+                    <input
+                        type="email"
+                        placeholder="Guarantor Email (Optional)"
+                        className="w-full p-3 border rounded-lg"
+                        onChange={(e) => setFormData({ ...formData, guarantorEmail: e.target.value })}
+                    />
+                    <input
+                        type="text"
+                        placeholder="Relationship (e.g. Spouse, Colleague)"
+                        className="w-full p-3 border rounded-lg"
+                        onChange={(e) => setFormData({ ...formData, guarantorRelationship: e.target.value })}
+                    />
+                    <button type="submit" disabled={loading} className="w-full bg-[#273e8e] text-white py-3 rounded-xl font-bold">
+                        {loading ? 'Saving...' : 'Save & Continue'}
+                    </button>
+                </form>
+            ) : (
+                <div className="space-y-6">
+                    <div className="bg-green-50 border border-green-200 p-4 rounded-lg flex items-center">
+                        <CheckCircle className="text-green-600 mr-3" size={20} />
+                        <p className="text-sm text-green-700">Guarantor details saved successfully.</p>
+                    </div>
 
-            <button className="w-full border-2 border-[#273e8e] text-[#273e8e] py-3 rounded-xl font-bold hover:bg-blue-50 transition-colors flex items-center justify-center mb-4">
-                <Download size={20} className="mr-2" /> Download Form
-            </button>
+                    <div className="border-t pt-4">
+                        <h3 className="font-bold text-gray-800 mb-2">Step 1: Download Form</h3>
+                        <button className="w-full border-2 border-[#273e8e] text-[#273e8e] py-3 rounded-xl font-bold hover:bg-blue-50 transition-colors flex items-center justify-center mb-4">
+                            <Download size={20} className="mr-2" /> Download Guarantor Form
+                        </button>
+                    </div>
 
-            <button
-                onClick={() => setStep(21)}
-                className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
-            >
-                I Agree & Continue
-            </button>
+                    <div className="border-t pt-4">
+                        <h3 className="font-bold text-gray-800 mb-2">Step 2: Upload Signed Form</h3>
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#273e8e] transition-colors cursor-pointer relative">
+                            <input
+                                type="file"
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                onChange={(e) => handleGuarantorUpload(e.target.files[0])}
+                                accept=".pdf,.jpg,.png"
+                            />
+                            {loading ? (
+                                <Loader className="animate-spin mx-auto text-[#273e8e]" />
+                            ) : (
+                                <>
+                                    <Upload className="mx-auto text-gray-400 mb-2" />
+                                    <p className="text-sm text-gray-500">Click to upload signed form</p>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 
@@ -698,19 +852,19 @@ const BNPLFlow = () => {
     );
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col">
+        <div className="min-h-screen bg-gray-50 flex flex-col" >
             {/* Navbar Placeholder */}
-            <div className="bg-white shadow-sm p-4 sticky top-0 z-50">
+            < div className="bg-white shadow-sm p-4 sticky top-0 z-50" >
                 <div className="max-w-7xl mx-auto flex justify-between items-center">
                     <div className="font-bold text-xl text-[#273e8e]">TrooSolar</div>
                     <button onClick={() => navigate('/')} className="text-gray-600 hover:text-[#273e8e]">
                         Exit Application
                     </button>
                 </div>
-            </div>
+            </div >
 
             {/* Main Content */}
-            <div className="flex-grow flex items-center justify-center p-6">
+            < div className="flex-grow flex items-center justify-center p-6" >
                 <div className="w-full max-w-6xl">
                     {/* Progress Bar */}
                     <div className="mb-12 max-w-xl mx-auto">
@@ -744,8 +898,8 @@ const BNPLFlow = () => {
                     {step === 17 && renderStep17()}
                     {step === 21 && renderStep21()}
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 };
 

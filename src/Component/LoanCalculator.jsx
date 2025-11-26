@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Calculator, Calendar, DollarSign, ArrowRight } from 'lucide-react';
 
-const LoanCalculator = ({ totalAmount, onConfirm }) => {
-  const [depositPercent, setDepositPercent] = useState(30);
-  const [tenor, setTenor] = useState(12);
-  const [interestRate, setInterestRate] = useState(4); // 4% monthly
+const LoanCalculator = ({ totalAmount, onConfirm, loanConfig }) => {
+  // Use loan config from API if provided, otherwise use defaults
+  const minDepositPercent = loanConfig?.equity_contribution_min || 30;
+  const maxDepositPercent = loanConfig?.equity_contribution_max || 80;
+  const minInterestRate = loanConfig?.interest_rate_min || 3;
+  const maxInterestRate = loanConfig?.interest_rate_max || 4;
+  const minAmount = loanConfig?.minimum_loan_amount || 1500000;
+  const managementFeePercent = loanConfig?.management_fee_percentage || 1.0;
+  const residualFeePercent = loanConfig?.residual_fee_percentage || 1.0;
 
-  const minAmount = 1500000; // 1.5M
+  const [depositPercent, setDepositPercent] = useState(minDepositPercent);
+  const [tenor, setTenor] = useState(12);
+  const [interestRate, setInterestRate] = useState(maxInterestRate); // Use max as default
 
   // Calculations
   const depositAmount = (totalAmount * depositPercent) / 100;
@@ -14,7 +21,15 @@ const LoanCalculator = ({ totalAmount, onConfirm }) => {
 
   // Interest = Principal * Rate * Tenor
   const totalInterest = principal * (interestRate / 100) * tenor;
-  const totalRepayment = principal + totalInterest;
+  
+  // Management fee (1% of loan amount, paid upfront)
+  const managementFee = principal * (managementFeePercent / 100);
+  
+  // Residual fee (1% of loan amount, paid at end)
+  const residualFee = principal * (residualFeePercent / 100);
+  
+  // Total repayment includes principal, interest, and residual fee
+  const totalRepayment = principal + totalInterest + residualFee;
   const monthlyRepayment = totalRepayment / tenor;
 
   const isEligible = totalAmount >= minAmount;
@@ -53,16 +68,16 @@ const LoanCalculator = ({ totalAmount, onConfirm }) => {
             </label>
             <input
               type="range"
-              min="30"
-              max="80"
+              min={minDepositPercent}
+              max={maxDepositPercent}
               step="10"
               value={depositPercent}
               onChange={(e) => setDepositPercent(Number(e.target.value))}
               className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#273e8e]"
             />
             <div className="flex justify-between text-xs text-gray-500 mt-1">
-              <span>30%</span>
-              <span>80%</span>
+              <span>{minDepositPercent}%</span>
+              <span>{maxDepositPercent}%</span>
             </div>
             <p className="text-[#273e8e] font-bold mt-2 text-lg">
               {formatCurrency(depositAmount)}
@@ -104,6 +119,16 @@ const LoanCalculator = ({ totalAmount, onConfirm }) => {
             <span className="font-medium text-orange-600">{formatCurrency(totalInterest)}</span>
           </div>
 
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500">Management Fee ({managementFeePercent}%)</span>
+            <span className="font-medium text-orange-600">{formatCurrency(managementFee)}</span>
+          </div>
+
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500">Residual Fee ({residualFeePercent}%)</span>
+            <span className="font-medium text-orange-600">{formatCurrency(residualFee)}</span>
+          </div>
+
           <div className="flex justify-between text-sm pt-2 border-t">
             <span className="text-gray-500">Total Repayment</span>
             <span className="font-bold">{formatCurrency(totalRepayment)}</span>
@@ -123,7 +148,11 @@ const LoanCalculator = ({ totalAmount, onConfirm }) => {
             tenor,
             depositAmount,
             monthlyRepayment,
-            totalRepayment
+            totalRepayment,
+            principal,
+            totalInterest,
+            managementFee,
+            residualFee
           })}
           className="bg-[#273e8e] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors flex items-center"
         >

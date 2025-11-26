@@ -1,6 +1,8 @@
 // src/config/api.config.js
 export const BASE_URL = 'https://troosolar.hmstech.org/api';
 
+// export const BASE_URL = 'http://127.0.0.1:8000/api';
+
 const API = {
     LOGIN: `${BASE_URL}/login`,
     REGISTER: `${BASE_URL}/register`,
@@ -57,6 +59,21 @@ const API = {
 
 
 
+
+    // BNPL & Buy Now Endpoints
+    CONFIG_CUSTOMER_TYPES: `${BASE_URL}/config/customer-types`,
+    CONFIG_AUDIT_TYPES: `${BASE_URL}/config/audit-types`,
+    CONFIG_LOAN_CONFIGURATION: `${BASE_URL}/config/loan-configuration`,
+    CONFIG_ADD_ONS: `${BASE_URL}/config/add-ons`,
+    CONFIG_STATES: `${BASE_URL}/config/states`,
+    CONFIG_DELIVERY_LOCATIONS: (stateId) => `${BASE_URL}/config/delivery-locations?state_id=${stateId}`,
+    BNPL_APPLY: `${BASE_URL}/bnpl/apply`,
+    BNPL_STATUS: (id) => `${BASE_URL}/bnpl/status/${id}`,
+    BNPL_GUARANTOR_INVITE: `${BASE_URL}/bnpl/guarantor/invite`,
+    BNPL_GUARANTOR_UPLOAD: `${BASE_URL}/bnpl/guarantor/upload`,
+    BNPL_COUNTEROFFER_ACCEPT: `${BASE_URL}/bnpl/counteroffer/accept`,
+    BUY_NOW_CHECKOUT: `${BASE_URL}/orders/checkout`,
+    CALENDAR_SLOTS: `${BASE_URL}/calendar/slots`,
 
     // add more when needed
 };
