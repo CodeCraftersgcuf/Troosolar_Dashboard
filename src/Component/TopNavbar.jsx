@@ -76,8 +76,6 @@ const TopNavbar = () => {
   const avatar = useMemo(() => getAvatarUrl(user), [user]);
   const initials = useMemo(() => getInitials(name), [name]);
 
-  console.log("The avatar", avatar);
-
   // Keep your existing background rule
   const changeBg =
     location.pathname.includes("/tools") ||

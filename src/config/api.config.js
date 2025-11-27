@@ -76,6 +76,11 @@ const API = {
     BNPL_INVOICE: (applicationId) => `${BASE_URL}/bnpl/invoice/${applicationId}`,
     BUY_NOW_CHECKOUT: `${BASE_URL}/orders/checkout`,
     CALENDAR_SLOTS: `${BASE_URL}/calendar/slots`,
+    
+    // Audit Request Endpoints
+    AUDIT_REQUEST: `${BASE_URL}/audit/request`,
+    AUDIT_REQUEST_BY_ID: (id) => `${BASE_URL}/audit/request/${id}`,
+    AUDIT_REQUESTS: `${BASE_URL}/audit/requests`,
 
     // add more when needed
 };

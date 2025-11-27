@@ -71,15 +71,16 @@ const Product = ({
   const [adding, setAdding] = useState(false);
   const [err, setErr] = useState("");
 
-  console.log("The product Image", image);
   const Image_url =
     image || assets?.placeholderProduct || "/placeholder-product.png";
   const title = useMemo(() => formatTitle(heading), [heading]);
 
   const starting_base_url = "https://troosolar.hmstech.org/";
-  const safeImage = Image_url.includes(starting_base_url)
-    ? Image_url
-    : starting_base_url + Image_url;
+  const safeImage = useMemo(() => {
+    return Image_url.includes(starting_base_url)
+      ? Image_url
+      : starting_base_url + Image_url;
+  }, [Image_url]);
 
   const handleAddToCart = async (e) => {
     e?.preventDefault?.();
@@ -117,16 +118,6 @@ const Product = ({
       setAdding(false);
     }
   };
-
-  // Debug logging to see what values we're receiving
-  console.log("Product Debug:", {
-    id,
-    heading,
-    price,
-    oldPrice,
-    discount,
-    showingDiscount: !!(oldPrice || discount)
-  });
 
   return (
     <div className="relative w-full sm:h-full sm:w-full bg-white border border-gray-200 rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col">

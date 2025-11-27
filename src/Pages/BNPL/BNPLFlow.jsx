@@ -1,9 +1,28 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Upload, CreditCard, Camera, Clock, Download, AlertCircle, Calendar, Loader, CheckCircle2, XCircle } from 'lucide-react';
 import LoanCalculator from '../../Component/LoanCalculator';
 import axios from 'axios';
-import API from '../../config/api.config';
+import API, { BASE_URL } from '../../config/api.config';
+
+// Helper function to convert storage paths to absolute URLs (same as SolarBundle.jsx)
+const toAbsolute = (path) => {
+    if (!path) return '';
+    // Extract base URL from API config (remove /api)
+    const API_BASE = BASE_URL || 'http://127.0.0.1:8000/api';
+    const API_ORIGIN = API_BASE.replace(/\/api\/?$/, '') || 'http://127.0.0.1:8000';
+    
+    // Already absolute URL
+    if (/^https?:\/\//i.test(path)) return path;
+    
+    // Path starts with / (e.g., "/storage/products/xyz.jpg")
+    if (path.startsWith('/')) return `${API_ORIGIN}${path}`;
+    
+    // Path without leading slash (e.g., "bundles/xyz.jpg" or "public/bundles/xyz.jpg")
+    // Remove "public/" prefix if present, then prepend /storage/
+    const cleaned = path.replace(/^public\//, '');
+    return `${API_ORIGIN}/storage/${cleaned}`;
+};
 
 // Flutterwave integration
 const ensureFlutterwave = () =>
@@ -49,6 +68,10 @@ const BNPLFlow = () => {
         floors: '',
         rooms: '',
         selectedProductPrice: 0,
+        selectedBundleId: null,
+        selectedBundle: null,
+        selectedProductId: null,
+        selectedProduct: null,
         loanDetails: null,
         creditCheckMethod: '', // 'auto', 'manual'
         bvn: '',
@@ -61,18 +84,86 @@ const BNPLFlow = () => {
         estateAddress: '',
         bankStatement: null,
         livePhoto: null,
+        auditRequestId: null, // Store audit request ID after submission
+        streetName: '', // Street name for property address
     });
+
+    // Categories and products for individual components
+    const [categories, setCategories] = useState([]);
+    const [categoryProducts, setCategoryProducts] = useState([]);
+    const [productsLoading, setProductsLoading] = useState(false);
+    const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+
+    // Bundles for selection
+    const [bundles, setBundles] = useState([]);
+    const [bundlesLoading, setBundlesLoading] = useState(false);
+
+    // Map predefined category groups to API category IDs
+    const getCategoryIdsForGroup = (groupType) => {
+        const categoryIds = {
+            'full-kit': [], // Solar panels, inverter, and battery solution
+            'inverter-battery': [], // Inverter and battery solution
+            'battery-only': [], // Battery only
+            'inverter-only': [], // Inverter only
+            'panels-only': [], // Solar panels only
+        };
+
+        // Find matching categories from API
+        categories.forEach(cat => {
+            const name = (cat.title || cat.name || '').toLowerCase();
+            
+            // Full kit: Solar, Inverters, Batteries
+            if (groupType === 'full-kit') {
+                if (name.includes('solar') || name.includes('panel') || 
+                    name.includes('inverter') || name.includes('battery') || name.includes('battries')) {
+                    categoryIds['full-kit'].push(cat.id);
+                }
+            }
+            // Inverter & Battery: Inverters, Batteries
+            else if (groupType === 'inverter-battery') {
+                if (name.includes('inverter') || name.includes('battery') || name.includes('battries')) {
+                    categoryIds['inverter-battery'].push(cat.id);
+                }
+            }
+            // Battery only
+            else if (groupType === 'battery-only') {
+                if (name.includes('battery') || name.includes('battries')) {
+                    categoryIds['battery-only'].push(cat.id);
+                }
+            }
+            // Inverter only
+            else if (groupType === 'inverter-only') {
+                if (name.includes('inverter')) {
+                    categoryIds['inverter-only'].push(cat.id);
+                }
+            }
+            // Panels only
+            else if (groupType === 'panels-only') {
+                if (name.includes('solar') || name.includes('panel')) {
+                    categoryIds['panels-only'].push(cat.id);
+                }
+            }
+        });
+
+        return categoryIds[groupType] || [];
+    };
 
     // --- Effects ---
     React.useEffect(() => {
         const fetchConfig = async () => {
             try {
-                const [custRes, auditRes, loanConfigRes, addOnsRes, statesRes] = await Promise.all([
+                const [custRes, auditRes, loanConfigRes, addOnsRes, statesRes, categoriesRes] = await Promise.all([
                     axios.get(API.CONFIG_CUSTOMER_TYPES).catch(() => ({ data: { status: 'error' }, status: 404 })),
                     axios.get(API.CONFIG_AUDIT_TYPES).catch(() => ({ data: { status: 'error' }, status: 404 })),
                     axios.get(API.CONFIG_LOAN_CONFIGURATION).catch(() => ({ data: { status: 'error' }, status: 404 })),
                     axios.get(API.CONFIG_ADD_ONS, { params: { type: 'bnpl' } }).catch(() => ({ data: { status: 'error' }, status: 404 })),
-                    axios.get(API.CONFIG_STATES).catch(() => ({ data: { status: 'error' }, status: 404 }))
+                    axios.get(API.CONFIG_STATES).catch(() => ({ data: { status: 'error' }, status: 404 })),
+                    axios.get(API.CATEGORIES, {
+                        headers: {
+                            Accept: 'application/json',
+                            ...(localStorage.getItem('access_token') ? { Authorization: `Bearer ${localStorage.getItem('access_token')}` } : {}),
+                        },
+                    }).catch(() => ({ data: { status: 'error' }, status: 404 }))
                 ]);
                 
                 // Only set data if API call was successful (not 404)
@@ -90,6 +181,9 @@ const BNPLFlow = () => {
                 }
                 if (statesRes.status !== 404 && statesRes.data?.status === 'success') {
                     setStates(statesRes.data.data || []);
+                }
+                if (categoriesRes.status !== 404 && categoriesRes.data?.data) {
+                    setCategories(Array.isArray(categoriesRes.data.data) ? categoriesRes.data.data : []);
                 }
             } catch (error) {
                 // Silently fail - APIs may not be implemented yet
@@ -121,32 +215,111 @@ const BNPLFlow = () => {
         setStep(2); // Go to Product Category
     };
 
-    const handleCategorySelect = (category) => {
-        setFormData({ ...formData, productCategory: category });
+    const handleCategorySelect = async (groupType) => {
+        // groupType can be: 'full-kit', 'inverter-battery', 'battery-only', 'inverter-only', 'panels-only'
+        setFormData({ ...formData, productCategory: groupType });
 
-        // If category allows "System" options (Full Kit or Inverter+Battery), go to Method Selection
-        if (category === 'full-kit' || category === 'inverter-battery') {
+        // For full-kit and inverter-battery, go to Method Selection (Step 3)
+        if (groupType === 'full-kit' || groupType === 'inverter-battery') {
             setStep(3); // Method Selection (Choose/Build/Audit)
         } else {
-            // For individual components, skip Method Selection and go straight to Product Selection (simulated)
-            // In a real app, this might go to a specific catalog for that component
-            const mockPrice = category === 'battery-only' ? 800000 : category === 'inverter-only' ? 500000 : 200000;
-            setFormData(prev => ({ ...prev, productCategory: category, selectedProductPrice: mockPrice }));
-            setStep(8); // Skip to Loan Calculator for single items
+            // For individual components (battery-only, inverter-only, panels-only), fetch products
+            const categoryIds = getCategoryIdsForGroup(groupType);
+            
+            if (categoryIds.length === 0) {
+                alert("No matching categories found. Please try again.");
+                return;
+            }
+
+            // If only one category matches, use it directly
+            // If multiple categories match, we'll fetch products from all of them
+            setSelectedCategoryId(categoryIds[0]); // Store first category ID for reference
+            
+            // Clear previous products and set loading state BEFORE navigating
+            setCategoryProducts([]);
+            setProductsLoading(true);
+            setStep(2.5); // Navigate to Product Selection step first to show loading
+            
+            try {
+                const token = localStorage.getItem('access_token');
+                let allProducts = [];
+                
+                // Fetch products from all matching categories
+                for (const categoryId of categoryIds) {
+                    try {
+                        const response = await axios.get(API.CATEGORY_PRODUCTS(categoryId), {
+                            headers: {
+                                Accept: 'application/json',
+                                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                            },
+                        });
+                        const root = response.data?.data ?? response.data;
+                        const products = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+                        allProducts = [...allProducts, ...products];
+                    } catch (err) {
+                        console.warn(`Failed to fetch products for category ${categoryId}:`, err);
+                    }
+                }
+                
+                // If no products found via category endpoint, try fetching all and filtering
+                if (allProducts.length === 0) {
+                    try {
+                        const allProductsRes = await axios.get(API.PRODUCTS, {
+                            headers: {
+                                Accept: 'application/json',
+                                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                            },
+                        });
+                        const allProductsList = Array.isArray(allProductsRes.data?.data) ? allProductsRes.data.data : [];
+                        allProducts = allProductsList.filter(p => categoryIds.includes(Number(p.category_id)));
+                    } catch (error) {
+                        console.error("Failed to fetch all products:", error);
+                    }
+                }
+                
+                setCategoryProducts(allProducts);
+            } catch (error) {
+                console.error("Failed to fetch products:", error);
+                alert("Failed to load products. Please try again.");
+                setCategoryProducts([]); // Ensure empty array on error
+            } finally {
+                setProductsLoading(false);
+            }
         }
     };
 
-    const handleOptionSelect = (option) => {
+    const handleOptionSelect = async (option) => {
         setFormData({ ...formData, optionType: option });
         if (option === 'audit') {
             setStep(4); // Audit Type Selection
         } else if (option === 'choose-system') {
-            // Simulate selecting a product
-            const mockPrice = 2500000;
-            setFormData(prev => ({ ...prev, selectedProductPrice: mockPrice }));
-            setStep(6.5); // Order Summary (NEW STEP) before loan calculator
-        } else {
-            alert("This path is under construction.");
+            // Clear previous bundles and set loading state BEFORE navigating
+            setBundles([]);
+            setBundlesLoading(true);
+            setStep(3.5); // Navigate to Bundle Selection step first to show loading
+            
+            try {
+                const token = localStorage.getItem('access_token');
+                const response = await axios.get(API.BUNDLES, {
+                    headers: {
+                        Accept: 'application/json',
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                });
+                
+                const root = response.data?.data ?? response.data;
+                const arr = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+                setBundles(arr);
+            } catch (error) {
+                console.error("Failed to fetch bundles:", error);
+                alert("Failed to load bundles. Please try again.");
+                setBundles([]); // Ensure empty array on error
+            } finally {
+                setBundlesLoading(false);
+            }
+        } else if (option === 'build-system') {
+            // Redirect to Solar Builder page
+            navigate('/solar-builder');
         }
     };
 
@@ -159,14 +332,101 @@ const BNPLFlow = () => {
         }
     };
 
-    const handleAddressSubmit = (e) => {
+    const handleAddressSubmit = async (e) => {
         e.preventDefault();
-        setStep(6.5); // Order Summary (for audit) before invoice
+        setLoading(true);
+        
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                alert("Please login to continue");
+                navigate('/login');
+                return;
+            }
+
+            // Submit audit request before proceeding
+            // Build full address from components
+            const fullAddress = [
+                formData.houseNo,
+                formData.streetName,
+                formData.landmark
+            ].filter(Boolean).join(', ');
+            
+            const auditRequestPayload = {
+                audit_type: formData.auditType,
+                customer_type: formData.customerType,
+                property_state: formData.state,
+                property_address: fullAddress || formData.address, // Use full address or fallback to address field
+                property_landmark: formData.landmark || '',
+                property_floors: formData.floors ? Number(formData.floors) : null,
+                property_rooms: formData.rooms ? Number(formData.rooms) : null,
+                is_gated_estate: formData.isGatedEstate,
+            };
+
+            // Add estate fields if gated estate
+            if (formData.isGatedEstate) {
+                auditRequestPayload.estate_name = formData.estateName;
+                auditRequestPayload.estate_address = formData.estateAddress;
+            }
+
+            const auditRequestResponse = await axios.post(API.AUDIT_REQUEST, auditRequestPayload, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json'
+                }
+            });
+
+            if (auditRequestResponse.data.status === 'success') {
+                const auditRequestId = auditRequestResponse.data.data.id;
+                setFormData(prev => ({ ...prev, auditRequestId }));
+                
+                // For commercial audits, show notification and wait for admin approval
+                if (formData.auditType === 'commercial') {
+                    setStep(6); // Commercial Notification
+                } else {
+                    // For home-office audits, proceed to order summary
+                    setStep(6.5); // Order Summary (for audit) before invoice
+                }
+            } else {
+                alert("Failed to submit audit request. Please try again.");
+            }
+        } catch (error) {
+            console.error("Audit request submission error:", error);
+            const errorMessage = error.response?.data?.message || 
+                                (error.response?.data?.errors ? JSON.stringify(error.response.data.errors) : null) ||
+                                "Failed to submit audit request. Please check all required fields.";
+            alert(errorMessage);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleLoanConfirm = (loanDetails) => {
         setFormData({ ...formData, loanDetails });
         setStep(9); // Customer decides to proceed (NEW STEP)
+    };
+
+    const handleBundleSelect = (bundle) => {
+        const price = Number(bundle.discount_price || bundle.total_price || 0);
+        setFormData(prev => ({
+            ...prev,
+            selectedBundleId: bundle.id,
+            selectedBundle: bundle,
+            selectedProductPrice: price
+        }));
+        setStep(6.5); // Order Summary (NEW STEP) before loan calculator
+    };
+
+    const handleProductSelect = (product) => {
+        const price = Number(product.discount_price || product.price || 0);
+        setFormData(prev => ({
+            ...prev,
+            selectedProductId: product.id,
+            selectedProduct: product,
+            selectedProductPrice: price
+        }));
+        setStep(8); // Skip to Loan Calculator for single items
     };
 
     // --- Render Steps ---
@@ -199,36 +459,215 @@ const BNPLFlow = () => {
         </div>
     );
 
-    const renderStep2 = () => (
-        <div className="animate-fade-in">
-            <button onClick={() => setStep(1)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
-                <ArrowLeft size={16} className="mr-2" /> Back
-            </button>
-            <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
-                Select Product Category
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                {[
-                    { id: 'full-kit', name: 'Solar Panels, Inverter & Battery', icon: Sun },
-                    { id: 'inverter-battery', name: 'Inverter & Battery Solution', icon: Zap },
-                    { id: 'battery-only', name: 'Battery Only', icon: Battery },
-                    { id: 'inverter-only', name: 'Inverter Only', icon: Monitor },
-                    { id: 'panels-only', name: 'Solar Panels Only', icon: Sun },
-                ].map((cat) => (
-                    <button
-                        key={cat.id}
-                        onClick={() => handleCategorySelect(cat.id)}
-                        className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center"
-                    >
-                        <div className="bg-blue-50 p-4 rounded-full mb-4 group-hover:bg-[#273e8e]/10 transition-colors">
-                            <cat.icon size={32} className="text-[#273e8e]" />
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-800">{cat.name}</h3>
-                    </button>
-                ))}
+    const renderStep2 = () => {
+        // Predefined category groups that map to API categories
+        const categoryGroups = [
+            {
+                id: 'full-kit',
+                name: 'Solar panels, inverter, and battery solution',
+                icon: Sun,
+                description: 'Complete solar system solution'
+            },
+            {
+                id: 'inverter-battery',
+                name: 'Inverter and battery solution',
+                icon: Zap,
+                description: 'Power backup solution'
+            },
+            {
+                id: 'battery-only',
+                name: 'Battery only',
+                icon: Battery,
+                description: 'Choose battery capacity',
+                subtitle: 'Choose battery capacity'
+            },
+            {
+                id: 'inverter-only',
+                name: 'Inverter only',
+                icon: Monitor,
+                description: 'Choose inverter capacity',
+                subtitle: 'Choose inverter capacity'
+            },
+            {
+                id: 'panels-only',
+                name: 'Solar panels only',
+                icon: Sun,
+                description: 'Choose solar panel capacity',
+                subtitle: 'Choose solar panel capacity'
+            }
+        ];
+
+        return (
+            <div className="animate-fade-in">
+                <button onClick={() => setStep(1)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                    <ArrowLeft size={16} className="mr-2" /> Back
+                </button>
+                <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
+                    Select Product Category
+                </h2>
+                {categories.length === 0 ? (
+                    <div className="text-center py-12">
+                        <Loader className="animate-spin mx-auto text-[#273e8e]" size={48} />
+                        <p className="mt-4 text-gray-600">Loading categories...</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+                        {categoryGroups.map((group) => {
+                            const IconComponent = group.icon;
+                            const matchingCategoryIds = getCategoryIdsForGroup(group.id);
+                            
+                            return (
+                                <button
+                                    key={group.id}
+                                    onClick={() => handleCategorySelect(group.id)}
+                                    className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center"
+                                >
+                                    <div className="bg-blue-50 p-4 rounded-full mb-4 group-hover:bg-[#273e8e]/10 transition-colors flex items-center justify-center min-h-[64px]">
+                                        <IconComponent size={32} className="text-[#273e8e]" />
+                                    </div>
+                                    <h3 className="text-lg font-bold text-gray-800 mb-1">{group.name}</h3>
+                                    {group.subtitle && (
+                                        <p className="text-sm text-gray-500 italic">{group.subtitle}</p>
+                                    )}
+                                    {matchingCategoryIds.length > 0 && (
+                                        <p className="text-xs text-gray-400 mt-2">
+                                            {matchingCategoryIds.length} categor{matchingCategoryIds.length > 1 ? 'ies' : 'y'} available
+                                        </p>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
-        </div>
-    );
+        );
+    };
+
+    const renderStep2_5 = () => {
+        const formatPrice = (price) => {
+            return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
+        };
+
+        const getProductImage = (product) => {
+            if (product.featured_image_url) {
+                return toAbsolute(product.featured_image_url);
+            }
+            if (product.featured_image) {
+                return toAbsolute(product.featured_image);
+            }
+            if (product.images && product.images[0] && product.images[0].image) {
+                return toAbsolute(product.images[0].image);
+            }
+            // Return a data URI SVG placeholder instead of a file path to prevent infinite loops
+            return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+        };
+
+        return (
+            <div className="animate-fade-in">
+                <button 
+                    onClick={() => {
+                        // Clear products when going back
+                        setCategoryProducts([]);
+                        setProductsLoading(false);
+                        setStep(2);
+                    }} 
+                    className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]"
+                >
+                    <ArrowLeft size={16} className="mr-2" /> Back
+                </button>
+                <h2 className="text-3xl font-bold text-center mb-4 text-[#273e8e]">
+                    Select Product
+                </h2>
+                <p className="text-center text-gray-600 mb-8">
+                    Choose from available products in this category
+                </p>
+
+                {productsLoading ? (
+                    <div className="text-center py-16">
+                        <div className="flex flex-col items-center justify-center">
+                            <Loader className="animate-spin mx-auto text-[#273e8e]" size={48} />
+                            <p className="mt-6 text-lg font-medium text-gray-700">Loading products...</p>
+                            <p className="mt-2 text-sm text-gray-500">Please wait while we fetch available products</p>
+                        </div>
+                    </div>
+                ) : categoryProducts.length === 0 ? (
+                    <div className="text-center py-12 bg-white rounded-2xl border border-gray-200">
+                        <p className="text-gray-600">No products available in this category.</p>
+                        <button
+                            onClick={() => setStep(2)}
+                            className="mt-4 text-[#273e8e] hover:underline"
+                        >
+                            Go back to categories
+                        </button>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+                        {categoryProducts.map((product) => {
+                            const price = Number(product.discount_price || product.price || 0);
+                            const oldPrice = product.discount_price && product.price && product.discount_price < product.price 
+                                ? Number(product.price) 
+                                : null;
+                            const discount = oldPrice && price < oldPrice
+                                ? Math.round(((oldPrice - price) / oldPrice) * 100)
+                                : 0;
+                            
+                            return (
+                                <div
+                                    key={product.id}
+                                    className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-xl transition-all duration-300"
+                                >
+                                    <Link 
+                                        to={`/homePage/product/${product.id}`}
+                                        className="block"
+                                    >
+                                        <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100">
+                                            <img
+                                                src={getProductImage(product)}
+                                                alt={product.title || product.name}
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                onError={(e) => {
+                                                    // Prevent infinite loop - only set placeholder if not already set
+                                                    if (e.target.src && !e.target.src.includes('placeholder-product.png') && !e.target.src.includes('data:image')) {
+                                                        e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                        <h3 className="font-bold text-lg mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">
+                                            {product.title || product.name || `Product #${product.id}`}
+                                        </h3>
+                                        <div className="flex items-center justify-between mb-3">
+                                            <div>
+                                                <p className="font-bold text-[#273e8e] text-lg">
+                                                    {formatPrice(price)}
+                                                </p>
+                                                {oldPrice && (
+                                                    <p className="text-sm text-gray-500 line-through">
+                                                        {formatPrice(oldPrice)}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            {discount > 0 && (
+                                                <span className="px-2 py-1 rounded-full text-xs font-bold bg-[#FFA500] text-white">
+                                                    -{discount}%
+                                                </span>
+                                            )}
+                                        </div>
+                                    </Link>
+                                    <button
+                                        onClick={() => handleProductSelect(product)}
+                                        className="w-full bg-[#273e8e] text-white py-2 rounded-lg font-semibold hover:bg-[#1a2b6b] transition-colors mt-2"
+                                    >
+                                        Select This Product
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     const renderStep3 = () => (
         <div className="animate-fade-in">
@@ -260,6 +699,129 @@ const BNPLFlow = () => {
             </div>
         </div>
     );
+
+    const renderStep3_5 = () => {
+        const formatPrice = (price) => {
+            return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
+        };
+
+        const getBundleImage = (bundle) => {
+            if (bundle.featured_image) {
+                return toAbsolute(bundle.featured_image);
+            }
+            // Return a data URI SVG placeholder instead of a file path to prevent infinite loops
+            return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+        };
+
+        return (
+            <div className="animate-fade-in">
+                <button 
+                    onClick={() => {
+                        // Clear bundles when going back
+                        setBundles([]);
+                        setBundlesLoading(false);
+                        setStep(3);
+                    }} 
+                    className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]"
+                >
+                    <ArrowLeft size={16} className="mr-2" /> Back
+                </button>
+                <h2 className="text-3xl font-bold text-center mb-4 text-[#273e8e]">
+                    Choose Your Solar System
+                </h2>
+                <p className="text-center text-gray-600 mb-8">
+                    Select from our pre-configured solar bundles
+                </p>
+
+                {bundlesLoading ? (
+                    <div className="text-center py-16">
+                        <div className="flex flex-col items-center justify-center">
+                            <Loader className="animate-spin mx-auto text-[#273e8e]" size={48} />
+                            <p className="mt-6 text-lg font-medium text-gray-700">Loading bundles...</p>
+                            <p className="mt-2 text-sm text-gray-500">Please wait while we fetch available solar bundles</p>
+                        </div>
+                    </div>
+                ) : bundles.length === 0 ? (
+                    <div className="text-center py-12 bg-white rounded-2xl border border-gray-200">
+                        <p className="text-gray-600">No bundles available at the moment.</p>
+                        <button
+                            onClick={() => setStep(3)}
+                            className="mt-4 text-[#273e8e] hover:underline"
+                        >
+                            Go back
+                        </button>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+                        {bundles.map((bundle) => {
+                            const price = Number(bundle.discount_price || bundle.total_price || 0);
+                            const oldPrice = bundle.discount_price && bundle.total_price && bundle.discount_price < bundle.total_price 
+                                ? Number(bundle.total_price) 
+                                : null;
+                            const discount = oldPrice && price < oldPrice
+                                ? Math.round(((oldPrice - price) / oldPrice) * 100)
+                                : 0;
+                            
+                            return (
+                                <div
+                                    key={bundle.id}
+                                    className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-xl transition-all duration-300"
+                                >
+                                    <Link 
+                                        to={`/productBundle/details/${bundle.id}`}
+                                        className="block"
+                                    >
+                                        <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100">
+                                            <img
+                                                src={getBundleImage(bundle)}
+                                                alt={bundle.title || bundle.name}
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                onError={(e) => {
+                                                    // Prevent infinite loop - only set placeholder if not already set
+                                                    if (e.target.src && !e.target.src.includes('placeholder-product.png') && !e.target.src.includes('data:image')) {
+                                                        e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                        <h3 className="font-bold text-lg mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">
+                                            {bundle.title || bundle.name || `Bundle #${bundle.id}`}
+                                        </h3>
+                                        {bundle.bundle_type && (
+                                            <p className="text-sm text-gray-500 mb-2">{bundle.bundle_type}</p>
+                                        )}
+                                        <div className="flex items-center justify-between mb-3">
+                                            <div>
+                                                <p className="font-bold text-[#273e8e] text-lg">
+                                                    {formatPrice(price)}
+                                                </p>
+                                                {oldPrice && (
+                                                    <p className="text-sm text-gray-500 line-through">
+                                                        {formatPrice(oldPrice)}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            {discount > 0 && (
+                                                <span className="px-2 py-1 rounded-full text-xs font-bold bg-[#FFA500] text-white">
+                                                    -{discount}%
+                                                </span>
+                                            )}
+                                        </div>
+                                    </Link>
+                                    <button
+                                        onClick={() => handleBundleSelect(bundle)}
+                                        className="w-full bg-[#273e8e] text-white py-2 rounded-lg font-semibold hover:bg-[#1a2b6b] transition-colors mt-2"
+                                    >
+                                        Select This Bundle
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     const renderStep4 = () => (
         <div className="animate-fade-in">
@@ -297,28 +859,86 @@ const BNPLFlow = () => {
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Property Details</h2>
             <form onSubmit={handleAddressSubmit} className="space-y-4">
                 {states.length > 0 ? (
-                    <select
-                        required
-                        className="w-full p-3 border rounded-lg"
-                        onChange={e => {
-                            const stateId = e.target.value ? Number(e.target.value) : null;
-                            const selectedState = states.find(s => s.id === stateId);
-                            setFormData({ ...formData, state: selectedState?.name || '', stateId });
-                        }}
-                    >
-                        <option value="">Select State</option>
-                        {states.filter(s => s.is_active).map((state) => (
-                            <option key={state.id} value={state.id}>{state.name}</option>
-                        ))}
-                    </select>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
+                        <select
+                            required
+                            className="w-full p-3 border rounded-lg"
+                            onChange={e => {
+                                const stateId = e.target.value ? Number(e.target.value) : null;
+                                const selectedState = states.find(s => s.id === stateId);
+                                setFormData({ ...formData, state: selectedState?.name || '', stateId });
+                            }}
+                        >
+                            <option value="">Select State</option>
+                            {states.filter(s => s.is_active).map((state) => (
+                                <option key={state.id} value={state.id}>{state.name}</option>
+                            ))}
+                        </select>
+                    </div>
                 ) : (
-                    <input type="text" placeholder="State" required className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, state: e.target.value })} />
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
+                        <input type="text" placeholder="State" required className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, state: e.target.value })} />
+                    </div>
                 )}
-                <input type="text" placeholder="Address" required className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, address: e.target.value })} />
-                <input type="text" placeholder="Landmark (Optional)" className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, landmark: e.target.value })} />
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">House No *</label>
+                    <input 
+                        type="text" 
+                        placeholder="House Number" 
+                        required 
+                        className="w-full p-3 border rounded-lg" 
+                        value={formData.houseNo}
+                        onChange={e => setFormData({ ...formData, houseNo: e.target.value })} 
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Street Name *</label>
+                    <input 
+                        type="text" 
+                        placeholder="Street Name" 
+                        required 
+                        className="w-full p-3 border rounded-lg" 
+                        value={formData.streetName}
+                        onChange={e => setFormData({ ...formData, streetName: e.target.value })} 
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Landmark (Optional)</label>
+                    <input 
+                        type="text" 
+                        placeholder="Landmark" 
+                        className="w-full p-3 border rounded-lg" 
+                        value={formData.landmark}
+                        onChange={e => setFormData({ ...formData, landmark: e.target.value })} 
+                    />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
-                    <input type="number" placeholder="Floors (Optional)" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, floors: e.target.value })} />
-                    <input type="number" placeholder="Rooms (Optional)" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, rooms: e.target.value })} />
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Number of Floors *</label>
+                        <input 
+                            type="number" 
+                            placeholder="Floors" 
+                            required
+                            min="0"
+                            className="w-full p-3 border rounded-lg" 
+                            value={formData.floors}
+                            onChange={e => setFormData({ ...formData, floors: e.target.value })} 
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Number of Rooms *</label>
+                        <input 
+                            type="number" 
+                            placeholder="Rooms" 
+                            required
+                            min="0"
+                            className="w-full p-3 border rounded-lg" 
+                            value={formData.rooms}
+                            onChange={e => setFormData({ ...formData, rooms: e.target.value })} 
+                        />
+                    </div>
                 </div>
                 
                 {/* Gated Estate Section */}
@@ -355,15 +975,41 @@ const BNPLFlow = () => {
                 
                 <button 
                     type="submit" 
-                    disabled={formData.isGatedEstate && (!formData.estateName || !formData.estateAddress)}
+                    disabled={
+                        loading || 
+                        !formData.state || 
+                        !formData.houseNo || 
+                        !formData.streetName || 
+                        !formData.floors || 
+                        !formData.rooms ||
+                        (formData.isGatedEstate && (!formData.estateName || !formData.estateAddress))
+                    }
                     className={`w-full py-4 rounded-xl font-bold transition-colors ${
-                        formData.isGatedEstate && (!formData.estateName || !formData.estateAddress)
+                        loading || 
+                        !formData.state || 
+                        !formData.houseNo || 
+                        !formData.streetName || 
+                        !formData.floors || 
+                        !formData.rooms ||
+                        (formData.isGatedEstate && (!formData.estateName || !formData.estateAddress))
                             ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                             : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
                     }`}
                 >
-                    Continue
+                    {loading ? (
+                        <span className="flex items-center justify-center">
+                            <Loader className="animate-spin mr-2" size={20} />
+                            Submitting...
+                        </span>
+                    ) : (
+                        'Continue'
+                    )}
                 </button>
+                {(!formData.state || !formData.houseNo || !formData.streetName || !formData.floors || !formData.rooms) && (
+                    <p className="text-sm text-red-600 text-center">
+                        Please fill in all required fields (State, House No, Street Name, Floors, and Rooms)
+                    </p>
+                )}
                 {formData.isGatedEstate && (!formData.estateName || !formData.estateAddress) && (
                     <p className="text-sm text-red-600 text-center">
                         Please fill in Estate Name and Estate Address
@@ -377,14 +1023,49 @@ const BNPLFlow = () => {
         <div className="animate-fade-in max-w-3xl mx-auto text-center">
             <div className="bg-yellow-50 border border-yellow-200 p-8 rounded-2xl">
                 <AlertCircle size={64} className="text-yellow-600 mx-auto mb-6" />
-                <h2 className="text-2xl font-bold mb-4 text-gray-800">Commercial Audit Request</h2>
-                <p className="text-gray-600 mb-6">
-                    Commercial and industrial audits require manual review by our team. 
-                    We will contact you within 24-48 hours to discuss your requirements.
+                <h2 className="text-2xl font-bold mb-4 text-gray-800">Commercial Audit Request Submitted</h2>
+                <p className="text-gray-600 mb-4">
+                    Your commercial audit request has been submitted successfully (Request ID: #{formData.auditRequestId}).
                 </p>
-                <button onClick={() => navigate('/')} className="bg-[#273e8e] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors">
-                    Return to Dashboard
-                </button>
+                <p className="text-gray-600 mb-6">
+                    Our team will contact you within 24 - 48 hours to discuss your energy audit.
+                </p>
+                <div className="space-y-3">
+                    <button 
+                        onClick={() => navigate('/')} 
+                        className="w-full bg-[#273e8e] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
+                    >
+                        Return to Dashboard
+                    </button>
+                    <button 
+                        onClick={async () => {
+                            // Check audit request status
+                            if (!formData.auditRequestId) return;
+                            try {
+                                const token = localStorage.getItem('access_token');
+                                const response = await axios.get(API.AUDIT_REQUEST_BY_ID(formData.auditRequestId), {
+                                    headers: { Authorization: `Bearer ${token}` }
+                                });
+                                
+                                if (response.data.status === 'success') {
+                                    const status = response.data.data.status;
+                                    if (status === 'approved') {
+                                        // Proceed to order summary if approved
+                                        setStep(6.5);
+                                    } else {
+                                        alert(`Your audit request is currently ${status}. Please wait for admin approval.`);
+                                    }
+                                }
+                            } catch (error) {
+                                console.error("Failed to check audit status:", error);
+                                alert("Failed to check audit request status. Please try again later.");
+                            }
+                        }}
+                        className="w-full border-2 border-gray-300 text-gray-700 px-8 py-3 rounded-xl font-bold hover:bg-gray-50 transition-colors"
+                    >
+                        Check Approval Status
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -431,7 +1112,8 @@ const BNPLFlow = () => {
 
                     {formData.optionType !== 'audit' && (
                         <>
-                            <div className="text-sm text-gray-600 pl-14">
+                            <div className="text-sm text-gray-600 pl-14 space-y-1">
+                                <p><strong>Quantity:</strong> 1 system</p>
                                 <p><strong>Appliances:</strong> Standard household appliances</p>
                                 <p><strong>Backup Time:</strong> 8-12 hours (depending on usage)</p>
                             </div>
@@ -450,6 +1132,12 @@ const BNPLFlow = () => {
                         if (formData.optionType === 'audit') {
                             setStep(7); // Go to Audit Invoice
                         } else {
+                            // Check minimum order value (N1.5m) before proceeding to loan calculator
+                            const minOrderValue = 1500000;
+                            if (totalAmount < minOrderValue) {
+                                alert(`Your order total (₦${totalAmount.toLocaleString()}) does not meet the minimum ₦1,500,000 amount required for credit financing. To qualify for Buy Now, Pay Later, please add more items to your cart. Thank you.`);
+                                return;
+                            }
                             setStep(8); // Go to Loan Calculator
                         }
                     }}
@@ -513,15 +1201,37 @@ const BNPLFlow = () => {
                         // Create audit order and confirm payment
                         try {
                             const token = localStorage.getItem('access_token');
-                            // Create audit order (you may need to adjust this API call based on your backend)
+                            // Create audit order with audit_request_id and property details
+                            // Backend will generate invoice based on location, address, floors, and rooms
+                            const checkoutPayload = {
+                                customer_type: formData.customerType,
+                                product_category: 'audit',
+                                amount: auditFee, // Base amount, backend may adjust based on property details
+                                audit_type: formData.auditType,
+                            };
+                            
+                            // Include audit_request_id if available (links order to audit request)
+                            if (formData.auditRequestId) {
+                                checkoutPayload.audit_request_id = formData.auditRequestId;
+                            }
+                            
+                            // Include property details for invoice generation
+                            // Backend will use these to calculate final invoice amount
+                            if (formData.state) checkoutPayload.property_state = formData.state;
+                            if (formData.address || (formData.houseNo && formData.streetName)) {
+                                const fullAddress = [
+                                    formData.houseNo,
+                                    formData.streetName,
+                                    formData.landmark
+                                ].filter(Boolean).join(', ');
+                                checkoutPayload.property_address = fullAddress || formData.address;
+                            }
+                            if (formData.floors) checkoutPayload.property_floors = Number(formData.floors);
+                            if (formData.rooms) checkoutPayload.property_rooms = Number(formData.rooms);
+                            
                             const orderResponse = await axios.post(
                                 API.BUY_NOW_CHECKOUT,
-                                {
-                                    customer_type: formData.customerType,
-                                    product_category: 'audit',
-                                    amount: auditFee,
-                                    audit_type: formData.auditType,
-                                },
+                                checkoutPayload,
                                 {
                                     headers: {
                                         Authorization: `Bearer ${token}`,
@@ -543,8 +1253,10 @@ const BNPLFlow = () => {
                                 
                                 if (confirmed) {
                                     setPaymentResult('success');
-                                    // Fetch calendar slots for audit (48 hours after payment)
-                                    await fetchAuditCalendarSlots();
+                                    // Fetch calendar slots for audit (48 hours after payment confirmation)
+                                    // Backend will filter to show only slots 48 hours after payment_date
+                                    const paymentConfirmationDate = new Date().toISOString().split('T')[0];
+                                    await fetchAuditCalendarSlots(paymentConfirmationDate);
                                     setStep(7.5); // Go to calendar selection step
                                 } else {
                                     alert("Payment verification failed. Please contact support if amount was debited.");
@@ -575,10 +1287,12 @@ const BNPLFlow = () => {
         }
     };
 
-    const fetchAuditCalendarSlots = async () => {
+    const fetchAuditCalendarSlots = async (paymentDate = null) => {
         try {
             const token = localStorage.getItem('access_token');
-            const date = new Date().toISOString().split('T')[0];
+            // Use payment confirmation date (current date when payment is confirmed)
+            // Backend will filter to show only slots 48 hours after this date
+            const date = paymentDate || new Date().toISOString().split('T')[0];
             const response = await axios.get(`${API.CALENDAR_SLOTS}?type=audit&payment_date=${date}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -651,7 +1365,7 @@ const BNPLFlow = () => {
                                 Available Audit Dates
                             </h3>
                             <p className="text-sm text-gray-600 mb-3">
-                                Audit slots are available starting 48 hours after payment. Select your preferred date:
+                                Audit slots are available starting 48 hours after payment confirmation. Select your preferred date:
                             </p>
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                                 {auditCalendarSlots.slice(0, 9).map((slot, idx) => (
@@ -925,6 +1639,14 @@ const BNPLFlow = () => {
             // Add state_id and add_on_ids if available
             if (formData.stateId) formDataToSend.append('state_id', formData.stateId);
             
+            // Add bundle/product ID if selected
+            if (formData.selectedBundleId) {
+                formDataToSend.append('bundle_id', formData.selectedBundleId);
+            }
+            if (formData.selectedProductId) {
+                formDataToSend.append('product_id', formData.selectedProductId);
+            }
+            
             // Add compulsory BNPL add-ons (Insurance)
             const compulsoryAddOns = addOns.filter(a => a.is_compulsory_bnpl).map(a => a.id);
             if (compulsoryAddOns.length > 0) {
@@ -1075,7 +1797,7 @@ const BNPLFlow = () => {
         </div>
     );
 
-    // Status polling effect
+    // Status polling effect for BNPL application
     React.useEffect(() => {
         if (step === 12 && applicationId) {
             const pollInterval = setInterval(async () => {
@@ -1108,6 +1830,36 @@ const BNPLFlow = () => {
             return () => clearInterval(pollInterval);
         }
     }, [step, applicationId]);
+
+    // Poll audit request status for commercial audits (Step 6)
+    React.useEffect(() => {
+        if (step === 6 && formData.auditRequestId && formData.auditType === 'commercial') {
+            const pollInterval = setInterval(async () => {
+                try {
+                    const token = localStorage.getItem('access_token');
+                    const response = await axios.get(API.AUDIT_REQUEST_BY_ID(formData.auditRequestId), {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    
+                    if (response.data.status === 'success') {
+                        const status = response.data.data.status;
+                        if (status === 'approved') {
+                            clearInterval(pollInterval);
+                            // Auto-proceed to order summary when approved
+                            setStep(6.5);
+                        } else if (status === 'rejected') {
+                            clearInterval(pollInterval);
+                            alert("Your audit request has been rejected. Please contact support for more information.");
+                        }
+                    }
+                } catch (error) {
+                    console.error("Audit status polling error:", error);
+                }
+            }, 60000); // Poll every 60 seconds for audit requests
+            
+            return () => clearInterval(pollInterval);
+        }
+    }, [step, formData.auditRequestId, formData.auditType]);
 
     const renderStep12 = () => (
         <div className="animate-fade-in max-w-3xl mx-auto text-center">
@@ -1608,37 +2360,65 @@ const BNPLFlow = () => {
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary & Invoice</h2>
 
             <div className="space-y-4 mb-8">
-                <div className="flex justify-between items-center">
-                    <div className="flex items-center">
-                        <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                            <Sun size={24} className="text-gray-600" />
-                        </div>
-                        <div>
-                            <p className="font-bold text-gray-800">Solar System Bundle</p>
-                            <p className="text-sm text-gray-500">Inverter + Batteries + Panels</p>
-                        </div>
-                    </div>
-                    <span className="font-bold">₦{Number(invoice.product_price || 0).toLocaleString()}</span>
+                {/* Detailed Invoice Breakdown as per requirements */}
+                <div className="border-b pb-4 mb-4">
+                    <h3 className="font-bold text-gray-800 mb-3">Invoice Details</h3>
                 </div>
-
-                <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
-                    <span>Material Cost (Cables, Breakers, etc.)</span>
+                
+                {/* Solar Inverter */}
+                <div className="flex justify-between items-center">
+                    <div>
+                        <p className="font-medium text-gray-800">Solar Inverter</p>
+                        <p className="text-sm text-gray-500">Quantity: 1</p>
+                    </div>
+                    <span className="font-bold">₦{Number((invoice.product_price || 0) * 0.4).toLocaleString()}</span>
+                </div>
+                
+                {/* Solar Panels */}
+                <div className="flex justify-between items-center">
+                    <div>
+                        <p className="font-medium text-gray-800">Solar Panels</p>
+                        <p className="text-sm text-gray-500">Quantity: 1</p>
+                    </div>
+                    <span className="font-bold">₦{Number((invoice.product_price || 0) * 0.35).toLocaleString()}</span>
+                </div>
+                
+                {/* Batteries */}
+                <div className="flex justify-between items-center">
+                    <div>
+                        <p className="font-medium text-gray-800">Batteries</p>
+                        <p className="text-sm text-gray-500">Quantity: 1</p>
+                    </div>
+                    <span className="font-bold">₦{Number((invoice.product_price || 0) * 0.25).toLocaleString()}</span>
+                </div>
+                
+                {/* Material Cost */}
+                <div className="flex justify-between items-center text-sm text-gray-600">
+                    <span>Material Cost (Cables, Breakers, Surge Protectors, Trunking, and Pipes)</span>
                     <span>₦{Number(invoice.material_cost || 0).toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
-                    <span>Installation Fee</span>
+                
+                {/* Installation Fee */}
+                <div className="flex justify-between items-center text-sm text-gray-600">
+                    <span>Installation Fees</span>
                     <span>₦{Number(invoice.installation_fee || 0).toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
-                    <span>Delivery/Logistics</span>
+                
+                {/* Delivery/Logistics */}
+                <div className="flex justify-between items-center text-sm text-gray-600">
+                    <span>Delivery/Logistics Fees</span>
                     <span>₦{Number(invoice.delivery_fee || 0).toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
-                    <span>Inspection Fee</span>
+                
+                {/* Inspection Fee */}
+                <div className="flex justify-between items-center text-sm text-gray-600">
+                    <span>Inspection Fees</span>
                     <span>₦{Number(invoice.inspection_fee || 0).toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
-                    <span>Insurance (0.5%)</span>
+                
+                {/* Insurance Fee */}
+                <div className="flex justify-between items-center text-sm text-gray-600">
+                    <span>Insurance Fee</span>
                     <span>₦{Number(invoice.insurance_fee || 0).toLocaleString()}</span>
                 </div>
 
@@ -1723,7 +2503,9 @@ const BNPLFlow = () => {
 
                     {step === 1 && renderStep1()}
                     {step === 2 && renderStep2()}
+                    {step === 2.5 && renderStep2_5()}
                     {step === 3 && renderStep3()}
+                    {step === 3.5 && renderStep3_5()}
                     {step === 4 && renderStep4()}
                     {step === 5 && renderStep5()}
                     {step === 6 && renderStep6()}

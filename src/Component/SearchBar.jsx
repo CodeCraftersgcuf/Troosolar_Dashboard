@@ -48,14 +48,6 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
       let results = [...products]; // Start with all products
       const isFilteringActive = selectedValue !== "all" || query.trim() !== "";
 
-      console.log("SearchBar Filtering:", {
-        totalProducts: products.length,
-        selectedValue,
-        query,
-        isFilteringActive,
-        firstProduct: products[0]
-      });
-
       // Category filtering
       if (selectedValue !== "all") {
         const catId = Number(selectedValue);
@@ -63,7 +55,6 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
           // For mapped products from HomePage (they have categoryId)
           return Number(item.categoryId) === catId;
         });
-        console.log("After category filter:", results.length);
       }
 
       // Search filtering
@@ -74,10 +65,7 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
           const title = item.heading || "";
           return String(title).toLowerCase().includes(q);
         });
-        console.log("After search filter:", results.length);
       }
-
-      console.log("Final filtered results:", results.length);
       
       // Update filtered results in context
       setFilteredResults(results);
@@ -89,7 +77,8 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
     }, 300);
 
     return () => clearTimeout(delay);
-  }, [query, selectedValue, products, setFilteredResults, onFilteringChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, selectedValue, products]); // Removed setFilteredResults and onFilteringChange to prevent infinite loops
 
   return (
     <div className="flex items-center bg-white rounded-lg shadow-sm border border-gray-200 w-[100%] relative">

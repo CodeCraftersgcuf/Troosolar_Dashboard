@@ -42,9 +42,11 @@ const LoanCalculator = ({ totalAmount, onConfirm, loanConfig }) => {
     return (
       <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
         <h3 className="text-red-700 font-bold text-lg mb-2">Order Value Too Low</h3>
+        <p className="text-red-600 mb-4">
+          Your order total ({formatCurrency(totalAmount)}) does not meet the minimum {formatCurrency(minAmount)} amount required for credit financing.
+        </p>
         <p className="text-red-600">
-          Minimum order value for BNPL is {formatCurrency(minAmount)}.
-          Your current total is {formatCurrency(totalAmount)}.
+          To qualify for Buy Now, Pay Later, please add more items to your cart. Thank you.
         </p>
       </div>
     );
@@ -66,18 +68,19 @@ const LoanCalculator = ({ totalAmount, onConfirm, loanConfig }) => {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Initial Deposit ({depositPercent}%)
             </label>
-            <input
-              type="range"
-              min={minDepositPercent}
-              max={maxDepositPercent}
-              step="10"
-              value={depositPercent}
-              onChange={(e) => setDepositPercent(Number(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#273e8e]"
-            />
-            <div className="flex justify-between text-xs text-gray-500 mt-1">
-              <span>{minDepositPercent}%</span>
-              <span>{maxDepositPercent}%</span>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              {[30, 40, 50, 60, 70, 80].filter(p => p >= minDepositPercent && p <= maxDepositPercent).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setDepositPercent(p)}
+                  className={`py-2 rounded-lg text-sm font-medium transition-colors ${depositPercent === p
+                      ? 'bg-[#273e8e] text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                >
+                  {p}%
+                </button>
+              ))}
             </div>
             <p className="text-[#273e8e] font-bold mt-2 text-lg">
               {formatCurrency(depositAmount)}

@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState, useCallback } from "react";
 import axios from "axios";
 import SearchBar from "../Component/SearchBar";
 import Items from "../Component/Items";
@@ -90,6 +90,11 @@ const SolarShop = () => {
     const [prodError, setProdError] = useState("");
     const [isFiltering, setIsFiltering] = useState(false);
     const [searchBarKey, setSearchBarKey] = useState(0);
+
+    // Memoize the filtering change callback to prevent infinite loops
+    const handleFilteringChange = useCallback((isActive) => {
+        setIsFiltering(isActive);
+    }, []);
 
     // Fetch categories
     useEffect(() => {
@@ -212,7 +217,7 @@ const SolarShop = () => {
                         key={searchBarKey}
                         categories={categories}
                         products={apiProducts}
-                        onFilteringChange={setIsFiltering}
+                        onFilteringChange={handleFilteringChange}
                     />
                 </div>
             </div>

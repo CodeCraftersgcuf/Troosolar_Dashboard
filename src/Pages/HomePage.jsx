@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState, useCallback } from "react";
 import axios from "axios";
 import SideBar from "../Component/SideBar";
 import SearchBar from "../Component/SearchBar";
@@ -99,6 +99,11 @@ const HomePage = () => {
   const [isFiltering, setIsFiltering] = useState(false);
   const [searchBarKey, setSearchBarKey] = useState(0); // Key to force SearchBar re-render
 
+  // Memoize the filtering change callback to prevent infinite loops
+  const handleFilteringChange = useCallback((isActive) => {
+    setIsFiltering(isActive);
+  }, []);
+
   // Fetch categories
   useEffect(() => {
     const fetchCategories = async () => {
@@ -158,7 +163,8 @@ const HomePage = () => {
       }
     };
     fetchProducts();
-  }, [registerProducts, setFilteredResults]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount - removed registerProducts and setFilteredResults to prevent infinite loops
 
   // Build a quick id->name map for categories
   const catMap = useMemo(() => {
@@ -220,7 +226,7 @@ const HomePage = () => {
                 key={searchBarKey}
                 categories={categories} 
                 products={apiProducts} 
-                onFilteringChange={setIsFiltering}
+                onFilteringChange={handleFilteringChange}
               />
             </div>
 
@@ -336,7 +342,7 @@ const HomePage = () => {
                 key={searchBarKey}
                 categories={categories} 
                 products={apiProducts} 
-                onFilteringChange={setIsFiltering}
+                onFilteringChange={handleFilteringChange}
               />
             </div>
           </div>

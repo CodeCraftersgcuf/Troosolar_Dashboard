@@ -179,7 +179,8 @@ const SpecificProduct = () => {
       }
     };
     if (id) fetchCategoryProducts();
-  }, [id, registerProducts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]); // Removed registerProducts from deps to prevent infinite loops
 
   // price filter
   const handlePriceFilter = (min, max) => {
