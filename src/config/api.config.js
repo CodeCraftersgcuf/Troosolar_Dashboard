@@ -70,8 +70,10 @@ const API = {
     BNPL_APPLY: `${BASE_URL}/bnpl/apply`,
     BNPL_STATUS: (id) => `${BASE_URL}/bnpl/status/${id}`,
     BNPL_GUARANTOR_INVITE: `${BASE_URL}/bnpl/guarantor/invite`,
+    BNPL_GUARANTOR_FORM: `${BASE_URL}/bnpl/guarantor/form`,
     BNPL_GUARANTOR_UPLOAD: `${BASE_URL}/bnpl/guarantor/upload`,
     BNPL_COUNTEROFFER_ACCEPT: `${BASE_URL}/bnpl/counteroffer/accept`,
+    BNPL_INVOICE: (applicationId) => `${BASE_URL}/bnpl/invoice/${applicationId}`,
     BUY_NOW_CHECKOUT: `${BASE_URL}/orders/checkout`,
     CALENDAR_SLOTS: `${BASE_URL}/calendar/slots`,
 

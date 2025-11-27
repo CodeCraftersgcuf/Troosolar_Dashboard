@@ -1,9 +1,21 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Upload, CreditCard, Camera, Clock, Download, AlertCircle, Calendar, Loader } from 'lucide-react';
+import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Upload, CreditCard, Camera, Clock, Download, AlertCircle, Calendar, Loader, CheckCircle2, XCircle } from 'lucide-react';
 import LoanCalculator from '../../Component/LoanCalculator';
 import axios from 'axios';
 import API from '../../config/api.config';
+
+// Flutterwave integration
+const ensureFlutterwave = () =>
+    new Promise((resolve, reject) => {
+        if (window.FlutterwaveCheckout) return resolve();
+        const s = document.createElement("script");
+        s.src = "https://checkout.flutterwave.com/v3.js";
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error("Failed to load Flutterwave script"));
+        document.body.appendChild(s);
+    });
 
 const BNPLFlow = () => {
     const navigate = useNavigate();
@@ -18,6 +30,11 @@ const BNPLFlow = () => {
     const [applicationStatus, setApplicationStatus] = useState('pending');
     const [guarantorId, setGuarantorId] = useState(null);
     const [invoiceData, setInvoiceData] = useState(null);
+    const [processingPayment, setProcessingPayment] = useState(false);
+    const [paymentResult, setPaymentResult] = useState(null); // 'success' | 'failed' | null
+    const [auditOrderId, setAuditOrderId] = useState(null);
+    const [auditCalendarSlots, setAuditCalendarSlots] = useState([]);
+    const [selectedAuditSlot, setSelectedAuditSlot] = useState(null);
 
     const [formData, setFormData] = useState({
         customerType: '',
@@ -127,7 +144,7 @@ const BNPLFlow = () => {
             // Simulate selecting a product
             const mockPrice = 2500000;
             setFormData(prev => ({ ...prev, selectedProductPrice: mockPrice }));
-            setStep(8); // Loan Calculator
+            setStep(6.5); // Order Summary (NEW STEP) before loan calculator
         } else {
             alert("This path is under construction.");
         }
@@ -144,12 +161,12 @@ const BNPLFlow = () => {
 
     const handleAddressSubmit = (e) => {
         e.preventDefault();
-        setStep(7); // Audit Invoice
+        setStep(6.5); // Order Summary (for audit) before invoice
     };
 
     const handleLoanConfirm = (loanDetails) => {
         setFormData({ ...formData, loanDetails });
-        setStep(10); // Credit Check Method
+        setStep(9); // Customer decides to proceed (NEW STEP)
     };
 
     // --- Render Steps ---
@@ -372,8 +389,214 @@ const BNPLFlow = () => {
         </div>
     );
 
+    const renderStep6_5 = () => {
+        // Calculate total amount for order summary
+        const insuranceAddOn = addOns.find(a => a.is_compulsory_bnpl);
+        const insuranceFee = insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
+            ? (formData.selectedProductPrice * insuranceAddOn.calculation_value) / 100
+            : (insuranceAddOn?.price || formData.selectedProductPrice * 0.005);
+        
+        const materialCost = 50000;
+        const installationFee = 50000;
+        const deliveryFee = 25000;
+        const inspectionFee = 10000;
+        const totalAmount = formData.selectedProductPrice + insuranceFee + materialCost + installationFee + deliveryFee + inspectionFee;
+
+        return (
+            <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                <button onClick={() => setStep(formData.optionType === 'audit' ? 5 : (formData.optionType ? 3 : 2))} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                    <ArrowLeft size={16} className="mr-2" /> Back
+                </button>
+                <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary</h2>
+                
+                <div className="space-y-4 mb-6">
+                    <div className="flex justify-between items-center">
+                        <div className="flex items-center">
+                            <div className="bg-gray-100 p-2 rounded-lg mr-4">
+                                <Sun size={24} className="text-gray-600" />
+                            </div>
+                            <div>
+                                <p className="font-bold text-gray-800">
+                                    {formData.optionType === 'audit' ? 'Professional Energy Audit' : 'Solar System Bundle'}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                    {formData.optionType === 'audit' 
+                                        ? 'Home/Office Audit Service' 
+                                        : 'Inverter + Batteries + Panels'}
+                                </p>
+                            </div>
+                        </div>
+                        <span className="font-bold">₦{Number(formData.selectedProductPrice || 0).toLocaleString()}</span>
+                    </div>
+
+                    {formData.optionType !== 'audit' && (
+                        <>
+                            <div className="text-sm text-gray-600 pl-14">
+                                <p><strong>Appliances:</strong> Standard household appliances</p>
+                                <p><strong>Backup Time:</strong> 8-12 hours (depending on usage)</p>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6">
+                    <p className="text-sm text-blue-700">
+                        <strong>Note:</strong> This is a summary of your order. Detailed invoice with all fees will be shown after loan calculation.
+                    </p>
+                </div>
+
+                <button
+                    onClick={() => {
+                        if (formData.optionType === 'audit') {
+                            setStep(7); // Go to Audit Invoice
+                        } else {
+                            setStep(8); // Go to Loan Calculator
+                        }
+                    }}
+                    className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
+                >
+                    {formData.optionType === 'audit' ? 'Proceed to Invoice' : 'Proceed to Loan Calculator'}
+                </button>
+            </div>
+        );
+    };
+
+    const confirmAuditPayment = async (orderId, txId, amount) => {
+        const token = localStorage.getItem('access_token');
+        if (!token) return false;
+        try {
+            const { data } = await axios.post(
+                API.Payment_Confirmation,
+                {
+                    amount: String(amount),
+                    orderId: Number(orderId),
+                    txId: String(txId || ""),
+                    type: "audit",
+                },
+                {
+                    headers: {
+                        Accept: "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+            return data?.status === "success";
+        } catch (e) {
+            console.error("Payment confirmation failed:", e);
+            return false;
+        }
+    };
+
+    const handleAuditPayment = async () => {
+        const auditFee = 50000;
+        setProcessingPayment(true);
+        try {
+            await ensureFlutterwave();
+
+            const txRef = "audit_" + Date.now();
+            const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+            const userEmail = userInfo.email || 'customer@troosolar.com';
+            const userName = userInfo.name || userInfo.full_name || 'Customer';
+
+            window.FlutterwaveCheckout({
+                public_key: "FLWPUBK_TEST-dd1514f7562b1d623c4e63fb58b6aedb-X", // TODO: Move to env variable
+                tx_ref: txRef,
+                amount: auditFee,
+                currency: "NGN",
+                payment_options: "card,ussd,banktransfer",
+                customer: {
+                    email: userEmail,
+                    name: userName,
+                },
+                callback: async (response) => {
+                    if (response?.status === "successful") {
+                        // Create audit order and confirm payment
+                        try {
+                            const token = localStorage.getItem('access_token');
+                            // Create audit order (you may need to adjust this API call based on your backend)
+                            const orderResponse = await axios.post(
+                                API.BUY_NOW_CHECKOUT,
+                                {
+                                    customer_type: formData.customerType,
+                                    product_category: 'audit',
+                                    amount: auditFee,
+                                    audit_type: formData.auditType,
+                                },
+                                {
+                                    headers: {
+                                        Authorization: `Bearer ${token}`,
+                                        'Content-Type': 'application/json',
+                                        Accept: 'application/json'
+                                    }
+                                }
+                            );
+
+                            if (orderResponse.data.status === 'success') {
+                                const orderId = orderResponse.data.data.order_id;
+                                setAuditOrderId(orderId);
+                                
+                                const confirmed = await confirmAuditPayment(
+                                    orderId,
+                                    response.transaction_id,
+                                    auditFee
+                                );
+                                
+                                if (confirmed) {
+                                    setPaymentResult('success');
+                                    // Fetch calendar slots for audit (48 hours after payment)
+                                    await fetchAuditCalendarSlots();
+                                    setStep(7.5); // Go to calendar selection step
+                                } else {
+                                    alert("Payment verification failed. Please contact support if amount was debited.");
+                                    setPaymentResult('failed');
+                                }
+                            } else {
+                                alert("Failed to create audit order. Please contact support.");
+                                setPaymentResult('failed');
+                            }
+                        } catch (error) {
+                            console.error("Order creation error:", error);
+                            alert("Payment successful but failed to create order. Please contact support.");
+                            setPaymentResult('failed');
+                        }
+                    } else {
+                        setPaymentResult('failed');
+                    }
+                    setProcessingPayment(false);
+                },
+                onclose: () => {
+                    setProcessingPayment(false);
+                },
+            });
+        } catch (error) {
+            console.error("Payment initialization error:", error);
+            alert("Failed to initialize payment. Please try again.");
+            setProcessingPayment(false);
+        }
+    };
+
+    const fetchAuditCalendarSlots = async () => {
+        try {
+            const token = localStorage.getItem('access_token');
+            const date = new Date().toISOString().split('T')[0];
+            const response = await axios.get(`${API.CALENDAR_SLOTS}?type=audit&payment_date=${date}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (response.data.status === 'success') {
+                setAuditCalendarSlots(response.data.data.slots || []);
+            }
+        } catch (error) {
+            console.error("Calendar Error:", error);
+            // Set empty slots if API fails
+            setAuditCalendarSlots([]);
+        }
+    };
+
     const renderStep7 = () => (
         <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+            <button onClick={() => setStep(6.5)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                <ArrowLeft size={16} className="mr-2" /> Back
+            </button>
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Audit Invoice</h2>
             <div className="space-y-4 mb-8">
                 <div className="flex justify-between">
@@ -385,9 +608,114 @@ const BNPLFlow = () => {
                     <span className="text-[#273e8e]">₦50,000</span>
                 </div>
             </div>
-            <button className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors">
-                Proceed to Payment
+            <button 
+                onClick={handleAuditPayment}
+                disabled={processingPayment}
+                className={`w-full py-4 rounded-xl font-bold transition-colors flex items-center justify-center ${
+                    processingPayment
+                        ? 'bg-gray-400 text-white cursor-not-allowed'
+                        : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
+                }`}
+            >
+                {processingPayment ? (
+                    <>
+                        <Loader className="animate-spin mr-2" size={20} />
+                        Processing Payment...
+                    </>
+                ) : (
+                    'Proceed to Payment'
+                )}
             </button>
+        </div>
+    );
+
+    const renderStep7_5 = () => (
+        <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+            {paymentResult === 'success' ? (
+                <>
+                    <div className="mb-6">
+                        <div className="flex items-center mb-4">
+                            <CheckCircle2 size={32} className="text-green-600 mr-3" />
+                            <h2 className="text-2xl font-bold text-green-700">Payment Successful!</h2>
+                        </div>
+                        <p className="text-gray-600 mb-6">
+                            Your audit payment has been confirmed. Please select your preferred audit date.
+                        </p>
+                    </div>
+
+                    {/* Calendar Slots Section */}
+                    {auditCalendarSlots.length > 0 ? (
+                        <div className="mb-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                            <h3 className="font-bold text-[#273e8e] mb-3 flex items-center">
+                                <Calendar size={20} className="mr-2" />
+                                Available Audit Dates
+                            </h3>
+                            <p className="text-sm text-gray-600 mb-3">
+                                Audit slots are available starting 48 hours after payment. Select your preferred date:
+                            </p>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                                {auditCalendarSlots.slice(0, 9).map((slot, idx) => (
+                                    <button
+                                        key={idx}
+                                        disabled={!slot.available}
+                                        onClick={() => slot.available && setSelectedAuditSlot(slot)}
+                                        className={`p-2 rounded-lg text-sm border transition-colors ${
+                                            selectedAuditSlot?.date === slot.date && selectedAuditSlot?.time === slot.time
+                                                ? 'border-[#273e8e] bg-[#273e8e] text-white'
+                                                : slot.available
+                                                ? 'border-blue-300 hover:bg-blue-100 text-gray-800'
+                                                : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                                        }`}
+                                    >
+                                        <div className="font-medium">{new Date(slot.date).toLocaleDateString('en-NG', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+                                        <div className="text-xs">{slot.time}</div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="mb-8 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                            <p className="text-sm text-yellow-700">
+                                Calendar slots will be available soon. Our team will contact you within 24-48 hours to schedule your audit.
+                            </p>
+                        </div>
+                    )}
+
+                    <button
+                        onClick={() => {
+                            // After selecting audit slot, continue to loan calculator
+                            // Set a mock product price for the loan calculator
+                            setFormData(prev => ({ ...prev, selectedProductPrice: 2500000 }));
+                            setStep(8); // Go to Loan Calculator
+                        }}
+                        className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
+                    >
+                        Continue to Loan Calculator
+                    </button>
+                </>
+            ) : (
+                <div className="text-center">
+                    <XCircle size={64} className="text-red-600 mx-auto mb-6" />
+                    <h2 className="text-3xl font-bold mb-4 text-red-700">Payment Failed</h2>
+                    <p className="text-gray-600 mb-6">
+                        Your payment could not be processed. Please try again.
+                    </p>
+                    <div className="space-y-3">
+                        <button
+                            onClick={handleAuditPayment}
+                            className="w-full bg-[#273e8e] text-white py-3 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
+                        >
+                            Try Again
+                        </button>
+                        <button
+                            onClick={() => setStep(7)}
+                            className="w-full border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-50 transition-colors"
+                        >
+                            Back to Invoice
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 
@@ -422,9 +750,66 @@ const BNPLFlow = () => {
         );
     };
 
-    const renderStep10 = () => (
+    const renderStep9 = () => (
         <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
             <button onClick={() => setStep(8)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                <ArrowLeft size={16} className="mr-2" /> Back
+            </button>
+            <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Review Your Loan Plan</h2>
+            {formData.loanDetails && (
+                <div className="bg-blue-50 border border-blue-200 p-6 rounded-lg mb-6">
+                    <h3 className="font-bold text-gray-800 mb-4">Loan Summary</h3>
+                    <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                            <span>Total Amount:</span>
+                            <span className="font-bold">₦{Number(formData.loanDetails.totalAmount || 0).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span>Deposit ({formData.loanDetails.depositPercent}%):</span>
+                            <span className="font-bold">₦{Number(formData.loanDetails.depositAmount || 0).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span>Loan Amount:</span>
+                            <span className="font-bold">₦{Number(formData.loanDetails.principal || 0).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span>Monthly Repayment:</span>
+                            <span className="font-bold">₦{Number(formData.loanDetails.monthlyRepayment || 0).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span>Tenor:</span>
+                            <span className="font-bold">{formData.loanDetails.tenor} months</span>
+                        </div>
+                        <div className="flex justify-between border-t pt-2 mt-2">
+                            <span>Total Repayment:</span>
+                            <span className="font-bold text-[#273e8e]">₦{Number(formData.loanDetails.totalRepayment || 0).toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+            <p className="text-gray-600 mb-6">
+                Do you want to proceed with this loan plan? You'll need to complete a credit check and provide additional information.
+            </p>
+            <div className="flex gap-4">
+                <button
+                    onClick={() => setStep(10)}
+                    className="flex-1 bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
+                >
+                    Yes, Proceed
+                </button>
+                <button
+                    onClick={() => setStep(8)}
+                    className="flex-1 border-2 border-gray-300 text-gray-700 py-4 rounded-xl font-bold hover:bg-gray-50 transition-colors"
+                >
+                    Adjust Plan
+                </button>
+            </div>
+        </div>
+    );
+
+    const renderStep10 = () => (
+        <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+            <button onClick={() => setStep(9)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Credit Check Method</h2>
@@ -709,10 +1094,10 @@ const BNPLFlow = () => {
                             setStep(13); // Go to approval screen
                         } else if (status === 'rejected') {
                             clearInterval(pollInterval);
-                            // Could show rejection screen
+                            setStep(14); // Go to rejection screen
                         } else if (status === 'counter_offer') {
                             clearInterval(pollInterval);
-                            // Could show counter offer screen
+                            setStep(15); // Go to counter offer screen
                         }
                     }
                 } catch (error) {
@@ -747,6 +1132,10 @@ const BNPLFlow = () => {
                                     
                                     if (status === 'approved') {
                                         setStep(13);
+                                    } else if (status === 'rejected') {
+                                        setStep(14);
+                                    } else if (status === 'counter_offer') {
+                                        setStep(15);
                                     } else {
                                         alert(`Current status: ${status}. Please check again later.`);
                                     }
@@ -785,6 +1174,144 @@ const BNPLFlow = () => {
                     className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
                 >
                     Proceed to Guarantor Form
+                </button>
+            </div>
+        </div>
+    );
+
+    const renderStep14 = () => (
+        <div className="animate-fade-in max-w-3xl mx-auto">
+            <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
+                Application Status
+            </h2>
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-red-200">
+                <div className="flex items-center mb-6">
+                    <AlertCircle size={32} className="text-red-600 mr-4" />
+                    <h3 className="text-2xl font-bold text-red-700">Loan Not Approved</h3>
+                </div>
+                <p className="text-gray-600 mb-6">
+                    Unfortunately, your loan application was not approved at this time. However, you can improve your chances by:
+                </p>
+                <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg mb-6">
+                    <h4 className="font-bold text-gray-800 mb-3">Options to Improve Your Application:</h4>
+                    <ul className="space-y-2 text-sm text-gray-700">
+                        <li>• Increase your initial deposit</li>
+                        <li>• Extend your repayment duration (if you chose less than 12 months)</li>
+                        <li>• Reduce the system size you initially chose</li>
+                    </ul>
+                </div>
+                <div className="flex gap-4">
+                    <button
+                        onClick={() => {
+                            // Reset to loan calculator to adjust
+                            setStep(8);
+                        }}
+                        className="flex-1 bg-[#273e8e] text-white py-3 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
+                    >
+                        Adjust Application
+                    </button>
+                    <button
+                        onClick={() => navigate('/')}
+                        className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-50 transition-colors"
+                    >
+                        Return to Dashboard
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+
+    const renderStep15 = () => {
+        // This would typically come from the API response
+        const counterOffer = {
+            minimum_deposit: formData.loanDetails?.depositAmount ? formData.loanDetails.depositAmount * 1.2 : 0,
+            minimum_tenor: formData.loanDetails?.tenor ? Math.max(formData.loanDetails.tenor, 12) : 12
+        };
+
+        return (
+            <div className="animate-fade-in max-w-3xl mx-auto">
+                <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
+                    Counter Offer Available
+                </h2>
+                <div className="bg-white p-8 rounded-2xl shadow-sm border border-yellow-200">
+                    <div className="flex items-center mb-6">
+                        <AlertCircle size={32} className="text-yellow-600 mr-4" />
+                        <h3 className="text-2xl font-bold text-yellow-700">Partial Approval</h3>
+                    </div>
+                    <p className="text-gray-600 mb-6">
+                        Your loan application has been partially approved with a counter offer. Please review the new terms:
+                    </p>
+                    <div className="bg-blue-50 border border-blue-200 p-6 rounded-lg mb-6">
+                        <h4 className="font-bold text-gray-800 mb-4">Counter Offer Terms:</h4>
+                        <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                                <span>Minimum Deposit:</span>
+                                <span className="font-bold">₦{Number(counterOffer.minimum_deposit).toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>Minimum Tenor:</span>
+                                <span className="font-bold">{counterOffer.minimum_tenor} months</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p className="text-sm text-gray-500 mb-6">
+                        <strong>Note:</strong> If you accept the counteroffer or re-apply, you do not need to pay for credit checks again.
+                    </p>
+                    <div className="space-y-3">
+                        <button
+                            onClick={async () => {
+                                // Accept counteroffer - update loan details and proceed
+                                const updatedLoanDetails = {
+                                    ...formData.loanDetails,
+                                    depositAmount: counterOffer.minimum_deposit,
+                                    tenor: counterOffer.minimum_tenor
+                                };
+                                setFormData({ ...formData, loanDetails: updatedLoanDetails });
+                                setStep(16); // Proceed to complete form with counteroffer
+                            }}
+                            className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
+                        >
+                            Accept Counteroffer
+                        </button>
+                        <button
+                            onClick={() => {
+                                // Re-apply - go back to loan calculator
+                                setStep(8);
+                            }}
+                            className="w-full border-2 border-gray-300 text-gray-700 py-4 rounded-xl font-bold hover:bg-gray-50 transition-colors"
+                        >
+                            Re-apply with Different Terms
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const renderStep16 = () => (
+        <div className="animate-fade-in max-w-3xl mx-auto">
+            <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
+                Guarantor Credit Check
+            </h2>
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-blue-200">
+                <div className="flex items-center mb-6">
+                    <Clock size={32} className="text-blue-600 mr-4" />
+                    <h3 className="text-2xl font-bold text-blue-700">Under Review</h3>
+                </div>
+                <p className="text-gray-600 mb-6">
+                    Your guarantor's credit check is currently under review. You will receive feedback within 24 hours.
+                </p>
+                <p className="text-sm text-gray-500 mb-6">
+                    <strong>Important:</strong> If your guarantor does not qualify, your loan will not be disbursed.
+                </p>
+                <button
+                    onClick={() => {
+                        // Check status - this would typically poll or check API
+                        setStep(19); // Proceed to agreement step
+                    }}
+                    className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
+                >
+                    Continue
                 </button>
             </div>
         </div>
@@ -834,7 +1361,7 @@ const BNPLFlow = () => {
             });
 
             if (response.data.status === 'success') {
-                setStep(21); // Proceed to Invoice
+                setStep(19); // Proceed to Agreement Step (NEW)
             }
         } catch (error) {
             console.error("Guarantor Upload Error:", error);
@@ -843,6 +1370,63 @@ const BNPLFlow = () => {
             setLoading(false);
         }
     };
+
+    const renderStep19 = () => (
+        <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+            <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Important Agreement</h2>
+            <div className="bg-yellow-50 border border-yellow-200 p-6 rounded-lg mb-6">
+                <AlertCircle className="text-yellow-600 mb-3" size={24} />
+                <p className="text-gray-700 leading-relaxed">
+                    <strong>Your signed Guarantors, along with undated signed cheques will be received on the day of installation of your system as installation won't proceed without receiving them.</strong>
+                </p>
+            </div>
+            <div className="mb-6">
+                <label className="flex items-start cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={formData.agreedToTerms || false}
+                        onChange={(e) => setFormData({ ...formData, agreedToTerms: e.target.checked })}
+                        className="mt-1 h-5 w-5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded"
+                    />
+                    <span className="ml-3 text-gray-700">
+                        I understand and agree to the terms above. I acknowledge that installation will not proceed without receiving the signed guarantor documents and undated cheques.
+                    </span>
+                </label>
+            </div>
+            <button
+                onClick={() => setStep(20)}
+                disabled={!formData.agreedToTerms}
+                className={`w-full py-4 rounded-xl font-bold transition-colors ${
+                    formData.agreedToTerms
+                        ? 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+            >
+                I Agree and Continue
+            </button>
+        </div>
+    );
+
+    const renderStep20 = () => (
+        <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-green-200">
+            <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Confirmation</h2>
+            <div className="bg-green-50 border border-green-200 p-6 rounded-lg mb-6">
+                <CheckCircle className="text-green-600 mb-3" size={32} />
+                <p className="text-gray-700 mb-4">
+                    Thank you for confirming your agreement. Your loan will be disbursed to your wallet to complete your purchase.
+                </p>
+                <p className="text-sm text-gray-600">
+                    You can now proceed to view your order summary and invoice.
+                </p>
+            </div>
+            <button
+                onClick={() => setStep(21)}
+                className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
+            >
+                Proceed to Order Summary
+            </button>
+        </div>
+    );
 
     const renderStep17 = () => (
         <div className="animate-fade-in max-w-2xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
@@ -894,9 +1478,14 @@ const BNPLFlow = () => {
                             onClick={async () => {
                                 try {
                                     const token = localStorage.getItem('access_token');
-                                    // Generate or fetch guarantor form PDF
-                                    // This should call an API endpoint to generate/download the form
-                                    const response = await axios.get(`${API.BNPL_GUARANTOR_INVITE.replace('/invite', '/form')}?loan_application_id=${applicationId}`, {
+                                    if (!token) {
+                                        alert("Please login to continue");
+                                        navigate('/login');
+                                        return;
+                                    }
+                                    
+                                    // Fetch guarantor form PDF from API
+                                    const response = await axios.get(`${API.BNPL_GUARANTOR_FORM}?loan_application_id=${applicationId}`, {
                                         headers: { Authorization: `Bearer ${token}` },
                                         responseType: 'blob'
                                     });
@@ -909,10 +1498,14 @@ const BNPLFlow = () => {
                                     document.body.appendChild(link);
                                     link.click();
                                     link.remove();
+                                    window.URL.revokeObjectURL(url);
                                 } catch (error) {
                                     console.error("Download error:", error);
-                                    // Fallback: show alert with instructions
-                                    alert("Please contact support to get your guarantor form, or download it from your application dashboard.");
+                                    if (error.response?.status === 404) {
+                                        alert("Guarantor form is not available yet. Please contact support or try again later.");
+                                    } else {
+                                        alert("Failed to download guarantor form. Please contact support or try again later.");
+                                    }
                                 }
                             }}
                             className="w-full border-2 border-[#273e8e] text-[#273e8e] py-3 rounded-xl font-bold hover:bg-blue-50 transition-colors flex items-center justify-center mb-4"
@@ -954,8 +1547,24 @@ const BNPLFlow = () => {
             const fetchInvoice = async () => {
                 try {
                     const token = localStorage.getItem('access_token');
-                    // This should call an API to get the final invoice/order summary
-                    // For now, we'll calculate from formData, but ideally should come from API
+                    if (!token) return;
+                    
+                    // Try to fetch invoice from API first
+                    try {
+                        const response = await axios.get(API.BNPL_INVOICE(applicationId), {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        
+                        if (response.data.status === 'success' && response.data.data) {
+                            setInvoiceData(response.data.data);
+                            return; // Successfully fetched from API
+                        }
+                    } catch (apiError) {
+                        // If API is not available (404), fall back to calculated values
+                        console.log("Invoice API not available, using calculated values:", apiError.message);
+                    }
+                    
+                    // Fallback: Calculate from formData if API is not available
                     const insuranceAddOn = addOns.find(a => a.is_compulsory_bnpl);
                     const insuranceFee = insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
                         ? (formData.selectedProductPrice * insuranceAddOn.calculation_value) / 100
@@ -968,7 +1577,12 @@ const BNPLFlow = () => {
                         delivery_fee: 25000,
                         inspection_fee: 10000,
                         insurance_fee: insuranceFee,
-                        total: formData.selectedProductPrice + 50000 + 50000 + 25000 + 10000 + insuranceFee
+                        total: formData.selectedProductPrice + 50000 + 50000 + 25000 + 10000 + insuranceFee,
+                        loan_details: formData.loanDetails ? {
+                            deposit_amount: formData.loanDetails.depositAmount,
+                            monthly_repayment: formData.loanDetails.monthlyRepayment,
+                            total_repayment: formData.loanDetails.totalRepayment
+                        } : null
                     });
                 } catch (error) {
                     console.error("Failed to fetch invoice:", error);
@@ -976,7 +1590,7 @@ const BNPLFlow = () => {
             };
             fetchInvoice();
         }
-    }, [step, applicationId]);
+    }, [step, applicationId, formData.selectedProductPrice, formData.loanDetails, addOns]);
 
     const renderStep21 = () => {
         const invoice = invoiceData || {
@@ -1043,17 +1657,23 @@ const BNPLFlow = () => {
                 </p>
             </div>
 
-            <div className="bg-blue-50 p-4 rounded-lg mb-8">
-                <h4 className="font-bold text-[#273e8e] mb-2">Payment Schedule</h4>
-                <div className="flex justify-between text-sm mb-1">
-                    <span>Initial Deposit (30%)</span>
-                    <span className="font-bold">₦{(formData.loanDetails?.depositAmount || 0).toLocaleString()}</span>
+            {(invoice.loan_details || formData.loanDetails) && (
+                <div className="bg-blue-50 p-4 rounded-lg mb-8">
+                    <h4 className="font-bold text-[#273e8e] mb-2">Payment Schedule</h4>
+                    <div className="flex justify-between text-sm mb-1">
+                        <span>Initial Deposit</span>
+                        <span className="font-bold">₦{Number(invoice.loan_details?.deposit_amount || formData.loanDetails?.depositAmount || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-sm mb-1">
+                        <span>Monthly Repayment</span>
+                        <span className="font-bold">₦{Number(invoice.loan_details?.monthly_repayment || formData.loanDetails?.monthlyRepayment || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                        <span>Total Repayment</span>
+                        <span className="font-bold">₦{Number(invoice.loan_details?.total_repayment || formData.loanDetails?.totalRepayment || 0).toLocaleString()}</span>
+                    </div>
                 </div>
-                <div className="flex justify-between text-sm">
-                    <span>Monthly Repayment</span>
-                    <span className="font-bold">₦{(formData.loanDetails?.monthlyRepayment || 0).toLocaleString()}</span>
-                </div>
-            </div>
+            )}
 
             <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6 flex items-start">
                 <Calendar className="text-blue-600 mr-3 mt-1" size={20} />
@@ -1107,13 +1727,21 @@ const BNPLFlow = () => {
                     {step === 4 && renderStep4()}
                     {step === 5 && renderStep5()}
                     {step === 6 && renderStep6()}
+                    {step === 6.5 && renderStep6_5()}
                     {step === 7 && renderStep7()}
+                    {step === 7.5 && renderStep7_5()}
                     {step === 8 && renderStep8()}
+                    {step === 9 && renderStep9()}
                     {step === 10 && renderStep10()}
                     {step === 11 && renderStep11()}
                     {step === 12 && renderStep12()}
                     {step === 13 && renderStep13()}
+                    {step === 14 && renderStep14()}
+                    {step === 15 && renderStep15()}
+                    {step === 16 && renderStep16()}
                     {step === 17 && renderStep17()}
+                    {step === 19 && renderStep19()}
+                    {step === 20 && renderStep20()}
                     {step === 21 && renderStep21()}
                 </div>
             </div >

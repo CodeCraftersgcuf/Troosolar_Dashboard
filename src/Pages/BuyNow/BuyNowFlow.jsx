@@ -68,10 +68,10 @@ const BuyNowFlow = () => {
         if (category === 'full-kit' || category === 'inverter-battery') {
             setStep(3); // Method Selection (Choose/Build/Audit)
         } else {
-            // For individual components, skip Method Selection and go straight to Checkout Options (simulated)
+            // For individual components, skip Method Selection and go straight to Order Summary
             const mockPrice = category === 'battery-only' ? 800000 : category === 'inverter-only' ? 500000 : 200000;
             setFormData(prev => ({ ...prev, productCategory: category, selectedProductPrice: mockPrice }));
-            setStep(4); // Checkout Options
+            setStep(7); // Order Summary (NEW STEP)
         }
     };
 
@@ -119,7 +119,7 @@ const BuyNowFlow = () => {
             selectedBundle: bundle,
             selectedProductPrice: price
         }));
-        setStep(4); // Go to Checkout Options
+        setStep(7); // Go to Order Summary (NEW STEP)
     };
 
     const handleCheckoutSubmit = async () => {
@@ -161,7 +161,7 @@ const BuyNowFlow = () => {
             if (response.data.status === 'success') {
                 setInvoiceDetails(response.data.data);
                 setOrderId(response.data.data.order_id);
-                setStep(5);
+                setStep(8); // Go to Order Summary with details (NEW STEP)
             }
         } catch (error) {
             console.error("Checkout Error:", error);
@@ -887,6 +887,7 @@ const BuyNowFlow = () => {
                             <span className={step >= 1 ? "text-[#273e8e]" : ""}>Type</span>
                             <span className={step >= 2 ? "text-[#273e8e]" : ""}>Product</span>
                             <span className={step >= 3 ? "text-[#273e8e]" : ""}>Option</span>
+                            <span className={step >= 7 ? "text-[#273e8e]" : ""}>Summary</span>
                             <span className={step >= 4 ? "text-[#273e8e]" : ""}>Checkout</span>
                             <span className={step >= 5 ? "text-[#273e8e]" : ""}>Payment</span>
                             <span className={step >= 6 ? "text-[#273e8e]" : ""}>Complete</span>
@@ -894,7 +895,7 @@ const BuyNowFlow = () => {
                         <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                             <div
                                 className="h-full bg-[#273e8e] transition-all duration-500 ease-out"
-                                style={{ width: `${(step / 6) * 100}%` }}
+                                style={{ width: `${Math.min((step / 8) * 100, 100)}%` }}
                             />
                         </div>
                     </div>
@@ -904,6 +905,8 @@ const BuyNowFlow = () => {
                     {step === 3 && renderStep3()}
                     {step === 3.5 && renderStep3_5()}
                     {step === 4 && renderStep4()}
+                    {step === 7 && renderStep7()}
+                    {step === 8 && renderStep8()}
                     {step === 5 && renderStep5()}
                     {step === 6 && renderStep6()}
                 </div>
