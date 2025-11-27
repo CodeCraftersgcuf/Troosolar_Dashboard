@@ -355,9 +355,9 @@ const Home = () => {
             </div>
 
             {/* Service Cards (New Flow Entry Points) */}
-            <div className="mt-6">
+            {/* <div className="mt-6">
               <ServiceCards />
-            </div>
+            </div> */}
 
             {/* Wallets / banner */}
             <div className="grid items-center md:grid-cols-2 grid-cols-1 xl:grid-cols-3 gap-5 mt-4">
