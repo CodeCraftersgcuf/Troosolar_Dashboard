@@ -17,6 +17,7 @@ const BNPLFlow = () => {
     const [applicationId, setApplicationId] = useState(null);
     const [applicationStatus, setApplicationStatus] = useState('pending');
     const [guarantorId, setGuarantorId] = useState(null);
+    const [invoiceData, setInvoiceData] = useState(null);
 
     const [formData, setFormData] = useState({
         customerType: '',
@@ -278,16 +279,79 @@ const BNPLFlow = () => {
             </button>
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Property Details</h2>
             <form onSubmit={handleAddressSubmit} className="space-y-4">
+                {states.length > 0 ? (
+                    <select
+                        required
+                        className="w-full p-3 border rounded-lg"
+                        onChange={e => {
+                            const stateId = e.target.value ? Number(e.target.value) : null;
+                            const selectedState = states.find(s => s.id === stateId);
+                            setFormData({ ...formData, state: selectedState?.name || '', stateId });
+                        }}
+                    >
+                        <option value="">Select State</option>
+                        {states.filter(s => s.is_active).map((state) => (
+                            <option key={state.id} value={state.id}>{state.name}</option>
+                        ))}
+                    </select>
+                ) : (
+                    <input type="text" placeholder="State" required className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, state: e.target.value })} />
+                )}
                 <input type="text" placeholder="Address" required className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, address: e.target.value })} />
-                <input type="text" placeholder="State" required className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, state: e.target.value })} />
-                <input type="text" placeholder="Landmark" className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, landmark: e.target.value })} />
+                <input type="text" placeholder="Landmark (Optional)" className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, landmark: e.target.value })} />
                 <div className="grid grid-cols-2 gap-4">
-                    <input type="number" placeholder="Floors" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, floors: e.target.value })} />
-                    <input type="number" placeholder="Rooms" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, rooms: e.target.value })} />
+                    <input type="number" placeholder="Floors (Optional)" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, floors: e.target.value })} />
+                    <input type="number" placeholder="Rooms (Optional)" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, rooms: e.target.value })} />
                 </div>
-                <button type="submit" className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors">
+                
+                {/* Gated Estate Section */}
+                <div className="mt-4">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            checked={formData.isGatedEstate} 
+                            onChange={e => setFormData({ ...formData, isGatedEstate: e.target.checked })} 
+                            className="h-5 w-5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded"
+                        />
+                        <span className="text-gray-700">Is this property in a gated estate?</span>
+                    </label>
+                </div>
+                
+                {formData.isGatedEstate && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <input 
+                            type="text" 
+                            placeholder="Estate Name *" 
+                            required={formData.isGatedEstate}
+                            className="p-3 border rounded-lg" 
+                            onChange={e => setFormData({ ...formData, estateName: e.target.value })} 
+                        />
+                        <input 
+                            type="text" 
+                            placeholder="Estate Address *" 
+                            required={formData.isGatedEstate}
+                            className="p-3 border rounded-lg" 
+                            onChange={e => setFormData({ ...formData, estateAddress: e.target.value })} 
+                        />
+                    </div>
+                )}
+                
+                <button 
+                    type="submit" 
+                    disabled={formData.isGatedEstate && (!formData.estateName || !formData.estateAddress)}
+                    className={`w-full py-4 rounded-xl font-bold transition-colors ${
+                        formData.isGatedEstate && (!formData.estateName || !formData.estateAddress)
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
+                    }`}
+                >
                     Continue
                 </button>
+                {formData.isGatedEstate && (!formData.estateName || !formData.estateAddress) && (
+                    <p className="text-sm text-red-600 text-center">
+                        Please fill in Estate Name and Estate Address
+                    </p>
+                )}
             </form>
         </div>
     );
@@ -334,7 +398,15 @@ const BNPLFlow = () => {
             ? (formData.selectedProductPrice * insuranceAddOn.calculation_value) / 100
             : (insuranceAddOn?.price || 0);
         
-        const totalAmount = formData.selectedProductPrice + insuranceFee + 50000 + 50000 + 25000 + 10000; // Product + Insurance + Material + Installation + Delivery + Inspection
+        // Use API data if available, otherwise use defaults
+        // Material cost, installation fee, delivery fee, inspection fee should come from API
+        // For now, using defaults but structure allows for API integration
+        const materialCost = 50000; // Should come from API/state selection
+        const installationFee = 50000; // Should come from API/state selection
+        const deliveryFee = 25000; // Should come from API/state/delivery location selection
+        const inspectionFee = 10000; // Should come from API
+        
+        const totalAmount = formData.selectedProductPrice + insuranceFee + materialCost + installationFee + deliveryFee + inspectionFee;
 
         return (
             <div className="animate-fade-in max-w-4xl mx-auto">
@@ -513,8 +585,20 @@ const BNPLFlow = () => {
                         <input type="text" placeholder="BVN" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, bvn: e.target.value })} />
                         <input type="tel" placeholder="Phone Number" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, phone: e.target.value })} />
                         <input type="email" placeholder="Email Address" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, email: e.target.value })} />
-                        <input type="text" placeholder="Social Media Handle *" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, socialMedia: e.target.value })} />
-                        <p className="text-xs text-gray-500 col-span-2">* Social media handle is required for verification</p>
+                        <div className="col-span-2">
+                            <input 
+                                type="text" 
+                                placeholder="Social Media Handle *" 
+                                required 
+                                className="w-full p-3 border rounded-lg" 
+                                value={formData.socialMedia}
+                                onChange={e => setFormData({ ...formData, socialMedia: e.target.value })} 
+                            />
+                            <p className="text-xs text-gray-500 mt-1">* Social media handle is required for verification (e.g., @username or facebook.com/username)</p>
+                            {formData.socialMedia && formData.socialMedia.trim().length === 0 && (
+                                <p className="text-xs text-red-600 mt-1">Social media handle cannot be empty</p>
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -606,16 +690,79 @@ const BNPLFlow = () => {
         </div>
     );
 
+    // Status polling effect
+    React.useEffect(() => {
+        if (step === 12 && applicationId) {
+            const pollInterval = setInterval(async () => {
+                try {
+                    const token = localStorage.getItem('access_token');
+                    const response = await axios.get(API.BNPL_STATUS(applicationId), {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    
+                    if (response.data.status === 'success' && response.data.data?.loan_application) {
+                        const status = response.data.data.loan_application.status;
+                        setApplicationStatus(status);
+                        
+                        if (status === 'approved') {
+                            clearInterval(pollInterval);
+                            setStep(13); // Go to approval screen
+                        } else if (status === 'rejected') {
+                            clearInterval(pollInterval);
+                            // Could show rejection screen
+                        } else if (status === 'counter_offer') {
+                            clearInterval(pollInterval);
+                            // Could show counter offer screen
+                        }
+                    }
+                } catch (error) {
+                    console.error("Status polling error:", error);
+                }
+            }, 30000); // Poll every 30 seconds
+            
+            return () => clearInterval(pollInterval);
+        }
+    }, [step, applicationId]);
+
     const renderStep12 = () => (
         <div className="animate-fade-in max-w-3xl mx-auto text-center">
             <h2 className="text-3xl font-bold mb-8 text-[#273e8e]">Application Submitted</h2>
             <div className="bg-white p-8 rounded-2xl shadow-sm border border-blue-100">
                 <Clock size={64} className="text-[#273e8e] mx-auto mb-6 animate-pulse" />
                 <p className="text-xl font-medium text-gray-800 mb-4">Your application is under review.</p>
-                <p className="text-gray-600 mb-8">We are processing your details. This usually takes 24-48 hours.</p>
-                <button onClick={() => window.location.reload()} className="text-[#273e8e] font-bold hover:underline">
-                    Check Status Again
-                </button>
+                <p className="text-gray-600 mb-4">We are processing your details. This usually takes 24-48 hours.</p>
+                <p className="text-sm text-gray-500 mb-8">Status: <span className="font-bold text-[#273e8e]">{applicationStatus}</span></p>
+                <div className="flex gap-4 justify-center">
+                    <button 
+                        onClick={async () => {
+                            try {
+                                const token = localStorage.getItem('access_token');
+                                const response = await axios.get(API.BNPL_STATUS(applicationId), {
+                                    headers: { Authorization: `Bearer ${token}` }
+                                });
+                                
+                                if (response.data.status === 'success' && response.data.data?.loan_application) {
+                                    const status = response.data.data.loan_application.status;
+                                    setApplicationStatus(status);
+                                    
+                                    if (status === 'approved') {
+                                        setStep(13);
+                                    } else {
+                                        alert(`Current status: ${status}. Please check again later.`);
+                                    }
+                                }
+                            } catch (error) {
+                                alert("Failed to check status. Please try again later.");
+                            }
+                        }} 
+                        className="bg-[#273e8e] text-white px-6 py-2 rounded-lg font-bold hover:bg-[#1a2b6b] transition-colors"
+                    >
+                        Check Status Now
+                    </button>
+                    <button onClick={() => navigate('/')} className="text-gray-600 px-6 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors">
+                        Return to Dashboard
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -743,9 +890,38 @@ const BNPLFlow = () => {
 
                     <div className="border-t pt-4">
                         <h3 className="font-bold text-gray-800 mb-2">Step 1: Download Form</h3>
-                        <button className="w-full border-2 border-[#273e8e] text-[#273e8e] py-3 rounded-xl font-bold hover:bg-blue-50 transition-colors flex items-center justify-center mb-4">
+                        <button 
+                            onClick={async () => {
+                                try {
+                                    const token = localStorage.getItem('access_token');
+                                    // Generate or fetch guarantor form PDF
+                                    // This should call an API endpoint to generate/download the form
+                                    const response = await axios.get(`${API.BNPL_GUARANTOR_INVITE.replace('/invite', '/form')}?loan_application_id=${applicationId}`, {
+                                        headers: { Authorization: `Bearer ${token}` },
+                                        responseType: 'blob'
+                                    });
+                                    
+                                    // Create download link
+                                    const url = window.URL.createObjectURL(new Blob([response.data]));
+                                    const link = document.createElement('a');
+                                    link.href = url;
+                                    link.setAttribute('download', `guarantor-form-${applicationId}.pdf`);
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    link.remove();
+                                } catch (error) {
+                                    console.error("Download error:", error);
+                                    // Fallback: show alert with instructions
+                                    alert("Please contact support to get your guarantor form, or download it from your application dashboard.");
+                                }
+                            }}
+                            className="w-full border-2 border-[#273e8e] text-[#273e8e] py-3 rounded-xl font-bold hover:bg-blue-50 transition-colors flex items-center justify-center mb-4"
+                        >
                             <Download size={20} className="mr-2" /> Download Guarantor Form
                         </button>
+                        <p className="text-xs text-gray-500 text-center">
+                            Download the form, have your guarantor sign it, then upload it below.
+                        </p>
                     </div>
 
                     <div className="border-t pt-4">
@@ -772,7 +948,48 @@ const BNPLFlow = () => {
         </div>
     );
 
-    const renderStep21 = () => (
+    // Fetch invoice data when step 21 loads
+    React.useEffect(() => {
+        if (step === 21 && applicationId) {
+            const fetchInvoice = async () => {
+                try {
+                    const token = localStorage.getItem('access_token');
+                    // This should call an API to get the final invoice/order summary
+                    // For now, we'll calculate from formData, but ideally should come from API
+                    const insuranceAddOn = addOns.find(a => a.is_compulsory_bnpl);
+                    const insuranceFee = insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
+                        ? (formData.selectedProductPrice * insuranceAddOn.calculation_value) / 100
+                        : (insuranceAddOn?.price || formData.selectedProductPrice * 0.005);
+                    
+                    setInvoiceData({
+                        product_price: formData.selectedProductPrice,
+                        material_cost: 50000,
+                        installation_fee: 50000,
+                        delivery_fee: 25000,
+                        inspection_fee: 10000,
+                        insurance_fee: insuranceFee,
+                        total: formData.selectedProductPrice + 50000 + 50000 + 25000 + 10000 + insuranceFee
+                    });
+                } catch (error) {
+                    console.error("Failed to fetch invoice:", error);
+                }
+            };
+            fetchInvoice();
+        }
+    }, [step, applicationId]);
+
+    const renderStep21 = () => {
+        const invoice = invoiceData || {
+            product_price: formData.selectedProductPrice,
+            material_cost: 50000,
+            installation_fee: 50000,
+            delivery_fee: 25000,
+            inspection_fee: 10000,
+            insurance_fee: formData.selectedProductPrice * 0.005,
+            total: formData.selectedProductPrice + 50000 + 50000 + 25000 + 10000 + (formData.selectedProductPrice * 0.005)
+        };
+
+        return (
         <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary & Invoice</h2>
 
@@ -787,34 +1004,34 @@ const BNPLFlow = () => {
                             <p className="text-sm text-gray-500">Inverter + Batteries + Panels</p>
                         </div>
                     </div>
-                    <span className="font-bold">₦{new Intl.NumberFormat('en-NG').format(formData.selectedProductPrice)}</span>
+                    <span className="font-bold">₦{Number(invoice.product_price || 0).toLocaleString()}</span>
                 </div>
 
                 <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
                     <span>Material Cost (Cables, Breakers, etc.)</span>
-                    <span>₦50,000</span>
+                    <span>₦{Number(invoice.material_cost || 0).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
                     <span>Installation Fee</span>
-                    <span>₦50,000</span>
+                    <span>₦{Number(invoice.installation_fee || 0).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
                     <span>Delivery/Logistics</span>
-                    <span>₦25,000</span>
+                    <span>₦{Number(invoice.delivery_fee || 0).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
                     <span>Inspection Fee</span>
-                    <span>₦10,000</span>
+                    <span>₦{Number(invoice.inspection_fee || 0).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm text-gray-600 pl-14">
                     <span>Insurance (0.5%)</span>
-                    <span>₦{(formData.selectedProductPrice * 0.005).toLocaleString()}</span>
+                    <span>₦{Number(invoice.insurance_fee || 0).toLocaleString()}</span>
                 </div>
 
                 <div className="border-t pt-4 mt-4">
                     <div className="flex justify-between items-center text-xl font-bold">
                         <span>Total</span>
-                        <span className="text-[#273e8e]">₦{(formData.selectedProductPrice + 50000 + 50000 + 25000 + 10000 + (formData.selectedProductPrice * 0.005)).toLocaleString()}</span>
+                        <span className="text-[#273e8e]">₦{Number(invoice.total || 0).toLocaleString()}</span>
                     </div>
                 </div>
             </div>
@@ -849,7 +1066,8 @@ const BNPLFlow = () => {
                 Proceed to Checkout
             </button>
         </div>
-    );
+        );
+    };
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col" >
