@@ -1,6 +1,8 @@
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 
 const SolarBundleComponent = ({
+  id,
   image,
   heading,
   price,
@@ -10,6 +12,7 @@ const SolarBundleComponent = ({
   progressBar,
   rating,
   borderColor,
+  bundleTitle,
 }) => {
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
@@ -29,12 +32,13 @@ const SolarBundleComponent = ({
   };
   return (
     <div
-      className="sm:max-w-[243px] max-w-[500px] bg-white rounded-2xl p-2 shadow-sm"
-      style={{ border: `2px solid ${borderColor}` }}
+      className="w-full sm:w-[243px] bg-white rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col"
+      style={{ border: `2px solid ${borderColor || '#273e8e'}` }}
     >
-      <div className="relative rounded-md mb-3 overflow-hidden">
-        {/* Loading Indicator */}
-        {imageLoading && (
+      {/* Image: Fixed height container to prevent layout shift - matches Product component */}
+      <div className="relative rounded-2xl mb-2 overflow-hidden bg-gray-100 h-[140px] sm:h-[180px] flex items-center justify-center">
+        {/* Loading Indicator - Shows while image is loading */}
+        {imageLoading && !imageError && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#273E8E]"></div>
           </div>
@@ -62,11 +66,11 @@ const SolarBundleComponent = ({
           </div>
         )}
 
-        {/* Actual Image */}
+        {/* Actual Image - Fixed size to prevent layout shift */}
         <img
           src={imageUrl}
           alt="Solar bundle product"
-          className={`w-full h-auto transition-opacity duration-300 ${
+          className={`w-full h-full object-contain transition-opacity duration-300 ${
             imageLoading ? "opacity-0" : "opacity-100"
           }`}
           onLoad={handleImageLoad}
@@ -76,40 +80,63 @@ const SolarBundleComponent = ({
       {/* {bundleTitle && <h2 className="text-[16px] font-[400] mb-2">{bundleTitle}</h2>} */}
       {/* <hr className="mb-3 text-gray-400/40" /> */}
 
-      <h2 className="text-[16px] font-[500] mb-2">{heading}</h2>
+      {/* Title - with fixed height to prevent layout shift */}
+      <div className="min-h-[42px] mb-2">
+        <h2 className="text-[13px] sm:text-[14px] font-medium text-slate-800 leading-snug line-clamp-2">
+          {heading}
+        </h2>
+      </div>
 
-      <hr className="mb-3 text-gray-400/40" />
+      <hr className="border-gray-300 mb-2" />
 
-      <div className="flex justify-between items-start">
+      <div className="flex justify-between items-start mb-2">
         {/* Left: Pricing */}
-        <div>
-          <p className="font-bold text-[#273E8E] text-lg">{price}</p>
-          <div className="flex items-center gap-2 mt-1">
-            <p className="text-gray-400 line-through text-sm">{oldPrice}</p>
-            <span className="px-2 py-1 rounded-full text-[#FFA500] text-xs bg-[#FFA500]/20">
-              {discount}
-            </span>
-          </div>
+        <div className="flex-1">
+          <p className="font-semibold text-[#273E8E] text-[16px] max-sm:text-[14px]">{price}</p>
+          {(oldPrice || discount) && (
+            <div className="flex items-center gap-2 mt-1">
+              {oldPrice && (
+                <p className="text-gray-400 line-through text-[11px] max-sm:text-[8px]">{oldPrice}</p>
+              )}
+              {discount && (
+                <span className="px-2 py-[2px] rounded-full text-[#FFA500] max-sm:text-[8px] text-[10px] bg-[#FFA500]/20 max-sm:px-1 max-sm:py-[1px]">
+                  {discount}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Right: Progress & Rating */}
-        <div className="space-y-2 text-right relative">
-          <div>
-            <p className="text-xs text-start text-gray-400 mb-1">{soldText}</p>
-            {progressBar && (
-              <img
-                src={progressBar}
-                alt="Progress bar"
-                className="w-[100px] h-2 object-contain"
-              />
-            )}
+        {/* Right: Rating (simplified to match Product component) */}
+        {rating && (
+          <div className="ml-2">
+            <img
+              src={rating}
+              alt="Customer rating"
+              className="w-[55px] max-sm:w-[40px] object-contain"
+            />
           </div>
-          <img
-            src={rating}
-            alt="Customer rating"
-            className="w-[55px] absolute right-2 object-contain"
-          />
-        </div>
+        )}
+      </div>
+
+      <hr className="border-gray-300 mt-2 mb-3" />
+
+      {/* Actions: Buttons similar to Product component */}
+      <div className="grid grid-cols-2 gap-3 mt-auto">
+        <Link
+          to={`/productBundle/details/${id}`}
+          className="h-10 border border-[#000000] text-[12px] max-sm:text-[8px] rounded-full max-sm:rounded-2xl text-[#181919] max-sm:h-7 flex items-center justify-center hover:bg-gray-50 transition-colors"
+          onClick={(e) => e.stopPropagation()}
+        >
+          Learn More
+        </Link>
+        <Link
+          to={`/productBundle/details/${id}`}
+          className="h-10 text-[10px] sm:text-[12px] rounded-full bg-[#273e8e] max-sm:text-[8px] max-sm:rounded-2xl max-sm:h-7 text-white flex items-center justify-center hover:bg-[#1a2b6b] transition-colors"
+          onClick={(e) => e.stopPropagation()}
+        >
+          Buy Now
+        </Link>
       </div>
     </div>
   );

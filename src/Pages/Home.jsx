@@ -302,6 +302,41 @@ const Home = () => {
     [apiProducts, catMap]
   );
 
+  // Combine products and bundles for featured section
+  const featuredItems = useMemo(() => {
+    const items = [];
+    
+    // Add bundles with type marker
+    bundles.forEach(bundle => {
+      items.push({
+        ...bundle,
+        type: 'bundle',
+        link: `/productBundle/details/${bundle.id}`
+      });
+    });
+    
+    // Add products with type marker
+    gridProducts.forEach(product => {
+      items.push({
+        ...product,
+        type: 'product',
+        link: `/homePage/product/${product.id}`
+      });
+    });
+    
+    // Shuffle to mix products and bundles
+    const shuffled = [...items].sort(() => Math.random() - 0.5);
+    
+    // Return at least 6 items (or all if less than 6 available)
+    // For desktop, show up to 8-10 items for better UX
+    const minItems = 6;
+    const maxItems = 10;
+    if (shuffled.length <= minItems) {
+      return shuffled; // Return all if we have 6 or fewer
+    }
+    return shuffled.slice(0, Math.min(maxItems, shuffled.length)); // Show at least 6, up to maxItems
+  }, [bundles, gridProducts]);
+
   const firstName = useMemo(() => getFirstName(user) || "there", [user]);
   const avatar = useMemo(() => getAvatarUrl(user), [user]);
   const initials = useMemo(() => getInitials(getDisplayName(user)), [user]);
@@ -399,73 +434,51 @@ const Home = () => {
             </div>
             <img src={assets.sale} className="sm:hidden block my-4" alt="" />
 
-            {/* ---------- Solar Bundles (backend) ---------- */}
+            {/* ---------- Featured Products (Products + Bundles) ---------- */}
             <div className="mt-6">
               <h1 className="text-xl sm:block hidden font-[500]">
-                Solar Bundles
+                Featured Products
               </h1>
-              <p className="text-gray-500 pt-4 text-sm w-1/2 sm:block hidden sm:text-base">
-                You can select from one of our custom bundles tailored towards
-                various homes and uses, or you can build your custom builder
-                from custom builder
+              <p className="text-gray-500 pt-4 text-sm  sm:block hidden sm:text-base">
+                Discover our handpicked selection of premium solar products and bundles, 
+                carefully curated to meet your energy needs. Choose from complete solar systems 
+                or individual components to build your perfect solution.
               </p>
               <HrLine text={"Hottest Deals"} />
             </div>
 
             <div className="my-4 hidden sm:flex gap-5 overflow-x-auto pb-4 scrollbar-hide">
-              {bundlesErr && (
-                <div className="text-red-600 text-sm">{bundlesErr}</div>
+              {(bundlesErr || prodError) && (
+                <div className="text-red-600 text-sm">
+                  {bundlesErr || prodError}
+                </div>
               )}
-              {bundlesLoading && (
+              {(bundlesLoading || prodLoading) && (
                 <div className="text-gray-600 text-sm">Loading…</div>
               )}
               {!bundlesLoading &&
+                !prodLoading &&
                 !bundlesErr &&
-                bundles.slice(0, 4).map((item) => (
+                !prodError &&
+                featuredItems.map((item) => (
                   <Link
-                    to={`/productBundle/details/${item.id}`}
-                    key={item.id}
-                    className="flex-shrink-0"
+                    to={item.link}
+                    key={`${item.type}-${item.id}`}
+                    className="flex-shrink-0 w-[243px]"
                   >
-                    <SolarBundleComponent
-                      id={item.id}
-                      image={item.image}
-                      heading={item.heading}
-                      price={item.price}
-                      oldPrice={item.oldPrice}
-                      discount={item.discount}
-                      rating={item.rating}
-                      borderColor={item.borderColor}
-                      bundleTitle={item.bundleTitle}
-                    />
-                  </Link>
-                ))}
-              {!bundlesLoading && !bundlesErr && bundles.length === 0 && (
-                <div className="text-gray-500 bg-white border rounded-xl p-4">
-                  No bundles found.
-                </div>
-              )}
-            </div>
-
-            {/* ---------- Mobile products from API (new) ---------- */}
-            <div className="my-4 sm:hidden">
-              {/* <HrLine text={"All Products"} /> */}
-              {prodError && (
-                <p className="text-red-600 text-sm mt-3">{prodError}</p>
-              )}
-              {prodLoading && (
-                <p className="text-gray-600 text-sm mt-3">Loading…</p>
-              )}
-
-              <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2">
-                {!prodLoading &&
-                  !prodError &&
-                  gridProducts.map((item) => (
-                    <Link
-                      to={`/homePage/product/${item.id}`}
-                      key={item.id}
-                      className="w-full max-[380px]:w-[160px] min-sm:w-[190px]" // keep card height consistent
-                    >
+                    {item.type === 'bundle' ? (
+                      <SolarBundleComponent
+                        id={item.id}
+                        image={item.image}
+                        heading={item.heading}
+                        price={item.price}
+                        oldPrice={item.oldPrice}
+                        discount={item.discount}
+                        rating={item.rating}
+                        borderColor={item.borderColor}
+                        bundleTitle={item.bundleTitle}
+                      />
+                    ) : (
                       <Product
                         id={item.id}
                         image={item.image}
@@ -478,13 +491,79 @@ const Home = () => {
                         categoryName={item.categoryName}
                         isHotDeal={item.isHotDeal}
                       />
+                    )}
+                  </Link>
+                ))}
+              {!bundlesLoading && 
+                !prodLoading && 
+                !bundlesErr && 
+                !prodError && 
+                featuredItems.length === 0 && (
+                <div className="text-gray-500 bg-white border rounded-xl p-4">
+                  No featured products found.
+                </div>
+              )}
+            </div>
+
+            {/* ---------- Mobile Featured Products (Products + Bundles) ---------- */}
+            <div className="my-4 sm:hidden">
+              {(prodError || bundlesErr) && (
+                <p className="text-red-600 text-sm mt-3">
+                  {prodError || bundlesErr}
+                </p>
+              )}
+              {(prodLoading || bundlesLoading) && (
+                <p className="text-gray-600 text-sm mt-3">Loading…</p>
+              )}
+
+              <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2">
+                {!prodLoading &&
+                  !bundlesLoading &&
+                  !prodError &&
+                  !bundlesErr &&
+                  featuredItems.map((item) => (
+                    <Link
+                      to={item.link}
+                      key={`${item.type}-${item.id}`}
+                      className="w-full max-[380px]:w-[160px] min-sm:w-[190px]" // keep card height consistent
+                    >
+                      {item.type === 'bundle' ? (
+                        <SolarBundleComponent
+                          id={item.id}
+                          image={item.image}
+                          heading={item.heading}
+                          price={item.price}
+                          oldPrice={item.oldPrice}
+                          discount={item.discount}
+                          rating={item.rating}
+                          borderColor={item.borderColor}
+                          bundleTitle={item.bundleTitle}
+                        />
+                      ) : (
+                        <Product
+                          id={item.id}
+                          image={item.image}
+                          heading={item.heading}
+                          price={item.price}
+                          oldPrice={item.oldPrice}
+                          discount={item.discount}
+                          ratingAvg={item.ratingAvg}
+                          ratingCount={item.ratingCount}
+                          categoryName={item.categoryName}
+                          isHotDeal={item.isHotDeal}
+                        />
+                      )}
                     </Link>
                   ))}
               </div>
 
-              {!prodLoading && !prodError && gridProducts.length === 0 && (
+              {!prodLoading && 
+                !bundlesLoading && 
+                !prodError && 
+                !bundlesErr && 
+                featuredItems.length === 0 && (
                 <div className="text-gray-500 bg-white border rounded-xl p-4 mt-3">
-                  No products found.
+                  No featured products found.
                 </div>
               )}
             </div>
