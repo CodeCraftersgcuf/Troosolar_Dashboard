@@ -453,13 +453,29 @@ const Home = () => {
                   {bundlesErr || prodError}
                 </div>
               )}
-              {(bundlesLoading || prodLoading) && (
-                <div className="text-gray-600 text-sm">Loading…</div>
-              )}
-              {!bundlesLoading &&
+              {(bundlesLoading || prodLoading) ? (
+                <div className="flex gap-5 overflow-x-auto pb-4 scrollbar-hide">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="flex-shrink-0 w-[243px] bg-white rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col border border-gray-200 animate-pulse"
+                    >
+                      <div className="bg-gray-200 h-[140px] sm:h-[180px] rounded-2xl mb-2" />
+                      <div className="h-4 bg-gray-200 rounded mb-2" />
+                      <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-gray-200 rounded w-1/2 mt-2" />
+                      <div className="grid grid-cols-2 gap-3 mt-auto">
+                        <div className="h-10 bg-gray-200 rounded-full" />
+                        <div className="h-10 bg-gray-200 rounded-full" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : !bundlesLoading &&
                 !prodLoading &&
                 !bundlesErr &&
                 !prodError &&
+                featuredItems.length > 0 ? (
                 featuredItems.map((item) => (
                   <Link
                     to={item.link}
@@ -493,16 +509,16 @@ const Home = () => {
                       />
                     )}
                   </Link>
-                ))}
-              {!bundlesLoading && 
+                ))
+              ) : !bundlesLoading && 
                 !prodLoading && 
                 !bundlesErr && 
                 !prodError && 
-                featuredItems.length === 0 && (
+                featuredItems.length === 0 ? (
                 <div className="text-gray-500 bg-white border rounded-xl p-4">
                   No featured products found.
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* ---------- Mobile Featured Products (Products + Bundles) ---------- */}
@@ -512,16 +528,31 @@ const Home = () => {
                   {prodError || bundlesErr}
                 </p>
               )}
-              {(prodLoading || bundlesLoading) && (
-                <p className="text-gray-600 text-sm mt-3">Loading…</p>
-              )}
-
-              <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2">
-                {!prodLoading &&
+              {(prodLoading || bundlesLoading) ? (
+                <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2 mt-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="w-full max-[380px]:w-[160px] min-sm:w-[190px] bg-white border border-gray-200 rounded-[24px] p-3 shadow-sm flex flex-col animate-pulse"
+                    >
+                      <div className="bg-gray-200 h-[140px] rounded-2xl mb-2" />
+                      <div className="h-3 bg-gray-200 rounded mb-2" />
+                      <div className="h-3 bg-gray-200 rounded w-3/4 mb-2" />
+                      <div className="h-2 bg-gray-200 rounded w-1/2 mt-2" />
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div className="h-7 bg-gray-200 rounded-full" />
+                        <div className="h-7 bg-gray-200 rounded-full" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : !prodLoading &&
                   !bundlesLoading &&
                   !prodError &&
                   !bundlesErr &&
-                  featuredItems.map((item) => (
+                  featuredItems.length > 0 ? (
+                <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2">
+                  {featuredItems.map((item) => (
                     <Link
                       to={item.link}
                       key={`${item.type}-${item.id}`}
@@ -555,17 +586,16 @@ const Home = () => {
                       )}
                     </Link>
                   ))}
-              </div>
-
-              {!prodLoading && 
+                </div>
+              ) : !prodLoading && 
                 !bundlesLoading && 
                 !prodError && 
                 !bundlesErr && 
-                featuredItems.length === 0 && (
+                featuredItems.length === 0 ? (
                 <div className="text-gray-500 bg-white border rounded-xl p-4 mt-3">
                   No featured products found.
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>

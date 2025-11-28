@@ -8,7 +8,7 @@ import { Link } from "react-router-dom";
 import { ContextApi } from "../Context/AppContext";
 import TopNavbar from "../Component/TopNavbar";
 import HrLine from "../Component/MobileSectionResponsive/HrLine";
-import { ShoppingCart } from "lucide-react";
+import { ShoppingCart, Loader2 } from "lucide-react";
 import API from "../config/api.config";
 import { assets } from "../assets/data";
 
@@ -244,9 +244,26 @@ const HomePage = () => {
             {prodError && (
               <p className="text-red-600 text-sm mb-3">{prodError}</p>
             )}
-            {prodLoading && <p className="text-gray-600 text-sm">Loading…</p>}
-
-            {gridProducts.length > 0 ? (
+            
+            {prodLoading ? (
+              <div className="grid xl:grid-cols-4 lg:grid-cols-4 md:grid-cols-2 grid-cols-1 gap-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="w-full bg-white border border-gray-200 rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col animate-pulse"
+                  >
+                    <div className="bg-gray-200 h-[140px] sm:h-[180px] rounded-2xl mb-2" />
+                    <div className="h-4 bg-gray-200 rounded mb-2" />
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                    <div className="h-3 bg-gray-200 rounded w-1/2 mt-2" />
+                    <div className="grid grid-cols-2 gap-3 mt-3">
+                      <div className="h-10 bg-gray-200 rounded-full" />
+                      <div className="h-10 bg-gray-200 rounded-full" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : gridProducts.length > 0 ? (
               <div className="grid xl:grid-cols-4 lg:grid-cols-4 md:grid-cols-2 grid-cols-1 gap-4">
                 {gridProducts.map((item) => (
                   <Link
@@ -362,9 +379,26 @@ const HomePage = () => {
             {prodError && (
               <p className="text-red-600 text-sm mb-3">{prodError}</p>
             )}
-            {prodLoading && <p className="text-gray-600 text-sm">Loading…</p>}
-
-            {gridProducts.length > 0 ? (
+            
+            {prodLoading ? (
+              <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="w-full max-[380px]:w-[160px] min-sm:w-[190px] bg-white border border-gray-200 rounded-[24px] p-3 shadow-sm flex flex-col animate-pulse"
+                  >
+                    <div className="bg-gray-200 h-[140px] rounded-2xl mb-2" />
+                    <div className="h-3 bg-gray-200 rounded mb-2" />
+                    <div className="h-3 bg-gray-200 rounded w-3/4 mb-2" />
+                    <div className="h-2 bg-gray-200 rounded w-1/2 mt-2" />
+                    <div className="grid grid-cols-2 gap-3 mt-3">
+                      <div className="h-7 bg-gray-200 rounded-full" />
+                      <div className="h-7 bg-gray-200 rounded-full" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : gridProducts.length > 0 ? (
               <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2">
                 {gridProducts.map((item) => (
                   <Link
