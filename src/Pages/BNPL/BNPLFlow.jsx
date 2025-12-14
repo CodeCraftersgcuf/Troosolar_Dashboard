@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Upload, CreditCard, Camera, Clock, Download, AlertCircle, Calendar, Loader, CheckCircle2, XCircle } from 'lucide-react';
+import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Upload, CreditCard, Camera, Clock, Download, AlertCircle, Calendar, Loader, CheckCircle2, XCircle, X } from 'lucide-react';
 import LoanCalculator from '../../Component/LoanCalculator';
 import axios from 'axios';
 import API, { BASE_URL } from '../../config/api.config';
@@ -51,6 +51,8 @@ const BNPLFlow = () => {
     const [invoiceData, setInvoiceData] = useState(null);
     const [processingPayment, setProcessingPayment] = useState(false);
     const [paymentResult, setPaymentResult] = useState(null); // 'success' | 'failed' | null
+    const [showCreditCheckFeeModal, setShowCreditCheckFeeModal] = useState(false);
+    const [processingCreditCheckPayment, setProcessingCreditCheckPayment] = useState(false);
     const [auditOrderId, setAuditOrderId] = useState(null);
     const [auditCalendarSlots, setAuditCalendarSlots] = useState([]);
     const [selectedAuditSlot, setSelectedAuditSlot] = useState(null);
@@ -68,10 +70,12 @@ const BNPLFlow = () => {
         floors: '',
         rooms: '',
         selectedProductPrice: 0,
-        selectedBundleId: null,
-        selectedBundle: null,
-        selectedProductId: null,
-        selectedProduct: null,
+        selectedBundleId: null, // OLD: Single bundle ID (kept for backward compatibility)
+        selectedBundle: null, // OLD: Single bundle object (kept for backward compatibility)
+        selectedProductId: null, // OLD: Single product ID (kept for backward compatibility)
+        selectedProduct: null, // OLD: Single product object (kept for backward compatibility)
+        selectedBundles: [], // NEW: Array of selected bundles [{id, bundle, price}, ...]
+        selectedProducts: [], // NEW: Array of selected products [{id, product, price}, ...]
         loanDetails: null,
         creditCheckMethod: '', // 'auto', 'manual'
         bvn: '',
@@ -318,8 +322,58 @@ const BNPLFlow = () => {
                 setBundlesLoading(false);
             }
         } else if (option === 'build-system') {
-            // Redirect to Solar Builder page
-            navigate('/solar-builder');
+            // Fetch all products for building a custom system
+            setCategoryProducts([]);
+            setProductsLoading(true);
+            setStep(3.75); // Navigate to Build System Product Selection step
+            
+            try {
+                const token = localStorage.getItem('access_token');
+                let allProducts = [];
+                
+                // Fetch products from all categories
+                if (categories.length > 0) {
+                    for (const category of categories) {
+                        try {
+                            const response = await axios.get(API.CATEGORY_PRODUCTS(category.id), {
+                                headers: {
+                                    Accept: 'application/json',
+                                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                                },
+                            });
+                            const root = response.data?.data ?? response.data;
+                            const products = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+                            allProducts = [...allProducts, ...products];
+                        } catch (err) {
+                            console.warn(`Failed to fetch products for category ${category.id}:`, err);
+                        }
+                    }
+                }
+                
+                // If no products found via category endpoint, try fetching all products
+                if (allProducts.length === 0) {
+                    try {
+                        const allProductsRes = await axios.get(API.PRODUCTS, {
+                            headers: {
+                                Accept: 'application/json',
+                                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                            },
+                        });
+                        const allProductsList = Array.isArray(allProductsRes.data?.data) ? allProductsRes.data.data : [];
+                        allProducts = allProductsList;
+                    } catch (error) {
+                        console.error("Failed to fetch all products:", error);
+                    }
+                }
+                
+                setCategoryProducts(allProducts);
+            } catch (error) {
+                console.error("Failed to fetch products:", error);
+                alert("Failed to load products. Please try again.");
+                setCategoryProducts([]);
+            } finally {
+                setProductsLoading(false);
+            }
         }
     };
 
@@ -409,24 +463,74 @@ const BNPLFlow = () => {
 
     const handleBundleSelect = (bundle) => {
         const price = Number(bundle.discount_price || bundle.total_price || 0);
-        setFormData(prev => ({
-            ...prev,
-            selectedBundleId: bundle.id,
-            selectedBundle: bundle,
-            selectedProductPrice: price
-        }));
-        setStep(6.5); // Order Summary (NEW STEP) before loan calculator
+        setFormData(prev => {
+            // Check if bundle is already selected
+            const isSelected = prev.selectedBundles.some(b => b.id === bundle.id);
+            
+            let updatedBundles;
+            if (isSelected) {
+                // Remove bundle if already selected
+                updatedBundles = prev.selectedBundles.filter(b => b.id !== bundle.id);
+            } else {
+                // Add bundle if not selected
+                updatedBundles = [...prev.selectedBundles, {
+                    id: bundle.id,
+                    bundle: bundle,
+                    price: price
+                }];
+            }
+            
+            // Calculate total price from all selected bundles and products
+            const bundlesTotal = updatedBundles.reduce((sum, b) => sum + b.price, 0);
+            const productsTotal = prev.selectedProducts.reduce((sum, p) => sum + p.price, 0);
+            const totalPrice = bundlesTotal + productsTotal;
+            
+            return {
+                ...prev,
+                selectedBundles: updatedBundles,
+                // Keep old fields for backward compatibility (use first selected if any)
+                selectedBundleId: updatedBundles.length > 0 ? updatedBundles[0].id : null,
+                selectedBundle: updatedBundles.length > 0 ? updatedBundles[0].bundle : null,
+                selectedProductPrice: totalPrice
+            };
+        });
+        // Don't auto-navigate - let user select multiple items
     };
 
     const handleProductSelect = (product) => {
         const price = Number(product.discount_price || product.price || 0);
-        setFormData(prev => ({
-            ...prev,
-            selectedProductId: product.id,
-            selectedProduct: product,
-            selectedProductPrice: price
-        }));
-        setStep(8); // Skip to Loan Calculator for single items
+        setFormData(prev => {
+            // Check if product is already selected
+            const isSelected = prev.selectedProducts.some(p => p.id === product.id);
+            
+            let updatedProducts;
+            if (isSelected) {
+                // Remove product if already selected
+                updatedProducts = prev.selectedProducts.filter(p => p.id !== product.id);
+            } else {
+                // Add product if not selected
+                updatedProducts = [...prev.selectedProducts, {
+                    id: product.id,
+                    product: product,
+                    price: price
+                }];
+            }
+            
+            // Calculate total price from all selected bundles and products
+            const bundlesTotal = prev.selectedBundles.reduce((sum, b) => sum + b.price, 0);
+            const productsTotal = updatedProducts.reduce((sum, p) => sum + p.price, 0);
+            const totalPrice = bundlesTotal + productsTotal;
+            
+            return {
+                ...prev,
+                selectedProducts: updatedProducts,
+                // Keep old fields for backward compatibility (use first selected if any)
+                selectedProductId: updatedProducts.length > 0 ? updatedProducts[0].id : null,
+                selectedProduct: updatedProducts.length > 0 ? updatedProducts[0].product : null,
+                selectedProductPrice: totalPrice
+            };
+        });
+        // Don't auto-navigate - let user select multiple items
     };
 
     // --- Render Steps ---
@@ -499,15 +603,22 @@ const BNPLFlow = () => {
 
         return (
             <div className="animate-fade-in">
-                <button onClick={() => setStep(1)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                <button onClick={() => setStep(1)} className="mb-6 flex items-center text-gray-500 hover:text-emerald-600">
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
+                {/* BNPL Badge */}
+                <div className="flex justify-center mb-4">
+                    <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-bold bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md">
+                        <CreditCard size={16} className="mr-2" />
+                        Buy Now Pay Later
+                    </span>
+                </div>
                 <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
                     Select Product Category
                 </h2>
                 {categories.length === 0 ? (
                     <div className="text-center py-12">
-                        <Loader className="animate-spin mx-auto text-[#273e8e]" size={48} />
+                        <Loader className="animate-spin mx-auto text-emerald-600" size={48} />
                         <p className="mt-4 text-gray-600">Loading categories...</p>
                     </div>
                 ) : (
@@ -520,10 +631,11 @@ const BNPLFlow = () => {
                                 <button
                                     key={group.id}
                                     onClick={() => handleCategorySelect(group.id)}
-                                    className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center"
+                                    className="group bg-white border-2 border-gray-100 hover:border-emerald-500 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden"
                                 >
-                                    <div className="bg-blue-50 p-4 rounded-full mb-4 group-hover:bg-[#273e8e]/10 transition-colors flex items-center justify-center min-h-[64px]">
-                                        <IconComponent size={32} className="text-[#273e8e]" />
+                                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-emerald-600"></div>
+                                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-full mb-4 group-hover:from-green-100 group-hover:to-emerald-100 transition-colors flex items-center justify-center min-h-[64px]">
+                                        <IconComponent size={32} className="text-emerald-600" />
                                     </div>
                                     <h3 className="text-lg font-bold text-gray-800 mb-1">{group.name}</h3>
                                     {group.subtitle && (
@@ -601,6 +713,7 @@ const BNPLFlow = () => {
                         </button>
                     </div>
                 ) : (
+                    <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
                         {categoryProducts.map((product) => {
                             const price = Number(product.discount_price || product.price || 0);
@@ -611,16 +724,23 @@ const BNPLFlow = () => {
                                 ? Math.round(((oldPrice - price) / oldPrice) * 100)
                                 : 0;
                             
+                            // Check if product is selected
+                            const isSelected = formData.selectedProducts.some(p => p.id === product.id);
+                            
                             return (
                                 <div
                                     key={product.id}
-                                    className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-xl transition-all duration-300"
+                                    className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 ${
+                                        isSelected 
+                                            ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
+                                            : 'border-gray-100 hover:border-[#273e8e]'
+                                    }`}
                                 >
                                     <Link 
                                         to={`/homePage/product/${product.id}`}
                                         className="block"
                                     >
-                                        <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100">
+                                        <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100 relative">
                                             <img
                                                 src={getProductImage(product)}
                                                 alt={product.title || product.name}
@@ -632,6 +752,11 @@ const BNPLFlow = () => {
                                                     }
                                                 }}
                                             />
+                                            {isSelected && (
+                                                <div className="absolute top-2 right-2 bg-[#273e8e] text-white rounded-full p-2">
+                                                    <CheckCircle size={20} />
+                                                </div>
+                                            )}
                                         </div>
                                         <h3 className="font-bold text-lg mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">
                                             {product.title || product.name || `Product #${product.id}`}
@@ -656,14 +781,190 @@ const BNPLFlow = () => {
                                     </Link>
                                     <button
                                         onClick={() => handleProductSelect(product)}
-                                        className="w-full bg-[#273e8e] text-white py-2 rounded-lg font-semibold hover:bg-[#1a2b6b] transition-colors mt-2"
+                                        className={`w-full py-2 rounded-lg font-semibold transition-colors mt-2 ${
+                                            isSelected
+                                                ? 'bg-red-600 text-white hover:bg-red-700'
+                                                : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
+                                        }`}
                                     >
-                                        Select This Product
+                                        {isSelected ? 'Remove from Selection' : 'Add to Selection'}
                                     </button>
                                 </div>
                             );
                         })}
                     </div>
+                    
+                    {/* Continue Button - Show when at least one product is selected */}
+                    {formData.selectedProducts.length > 0 && (
+                        <div className="mt-8 flex justify-center">
+                            <button
+                                onClick={() => setStep(6.5)}
+                                className="bg-[#273e8e] text-white px-8 py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors flex items-center"
+                            >
+                                Continue with {formData.selectedProducts.length} {formData.selectedProducts.length !== 1 ? 'Items' : 'Item'} Selected
+                                <ArrowRight size={20} className="ml-2" />
+                            </button>
+                        </div>
+                    )}
+                    </>
+                )}
+            </div>
+        );
+    };
+
+    const renderStep3_75 = () => {
+        const formatPrice = (price) => {
+            return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
+        };
+
+        const getProductImage = (product) => {
+            if (product.featured_image_url) {
+                return toAbsolute(product.featured_image_url);
+            }
+            if (product.featured_image) {
+                return toAbsolute(product.featured_image);
+            }
+            if (product.images && product.images[0] && product.images[0].image) {
+                return toAbsolute(product.images[0].image);
+            }
+            return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+        };
+
+        return (
+            <div className="animate-fade-in">
+                <button 
+                    onClick={() => {
+                        // Clear products when going back
+                        setCategoryProducts([]);
+                        setProductsLoading(false);
+                        setStep(3);
+                    }} 
+                    className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]"
+                >
+                    <ArrowLeft size={16} className="mr-2" /> Back
+                </button>
+                <h2 className="text-3xl font-bold text-center mb-4 text-[#273e8e]">
+                    Build Your Solar System
+                </h2>
+                <p className="text-center text-gray-600 mb-2">
+                    Select multiple products to create your custom bundle
+                </p>
+                <p className="text-center text-sm text-orange-600 mb-8 font-semibold">
+                    * You must select at least one product to continue
+                </p>
+
+                {productsLoading ? (
+                    <div className="text-center py-16">
+                        <div className="flex flex-col items-center justify-center">
+                            <Loader className="animate-spin mx-auto text-[#273e8e]" size={48} />
+                            <p className="mt-6 text-lg font-medium text-gray-700">Loading products...</p>
+                            <p className="mt-2 text-sm text-gray-500">Please wait while we fetch available products</p>
+                        </div>
+                    </div>
+                ) : categoryProducts.length === 0 ? (
+                    <div className="text-center py-12 bg-white rounded-2xl border border-gray-200">
+                        <p className="text-gray-600">No products available at the moment.</p>
+                        <button
+                            onClick={() => setStep(3)}
+                            className="mt-4 text-[#273e8e] hover:underline"
+                        >
+                            Go back
+                        </button>
+                    </div>
+                ) : (
+                    <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+                        {categoryProducts.map((product) => {
+                            const price = Number(product.discount_price || product.price || 0);
+                            const oldPrice = product.discount_price && product.price && product.discount_price < product.price 
+                                ? Number(product.price) 
+                                : null;
+                            const discount = oldPrice && price < oldPrice
+                                ? Math.round(((oldPrice - price) / oldPrice) * 100)
+                                : 0;
+                            
+                            // Check if product is selected
+                            const isSelected = formData.selectedProducts.some(p => p.id === product.id);
+                            
+                            return (
+                                <div
+                                    key={product.id}
+                                    className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 ${
+                                        isSelected 
+                                            ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
+                                            : 'border-gray-100 hover:border-[#273e8e]'
+                                    }`}
+                                >
+                                    <Link 
+                                        to={`/homePage/product/${product.id}`}
+                                        className="block"
+                                    >
+                                        <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100 relative">
+                                            <img
+                                                src={getProductImage(product)}
+                                                alt={product.title || product.name}
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                onError={(e) => {
+                                                    if (e.target.src && !e.target.src.includes('placeholder-product.png') && !e.target.src.includes('data:image')) {
+                                                        e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                                    }
+                                                }}
+                                            />
+                                            {isSelected && (
+                                                <div className="absolute top-2 right-2 bg-[#273e8e] text-white rounded-full p-2">
+                                                    <CheckCircle size={20} />
+                                                </div>
+                                            )}
+                                        </div>
+                                        <h3 className="font-bold text-lg mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">
+                                            {product.title || product.name || `Product #${product.id}`}
+                                        </h3>
+                                        <div className="flex items-center justify-between mb-3">
+                                            <div>
+                                                <p className="font-bold text-[#273e8e] text-lg">
+                                                    {formatPrice(price)}
+                                                </p>
+                                                {oldPrice && (
+                                                    <p className="text-sm text-gray-500 line-through">
+                                                        {formatPrice(oldPrice)}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            {discount > 0 && (
+                                                <span className="px-2 py-1 rounded-full text-xs font-bold bg-[#FFA500] text-white">
+                                                    -{discount}%
+                                                </span>
+                                            )}
+                                        </div>
+                                    </Link>
+                                    <button
+                                        onClick={() => handleProductSelect(product)}
+                                        className={`w-full py-2 rounded-lg font-semibold transition-colors mt-2 ${
+                                            isSelected
+                                                ? 'bg-red-600 text-white hover:bg-red-700'
+                                                : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
+                                        }`}
+                                    >
+                                        {isSelected ? 'Remove from Bundle' : 'Add to Bundle'}
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    
+                    {/* Continue Button - Show when at least one product is selected */}
+                    {formData.selectedProducts.length > 0 && (
+                        <div className="mt-8 flex justify-center">
+                            <button
+                                onClick={() => setStep(6.5)}
+                                className="bg-[#273e8e] text-white px-8 py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors flex items-center"
+                            >
+                                Continue with {formData.selectedProducts.length} Product{formData.selectedProducts.length !== 1 ? 's' : ''} in Bundle
+                                <ArrowRight size={20} className="ml-2" />
+                            </button>
+                        </div>
+                    )}
+                    </>
                 )}
             </div>
         );
@@ -671,28 +972,38 @@ const BNPLFlow = () => {
 
     const renderStep3 = () => (
         <div className="animate-fade-in">
-            <button onClick={() => setStep(2)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+            <button onClick={() => setStep(2)} className="mb-6 flex items-center text-gray-500 hover:text-emerald-600">
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
+            {/* BNPL Badge */}
+            <div className="flex justify-center mb-4">
+                <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-bold bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md">
+                    <CreditCard size={16} className="mr-2" />
+                    Buy Now Pay Later
+                </span>
+            </div>
             <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
                 How would you like to proceed?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-                <button onClick={() => handleOptionSelect('choose-system')} className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center">
-                    <div className="bg-yellow-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
-                        <Zap size={40} className="text-yellow-600" />
+                <button onClick={() => handleOptionSelect('choose-system')} className="group bg-white border-2 border-gray-100 hover:border-emerald-500 rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-emerald-600"></div>
+                    <div className="bg-gradient-to-br from-yellow-50 to-amber-50 p-6 rounded-full mb-6 group-hover:from-yellow-100 group-hover:to-amber-100 transition-colors">
+                        <Zap size={40} className="text-emerald-600" />
                     </div>
                     <h3 className="text-xl font-bold mb-2 text-gray-800">Choose my solar system</h3>
                 </button>
-                <button onClick={() => handleOptionSelect('build-system')} className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center">
-                    <div className="bg-purple-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
-                        <Wrench size={40} className="text-purple-600" />
+                <button onClick={() => handleOptionSelect('build-system')} className="group bg-white border-2 border-gray-100 hover:border-emerald-500 rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-emerald-600"></div>
+                    <div className="bg-gradient-to-br from-purple-50 to-violet-50 p-6 rounded-full mb-6 group-hover:from-purple-100 group-hover:to-violet-100 transition-colors">
+                        <Wrench size={40} className="text-emerald-600" />
                     </div>
                     <h3 className="text-xl font-bold mb-2 text-gray-800">Build My System</h3>
                 </button>
-                <button onClick={() => handleOptionSelect('audit')} className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center">
-                    <div className="bg-green-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
-                        <FileText size={40} className="text-green-600" />
+                <button onClick={() => handleOptionSelect('audit')} className="group bg-white border-2 border-gray-100 hover:border-emerald-500 rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-emerald-600"></div>
+                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-full mb-6 group-hover:from-green-100 group-hover:to-emerald-100 transition-colors">
+                        <FileText size={40} className="text-emerald-600" />
                     </div>
                     <h3 className="text-xl font-bold mb-2 text-gray-800">Request Professional Audit</h3>
                 </button>
@@ -752,6 +1063,7 @@ const BNPLFlow = () => {
                         </button>
                     </div>
                 ) : (
+                    <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
                         {bundles.map((bundle) => {
                             const price = Number(bundle.discount_price || bundle.total_price || 0);
@@ -762,16 +1074,23 @@ const BNPLFlow = () => {
                                 ? Math.round(((oldPrice - price) / oldPrice) * 100)
                                 : 0;
                             
+                            // Check if bundle is selected
+                            const isSelected = formData.selectedBundles.some(b => b.id === bundle.id);
+                            
                             return (
                                 <div
                                     key={bundle.id}
-                                    className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-xl transition-all duration-300"
+                                    className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 ${
+                                        isSelected 
+                                            ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
+                                            : 'border-gray-100 hover:border-[#273e8e]'
+                                    }`}
                                 >
                                     <Link 
                                         to={`/productBundle/details/${bundle.id}`}
                                         className="block"
                                     >
-                                        <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100">
+                                        <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100 relative">
                                             <img
                                                 src={getBundleImage(bundle)}
                                                 alt={bundle.title || bundle.name}
@@ -783,6 +1102,11 @@ const BNPLFlow = () => {
                                                     }
                                                 }}
                                             />
+                                            {isSelected && (
+                                                <div className="absolute top-2 right-2 bg-[#273e8e] text-white rounded-full p-2">
+                                                    <CheckCircle size={20} />
+                                                </div>
+                                            )}
                                         </div>
                                         <h3 className="font-bold text-lg mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">
                                             {bundle.title || bundle.name || `Bundle #${bundle.id}`}
@@ -810,14 +1134,32 @@ const BNPLFlow = () => {
                                     </Link>
                                     <button
                                         onClick={() => handleBundleSelect(bundle)}
-                                        className="w-full bg-[#273e8e] text-white py-2 rounded-lg font-semibold hover:bg-[#1a2b6b] transition-colors mt-2"
+                                        className={`w-full py-2 rounded-lg font-semibold transition-colors mt-2 ${
+                                            isSelected
+                                                ? 'bg-red-600 text-white hover:bg-red-700'
+                                                : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
+                                        }`}
                                     >
-                                        Select This Bundle
+                                        {isSelected ? 'Remove from Selection' : 'Add to Selection'}
                                     </button>
                                 </div>
                             );
                         })}
                     </div>
+                    
+                    {/* Continue Button - Show when at least one bundle is selected */}
+                    {formData.selectedBundles.length > 0 && (
+                        <div className="mt-8 flex justify-center">
+                            <button
+                                onClick={() => setStep(6.5)}
+                                className="bg-[#273e8e] text-white px-8 py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors flex items-center"
+                            >
+                                Continue with {formData.selectedBundles.length} {formData.selectedBundles.length !== 1 ? 'Items' : 'Item'} Selected
+                                <ArrowRight size={20} className="ml-2" />
+                            </button>
+                        </div>
+                    )}
+                    </>
                 )}
             </div>
         );
@@ -1072,50 +1414,128 @@ const BNPLFlow = () => {
 
     const renderStep6_5 = () => {
         // Calculate total amount for order summary
+        // NEW: Calculate from all selected bundles and products
+        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + b.price, 0);
+        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + p.price, 0);
+        const itemsSubtotal = bundlesTotal + productsTotal;
+        
+        // Use itemsSubtotal if available, otherwise fallback to selectedProductPrice (for backward compatibility)
+        const basePrice = itemsSubtotal > 0 ? itemsSubtotal : formData.selectedProductPrice;
+        
         const insuranceAddOn = addOns.find(a => a.is_compulsory_bnpl);
         const insuranceFee = insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
-            ? (formData.selectedProductPrice * insuranceAddOn.calculation_value) / 100
-            : (insuranceAddOn?.price || formData.selectedProductPrice * 0.005);
+            ? (basePrice * insuranceAddOn.calculation_value) / 100
+            : (insuranceAddOn?.price || basePrice * 0.005);
         
         const materialCost = 50000;
         const installationFee = 50000;
         const deliveryFee = 25000;
         const inspectionFee = 10000;
-        const totalAmount = formData.selectedProductPrice + insuranceFee + materialCost + installationFee + deliveryFee + inspectionFee;
+        const totalAmount = basePrice + insuranceFee + materialCost + installationFee + deliveryFee + inspectionFee;
+
+        const formatPrice = (price) => {
+            return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
+        };
 
         return (
             <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-                <button onClick={() => setStep(formData.optionType === 'audit' ? 5 : (formData.optionType ? 3 : 2))} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                <button onClick={() => setStep(formData.optionType === 'audit' ? 5 : (formData.optionType === 'choose-system' ? 3.5 : (formData.optionType ? 3 : 2)))} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
                 <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary</h2>
                 
                 <div className="space-y-4 mb-6">
-                    <div className="flex justify-between items-center">
-                        <div className="flex items-center">
-                            <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                <Sun size={24} className="text-gray-600" />
+                    {/* NEW: Show all selected bundles */}
+                    {formData.selectedBundles.length > 0 && (
+                        <div className="space-y-3">
+                            <h3 className="font-semibold text-gray-700 mb-2">Selected Bundles ({formData.selectedBundles.length})</h3>
+                            {formData.selectedBundles.map((selectedBundle) => (
+                                <div key={selectedBundle.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
+                                    <div className="flex items-center">
+                                        <div className="bg-gray-100 p-2 rounded-lg mr-4">
+                                            <Sun size={20} className="text-gray-600" />
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-gray-800">
+                                                {selectedBundle.bundle.title || selectedBundle.bundle.name || `Bundle #${selectedBundle.id}`}
+                                            </p>
+                                            <p className="text-sm text-gray-500">Solar System Bundle</p>
+                                        </div>
+                                    </div>
+                                    <span className="font-bold">₦{Number(selectedBundle.price || 0).toLocaleString()}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    
+                    {/* NEW: Show all selected products */}
+                    {formData.selectedProducts.length > 0 && (
+                        <div className="space-y-3">
+                            <h3 className="font-semibold text-gray-700 mb-2">Selected Products ({formData.selectedProducts.length})</h3>
+                            {formData.selectedProducts.map((selectedProduct) => (
+                                <div key={selectedProduct.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
+                                    <div className="flex items-center">
+                                        <div className="bg-gray-100 p-2 rounded-lg mr-4">
+                                            <Battery size={20} className="text-gray-600" />
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-gray-800">
+                                                {selectedProduct.product.title || selectedProduct.product.name || `Product #${selectedProduct.id}`}
+                                            </p>
+                                            <p className="text-sm text-gray-500">Individual Component</p>
+                                        </div>
+                                    </div>
+                                    <span className="font-bold">₦{Number(selectedProduct.price || 0).toLocaleString()}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    
+                    {/* OLD: Show single bundle/product (for backward compatibility) */}
+                    {formData.selectedBundles.length === 0 && formData.selectedProducts.length === 0 && (
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center">
+                                <div className="bg-gray-100 p-2 rounded-lg mr-4">
+                                    <Sun size={24} className="text-gray-600" />
+                                </div>
+                                <div>
+                                    <p className="font-bold text-gray-800">
+                                        {formData.optionType === 'audit' ? 'Professional Energy Audit' : 
+                                         formData.selectedBundle ? (formData.selectedBundle.title || 'Solar System Bundle') :
+                                         formData.selectedProduct ? (formData.selectedProduct.title || formData.selectedProduct.name || 'Product') :
+                                         'Solar System Bundle'}
+                                    </p>
+                                    <p className="text-sm text-gray-500">
+                                        {formData.optionType === 'audit' 
+                                            ? 'Home/Office Audit Service' 
+                                            : 'Inverter + Batteries + Panels'}
+                                    </p>
+                                </div>
                             </div>
-                            <div>
-                                <p className="font-bold text-gray-800">
-                                    {formData.optionType === 'audit' ? 'Professional Energy Audit' : 'Solar System Bundle'}
-                                </p>
-                                <p className="text-sm text-gray-500">
-                                    {formData.optionType === 'audit' 
-                                        ? 'Home/Office Audit Service' 
-                                        : 'Inverter + Batteries + Panels'}
-                                </p>
+                            <span className="font-bold">₦{Number(basePrice || 0).toLocaleString()}</span>
+                        </div>
+                    )}
+                    
+                    {/* Subtotal for multiple items */}
+                    {(formData.selectedBundles.length > 0 || formData.selectedProducts.length > 0) && (
+                        <div className="border-t pt-3 mt-3">
+                            <div className="flex justify-between items-center">
+                                <span className="font-semibold text-gray-700">Items Subtotal:</span>
+                                <span className="font-bold text-lg">₦{Number(basePrice || 0).toLocaleString()}</span>
                             </div>
                         </div>
-                        <span className="font-bold">₦{Number(formData.selectedProductPrice || 0).toLocaleString()}</span>
-                    </div>
+                    )}
 
-                    {formData.optionType !== 'audit' && (
+                    {formData.optionType !== 'audit' && (formData.selectedBundles.length > 0 || formData.selectedProducts.length === 0) && (
                         <>
                             <div className="text-sm text-gray-600 pl-14 space-y-1">
-                                <p><strong>Quantity:</strong> 1 system</p>
-                                <p><strong>Appliances:</strong> Standard household appliances</p>
-                                <p><strong>Backup Time:</strong> 8-12 hours (depending on usage)</p>
+                                <p><strong>Quantity:</strong> {formData.selectedBundles.length + formData.selectedProducts.length} item{formData.selectedBundles.length + formData.selectedProducts.length > 1 ? 's' : ''}</p>
+                                {formData.selectedBundles.length > 0 && (
+                                    <>
+                                        <p><strong>Appliances:</strong> Standard household appliances</p>
+                                        <p><strong>Backup Time:</strong> 8-12 hours (depending on usage)</p>
+                                    </>
+                                )}
                             </div>
                         </>
                     )}
@@ -1132,18 +1552,18 @@ const BNPLFlow = () => {
                         if (formData.optionType === 'audit') {
                             setStep(7); // Go to Audit Invoice
                         } else {
-                            // Check minimum order value (N1.5m) before proceeding to loan calculator
+                            // Check minimum order value (N1.5m) before proceeding to invoice
                             const minOrderValue = 1500000;
                             if (totalAmount < minOrderValue) {
                                 alert(`Your order total (₦${totalAmount.toLocaleString()}) does not meet the minimum ₦1,500,000 amount required for credit financing. To qualify for Buy Now, Pay Later, please add more items to your cart. Thank you.`);
                                 return;
                             }
-                            setStep(8); // Go to Loan Calculator
+                            setStep(6.75); // Go to Invoice (before loan calculator)
                         }
                     }}
                     className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
                 >
-                    {formData.optionType === 'audit' ? 'Proceed to Invoice' : 'Proceed to Loan Calculator'}
+                    {formData.optionType === 'audit' ? 'Proceed to Invoice' : 'Proceed to Invoice'}
                 </button>
             </div>
         );
@@ -1306,6 +1726,151 @@ const BNPLFlow = () => {
         }
     };
 
+    const renderStep6_75 = () => {
+        // Calculate total amount for invoice
+        // Calculate from all selected bundles and products
+        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + b.price, 0);
+        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + p.price, 0);
+        const itemsSubtotal = bundlesTotal + productsTotal;
+        
+        // Use itemsSubtotal if available, otherwise fallback to selectedProductPrice (for backward compatibility)
+        const basePrice = itemsSubtotal > 0 ? itemsSubtotal : formData.selectedProductPrice;
+        
+        const insuranceAddOn = addOns.find(a => a.is_compulsory_bnpl);
+        const insuranceFee = insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
+            ? (basePrice * insuranceAddOn.calculation_value) / 100
+            : (insuranceAddOn?.price || basePrice * 0.005);
+        
+        const materialCost = 50000;
+        const installationFee = 50000;
+        const deliveryFee = 25000;
+        const inspectionFee = 10000;
+        const totalAmount = basePrice + insuranceFee + materialCost + installationFee + deliveryFee + inspectionFee;
+
+        const formatPrice = (price) => {
+            return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
+        };
+
+        return (
+            <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                <button onClick={() => setStep(6.5)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                    <ArrowLeft size={16} className="mr-2" /> Back
+                </button>
+                <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Invoice</h2>
+                
+                <div className="space-y-4 mb-8">
+                    <div className="border-b pb-4 mb-4">
+                        <h3 className="font-bold text-gray-800 mb-3">Invoice Details</h3>
+                    </div>
+
+                    {/* Selected Bundles */}
+                    {formData.selectedBundles.length > 0 && (
+                        <div className="space-y-3 mb-4">
+                            {formData.selectedBundles.map((selectedBundle) => (
+                                <div key={selectedBundle.id} className="flex justify-between items-center">
+                                    <div>
+                                        <p className="font-medium text-gray-800">
+                                            {selectedBundle.bundle.title || selectedBundle.bundle.name || `Bundle #${selectedBundle.id}`}
+                                        </p>
+                                        <p className="text-sm text-gray-500">Solar System Bundle</p>
+                                    </div>
+                                    <span className="font-bold">₦{Number(selectedBundle.price || 0).toLocaleString()}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    
+                    {/* Selected Products */}
+                    {formData.selectedProducts.length > 0 && (
+                        <div className="space-y-3 mb-4">
+                            {formData.selectedProducts.map((selectedProduct) => (
+                                <div key={selectedProduct.id} className="flex justify-between items-center">
+                                    <div>
+                                        <p className="font-medium text-gray-800">
+                                            {selectedProduct.product.title || selectedProduct.product.name || `Product #${selectedProduct.id}`}
+                                        </p>
+                                        <p className="text-sm text-gray-500">Individual Component</p>
+                                    </div>
+                                    <span className="font-bold">₦{Number(selectedProduct.price || 0).toLocaleString()}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Fallback for single item (backward compatibility) */}
+                    {formData.selectedBundles.length === 0 && formData.selectedProducts.length === 0 && (
+                        <div className="flex justify-between items-center mb-4">
+                            <div>
+                                <p className="font-medium text-gray-800">
+                                    {formData.selectedBundle ? (formData.selectedBundle.title || 'Solar System Bundle') :
+                                     formData.selectedProduct ? (formData.selectedProduct.title || formData.selectedProduct.name || 'Product') :
+                                     'Solar System'}
+                                </p>
+                                <p className="text-sm text-gray-500">Product</p>
+                            </div>
+                            <span className="font-bold">₦{Number(basePrice || 0).toLocaleString()}</span>
+                        </div>
+                    )}
+
+                    {/* Items Subtotal */}
+                    {(formData.selectedBundles.length > 0 || formData.selectedProducts.length > 0) && (
+                        <div className="border-t pt-3 mt-3 mb-4">
+                            <div className="flex justify-between items-center">
+                                <span className="text-gray-600">Items Subtotal:</span>
+                                <span className="font-semibold">₦{Number(basePrice || 0).toLocaleString()}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Fees */}
+                    <div className="border-t pt-4 space-y-2">
+                        <div className="flex justify-between text-sm text-gray-600">
+                            <span>Material Cost:</span>
+                            <span>₦{Number(materialCost).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-sm text-gray-600">
+                            <span>Installation Fee:</span>
+                            <span>₦{Number(installationFee).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-sm text-gray-600">
+                            <span>Delivery Fee:</span>
+                            <span>₦{Number(deliveryFee).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-sm text-gray-600">
+                            <span>Inspection Fee:</span>
+                            <span>₦{Number(inspectionFee).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-sm text-gray-600">
+                            <span>Insurance Fee:</span>
+                            <span>₦{Number(insuranceFee).toLocaleString()}</span>
+                        </div>
+                    </div>
+
+                    {/* Total */}
+                    <div className="border-t pt-4 font-bold text-xl flex justify-between">
+                        <span>Total</span>
+                        <span className="text-[#273e8e]">₦{Number(totalAmount).toLocaleString()}</span>
+                    </div>
+                </div>
+
+                <button
+                    onClick={() => {
+                        // Check minimum order value (N1.5m) before proceeding to loan calculator
+                        const minOrderValue = 1500000;
+                        if (totalAmount < minOrderValue) {
+                            alert(`Your order total (₦${totalAmount.toLocaleString()}) does not meet the minimum ₦1,500,000 amount required for credit financing. To qualify for Buy Now, Pay Later, please add more items to your cart. Thank you.`);
+                            return;
+                        }
+                        setStep(8); // Go to Loan Calculator
+                    }}
+                    className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
+                >
+                    Proceed to Loan Calculator
+                </button>
+            </div>
+        );
+    };
+
     const renderStep7 = () => (
         <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
             <button onClick={() => setStep(6.5)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
@@ -1435,9 +2000,17 @@ const BNPLFlow = () => {
 
     const renderStep8 = () => {
         // Calculate total amount including compulsory add-ons (Insurance for BNPL)
+        // NEW: Calculate from all selected bundles and products
+        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + b.price, 0);
+        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + p.price, 0);
+        const itemsSubtotal = bundlesTotal + productsTotal;
+        
+        // Use itemsSubtotal if available, otherwise fallback to selectedProductPrice (for backward compatibility)
+        const basePrice = itemsSubtotal > 0 ? itemsSubtotal : formData.selectedProductPrice;
+        
         const insuranceAddOn = addOns.find(a => a.is_compulsory_bnpl);
         const insuranceFee = insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
-            ? (formData.selectedProductPrice * insuranceAddOn.calculation_value) / 100
+            ? (basePrice * insuranceAddOn.calculation_value) / 100
             : (insuranceAddOn?.price || 0);
         
         // Use API data if available, otherwise use defaults
@@ -1448,7 +2021,24 @@ const BNPLFlow = () => {
         const deliveryFee = 25000; // Should come from API/state/delivery location selection
         const inspectionFee = 10000; // Should come from API
         
-        const totalAmount = formData.selectedProductPrice + insuranceFee + materialCost + installationFee + deliveryFee + inspectionFee;
+        const totalAmount = basePrice + insuranceFee + materialCost + installationFee + deliveryFee + inspectionFee;
+
+        const handleStartOver = () => {
+            // Clear all selections and reset to Step 2
+            setFormData(prev => ({
+                ...prev,
+                selectedBundles: [],
+                selectedProducts: [],
+                selectedBundleId: null,
+                selectedBundle: null,
+                selectedProductId: null,
+                selectedProduct: null,
+                selectedProductPrice: 0,
+                productCategory: '',
+                optionType: ''
+            }));
+            setStep(2); // Go back to product category selection (5 options)
+        };
 
         return (
             <div className="animate-fade-in max-w-4xl mx-auto">
@@ -1460,6 +2050,15 @@ const BNPLFlow = () => {
                     onConfirm={handleLoanConfirm}
                     loanConfig={loanConfig}
                 />
+                <div className="mt-6 flex justify-center">
+                    <button
+                        onClick={handleStartOver}
+                        className="border-2 border-gray-300 text-gray-700 px-6 py-3 rounded-xl font-semibold hover:bg-gray-50 transition-colors flex items-center"
+                    >
+                        <ArrowLeft size={18} className="mr-2" />
+                        Start Over - Change Selection
+                    </button>
+                </div>
             </div>
         );
     };
@@ -1506,7 +2105,7 @@ const BNPLFlow = () => {
             </p>
             <div className="flex gap-4">
                 <button
-                    onClick={() => setStep(10)}
+                    onClick={() => setStep(11)}
                     className="flex-1 bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
                 >
                     Yes, Proceed
@@ -1521,17 +2120,69 @@ const BNPLFlow = () => {
         </div>
     );
 
+    const handleCreditCheckPayment = async () => {
+        if (!formData.loanDetails?.principal) {
+            alert("Loan details not found. Please go back and complete the loan calculator.");
+            return;
+        }
+
+        const creditCheckFee = Math.round((formData.loanDetails.principal * 0.05)); // 5% of loan amount
+        setProcessingCreditCheckPayment(true);
+        
+        try {
+            await ensureFlutterwave();
+
+            const txRef = "credit_check_" + Date.now();
+            const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+            const userEmail = userInfo.email || 'customer@troosolar.com';
+            const userName = userInfo.name || userInfo.full_name || 'Customer';
+
+            window.FlutterwaveCheckout({
+                public_key: "FLWPUBK_TEST-dd1514f7562b1d623c4e63fb58b6aedb-X", // TODO: Move to env variable
+                tx_ref: txRef,
+                amount: creditCheckFee,
+                currency: "NGN",
+                payment_options: "card,ussd,banktransfer",
+                customer: {
+                    email: userEmail,
+                    name: userName,
+                },
+                callback: async (response) => {
+                    if (response?.status === "successful") {
+                        // Payment successful, now submit the application
+                        try {
+                            const fakeEvent = { preventDefault: () => {} };
+                            await submitApplication(fakeEvent);
+                        } catch (error) {
+                            console.error("Application submission error:", error);
+                            alert("Payment successful but failed to submit application. Please contact support.");
+                        }
+                    } else {
+                        alert("Payment was not successful. Please try again.");
+                    }
+                    setProcessingCreditCheckPayment(false);
+                },
+                onclose: () => {
+                    setProcessingCreditCheckPayment(false);
+                },
+            });
+        } catch (error) {
+            console.error("Payment initialization error:", error);
+            alert("Failed to initialize payment. Please try again.");
+            setProcessingCreditCheckPayment(false);
+        }
+    };
+
     const renderStep10 = () => (
         <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-            <button onClick={() => setStep(9)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+            <button onClick={() => setStep(11)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Credit Check Method</h2>
-            <div className="space-y-4">
+            <div className="space-y-4 mb-6">
                 <button
                     onClick={() => {
                         setFormData({ ...formData, creditCheckMethod: 'auto' });
-                        setStep(11);
                     }}
                     className={`w-full p-6 rounded-xl border-2 text-left transition-all ${formData.creditCheckMethod === 'auto'
                         ? 'border-[#273e8e] bg-blue-50'
@@ -1547,7 +2198,6 @@ const BNPLFlow = () => {
                 <button
                     onClick={() => {
                         setFormData({ ...formData, creditCheckMethod: 'manual' });
-                        setStep(11);
                     }}
                     className={`w-full p-6 rounded-xl border-2 text-left transition-all ${formData.creditCheckMethod === 'manual'
                         ? 'border-[#273e8e] bg-blue-50'
@@ -1561,10 +2211,88 @@ const BNPLFlow = () => {
                     <p className="text-sm text-gray-500 ml-7">Manual review of your bank statements (takes longer).</p>
                 </button>
             </div>
+            <button
+                onClick={(e) => {
+                    e.preventDefault();
+                    if (!formData.creditCheckMethod) {
+                        alert("Please select a credit check method");
+                        return;
+                    }
+                    // Show credit check fee popup
+                    setShowCreditCheckFeeModal(true);
+                }}
+                disabled={loading || !formData.creditCheckMethod}
+                className={`w-full py-4 rounded-xl font-bold transition-colors ${
+                    loading || !formData.creditCheckMethod
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
+                }`}
+            >
+                {loading ? 'Submitting Application...' : 'Proceed to Payment'}
+            </button>
+            
+            {/* Credit Check Fee Modal */}
+            {showCreditCheckFeeModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowCreditCheckFeeModal(false)}>
+                    <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-2xl font-bold text-[#273e8e]">Credit Check Fee</h3>
+                            <button
+                                onClick={() => setShowCreditCheckFeeModal(false)}
+                                className="text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <div className="space-y-4 mb-6">
+                            <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+                                <p className="text-sm text-gray-600 mb-2">Loan Amount:</p>
+                                <p className="text-xl font-bold text-[#273e8e]">
+                                    ₦{Number(formData.loanDetails?.principal || 0).toLocaleString()}
+                                </p>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-gray-700">Credit Check Fee (5%):</span>
+                                <span className="text-xl font-bold text-[#273e8e]">
+                                    ₦{Number((formData.loanDetails?.principal || 0) * 0.05).toLocaleString()}
+                                </span>
+                            </div>
+                            <div className="border-t pt-3">
+                                <p className="text-sm text-gray-600">
+                                    This fee covers the cost of processing your credit check. Payment is required before your application can be submitted.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex gap-4">
+                            <button
+                                onClick={() => setShowCreditCheckFeeModal(false)}
+                                className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-50 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    setShowCreditCheckFeeModal(false);
+                                    await handleCreditCheckPayment();
+                                }}
+                                disabled={processingCreditCheckPayment}
+                                className={`flex-1 bg-[#273e8e] text-white py-3 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors ${
+                                    processingCreditCheckPayment ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                            >
+                                {processingCreditCheckPayment ? 'Processing...' : 'Proceed to Payment'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
+
     const submitApplication = async (e) => {
-        e.preventDefault();
+        if (e && e.preventDefault) {
+            e.preventDefault();
+        }
         setLoading(true);
         try {
             const token = localStorage.getItem('access_token');
@@ -1575,11 +2303,17 @@ const BNPLFlow = () => {
             }
 
             // Step 1: Create loan calculation first (required by backend)
+            // NEW: Calculate total from all selected items
+            const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + b.price, 0);
+            const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + p.price, 0);
+            const itemsSubtotal = bundlesTotal + productsTotal;
+            const basePrice = itemsSubtotal > 0 ? itemsSubtotal : formData.selectedProductPrice;
+            
             let loanCalculationId = null;
             if (formData.loanDetails) {
                 try {
                     const loanCalcPayload = {
-                        product_amount: formData.selectedProductPrice,
+                        product_amount: basePrice, // NEW: Use total of all selected items
                         loan_amount: formData.loanDetails.totalRepayment,
                         repayment_duration: formData.loanDetails.tenor
                     };
@@ -1639,11 +2373,23 @@ const BNPLFlow = () => {
             // Add state_id and add_on_ids if available
             if (formData.stateId) formDataToSend.append('state_id', formData.stateId);
             
-            // Add bundle/product ID if selected
-            if (formData.selectedBundleId) {
+            // NEW: Add multiple bundle IDs if selected
+            if (formData.selectedBundles.length > 0) {
+                formData.selectedBundles.forEach(bundle => {
+                    formDataToSend.append('bundle_ids[]', bundle.id);
+                });
+            } else if (formData.selectedBundleId) {
+                // OLD: Fallback to single bundle ID for backward compatibility
                 formDataToSend.append('bundle_id', formData.selectedBundleId);
             }
-            if (formData.selectedProductId) {
+            
+            // NEW: Add multiple product IDs if selected
+            if (formData.selectedProducts.length > 0) {
+                formData.selectedProducts.forEach(product => {
+                    formDataToSend.append('product_ids[]', product.id);
+                });
+            } else if (formData.selectedProductId) {
+                // OLD: Fallback to single product ID for backward compatibility
                 formDataToSend.append('product_id', formData.selectedProductId);
             }
             
@@ -1682,8 +2428,24 @@ const BNPLFlow = () => {
 
     const renderStep11 = () => (
         <div className="animate-fade-in max-w-4xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+            <button onClick={() => setStep(9)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                <ArrowLeft size={16} className="mr-2" /> Back
+            </button>
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Final Application</h2>
-            <form onSubmit={submitApplication} className="space-y-6">
+            <form onSubmit={(e) => {
+                e.preventDefault();
+                // Validate required fields before proceeding to credit check
+                if (!formData.fullName || !formData.bvn || !formData.phone || !formData.email || !formData.socialMedia || 
+                    !formData.state || !formData.address || !formData.bankStatement || !formData.livePhoto) {
+                    alert("Please fill in all required fields");
+                    return;
+                }
+                if (formData.isGatedEstate && (!formData.estateName || !formData.estateAddress)) {
+                    alert("Please fill in Estate Name and Estate Address");
+                    return;
+                }
+                setStep(10); // Go to credit check method selection
+            }} className="space-y-6">
                 {/* Personal Details Section */}
                 <div>
                     <h3 className="text-lg font-bold mb-4 text-gray-800 border-b pb-2">Personal Details</h3>
@@ -1786,7 +2548,7 @@ const BNPLFlow = () => {
                             : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
                     }`}
                 >
-                    {loading ? 'Submitting...' : 'Submit Application'}
+                    Continue to Credit Check
                 </button>
                 {formData.isGatedEstate && (!formData.estateName || !formData.estateAddress) && (
                     <p className="text-sm text-red-600 mt-2 text-center">
@@ -2506,10 +3268,12 @@ const BNPLFlow = () => {
                     {step === 2.5 && renderStep2_5()}
                     {step === 3 && renderStep3()}
                     {step === 3.5 && renderStep3_5()}
+                    {step === 3.75 && renderStep3_75()}
                     {step === 4 && renderStep4()}
                     {step === 5 && renderStep5()}
                     {step === 6 && renderStep6()}
                     {step === 6.5 && renderStep6_5()}
+                    {step === 6.75 && renderStep6_75()}
                     {step === 7 && renderStep7()}
                     {step === 7.5 && renderStep7_5()}
                     {step === 8 && renderStep8()}
