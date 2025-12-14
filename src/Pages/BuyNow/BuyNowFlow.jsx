@@ -55,6 +55,8 @@ const BuyNowFlow = () => {
     const [selectedAddOns, setSelectedAddOns] = useState([]);
     const [configLoading, setConfigLoading] = useState(false);
     const [auditRequestId, setAuditRequestId] = useState(null);
+    const [auditRequests, setAuditRequests] = useState([]);
+    const [auditRequestStatus, setAuditRequestStatus] = useState(null);
     
     // Custom order flow (from admin-created cart)
     const [searchParams] = useSearchParams();
@@ -473,12 +475,99 @@ const BuyNowFlow = () => {
     const bundlesFetchedRef = useRef(false);
 
     // Audit handlers (same as BNPL)
-    const handleAuditTypeSelect = (type) => {
+    const handleAuditTypeSelect = async (type) => {
         setFormData({ ...formData, auditType: type });
         if (type === 'commercial') {
-            setStep(6); // Commercial Notification
+            // Submit commercial audit request immediately
+            await submitCommercialAuditRequest();
         } else {
             setStep(5); // Home/Office Details Form
+        }
+    };
+
+    const submitCommercialAuditRequest = async () => {
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                alert("Please login to continue");
+                navigate('/login');
+                return;
+            }
+
+            // Submit commercial audit request (all fields optional for commercial)
+            const auditRequestPayload = {
+                audit_type: 'commercial',
+                customer_type: formData.customerType || 'commercial',
+                // All property fields are optional for commercial audits
+                property_state: null,
+                property_address: null,
+            };
+
+            // Add cart token if this is a custom order flow
+            const cartToken = searchParams.get('cart_token');
+            if (cartToken) {
+                auditRequestPayload.cart_token = cartToken;
+            }
+
+            const auditRequestResponse = await axios.post(API.AUDIT_REQUEST, auditRequestPayload, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json'
+                }
+            });
+
+            if (auditRequestResponse.data.status === 'success') {
+                const newAuditRequestId = auditRequestResponse.data.data.id;
+                setAuditRequestId(newAuditRequestId);
+                setFormData(prev => ({ ...prev, auditRequestId: newAuditRequestId }));
+                
+                // Fetch audit requests to check status
+                await fetchAuditRequests();
+                
+                // Navigate to commercial notification
+                setStep(6);
+            } else {
+                alert("Failed to submit commercial audit request. Please try again.");
+            }
+        } catch (error) {
+            console.error("Commercial audit request submission error:", error);
+            const errorMessage = error.response?.data?.message || 
+                                (error.response?.data?.errors ? JSON.stringify(error.response.data.errors) : null) ||
+                                "Failed to submit commercial audit request. Please try again.";
+            alert(errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchAuditRequests = async () => {
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) return;
+
+            const response = await axios.get(API.AUDIT_REQUESTS, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/json'
+                }
+            });
+
+            if (response.data.status === 'success') {
+                const requests = Array.isArray(response.data.data) ? response.data.data : [];
+                setAuditRequests(requests);
+                
+                // Find the current audit request and set its status
+                if (auditRequestId) {
+                    const currentRequest = requests.find(req => req.id === auditRequestId);
+                    if (currentRequest) {
+                        setAuditRequestStatus(currentRequest.status || currentRequest.audit_status);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error fetching audit requests:", error);
         }
     };
 
@@ -923,13 +1012,25 @@ const BuyNowFlow = () => {
         }
     }, [selectedStateId]);
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (step === 5) {
             fetchCalendarSlots();
         }
     }, [step]);
 
     // Fetch bundles when step 3.5 is reached (only once)
+    // Fetch audit requests when on step 6 (commercial audit notification)
+    useEffect(() => {
+        if (step === 6 && formData.optionType === 'audit' && formData.auditType === 'commercial' && auditRequestId) {
+            fetchAuditRequests();
+            // Poll for status updates every 30 seconds
+            const interval = setInterval(() => {
+                fetchAuditRequests();
+            }, 30000);
+            return () => clearInterval(interval);
+        }
+    }, [step, auditRequestId, formData.optionType, formData.auditType]);
+
     useEffect(() => {
         if (step === 3.5 && !bundlesFetchedRef.current && !bundlesLoading) {
             bundlesFetchedRef.current = true;
@@ -1046,7 +1147,7 @@ const BuyNowFlow = () => {
 
         return (
             <div className="animate-fade-in">
-                <button onClick={() => setStep(1)} className="mb-6 flex items-center text-gray-500 hover:text-orange-600">
+                <button onClick={() => navigate('/')} className="mb-6 flex items-center text-gray-500 hover:text-orange-600">
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
                 {/* Buy Now Badge */}
@@ -2683,36 +2784,67 @@ const BuyNowFlow = () => {
             </div>
             
             {/* Calendar Slots Section */}
-            {calendarSlots.length > 0 && (
-                <div className="mb-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <h3 className="font-bold text-[#273e8e] mb-3 flex items-center">
-                        <Calendar size={20} className="mr-2" />
-                        Available Installation Dates
-                    </h3>
-                    <p className="text-sm text-gray-600 mb-3">
-                        Installation slots are available starting 72 hours after payment confirmation. Select your preferred date:
-                    </p>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-                        {calendarSlots.slice(0, 9).map((slot, idx) => (
-                            <button
-                                key={idx}
-                                disabled={!slot.available}
-                                onClick={() => slot.available && setSelectedSlot(slot)}
-                                className={`p-2 rounded-lg text-sm border transition-colors ${
-                                    selectedSlot?.date === slot.date && selectedSlot?.time === slot.time
-                                        ? 'border-[#273e8e] bg-[#273e8e] text-white'
-                                        : slot.available
-                                        ? 'border-blue-300 hover:bg-blue-100 text-gray-800'
-                                        : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                }`}
-                            >
-                                <div className="font-medium">{new Date(slot.date).toLocaleDateString('en-NG', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
-                                <div className="text-xs">{slot.time}</div>
-                            </button>
-                        ))}
+            {calendarSlots.length > 0 && (() => {
+                // Group slots by date to get unique dates only
+                const uniqueDates = [];
+                const dateMap = new Map();
+                
+                calendarSlots.forEach(slot => {
+                    if (!dateMap.has(slot.date)) {
+                        dateMap.set(slot.date, slot);
+                        uniqueDates.push(slot);
+                    }
+                });
+
+                return (
+                    <div className="mb-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <h3 className="font-bold text-[#273e8e] mb-3 flex items-center">
+                            <Calendar size={20} className="mr-2" />
+                            Available Installation Dates
+                        </h3>
+                        <p className="text-sm text-gray-600 mb-3">
+                            Installation slots are available starting 72 hours after payment confirmation. Select your preferred date:
+                        </p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                            {uniqueDates.slice(0, 9).map((slot, idx) => {
+                                const dateStr = new Date(slot.date).toLocaleDateString('en-NG', { 
+                                    weekday: 'short', 
+                                    month: 'short', 
+                                    day: 'numeric' 
+                                });
+                                const isSelected = selectedSlot?.date === slot.date;
+                                
+                                return (
+                                    <button
+                                        key={idx}
+                                        disabled={!slot.available}
+                                        onClick={() => {
+                                            if (slot.available) {
+                                                // Select the first available slot for this date
+                                                const firstSlotForDate = calendarSlots.find(s => 
+                                                    s.date === slot.date && s.available
+                                                );
+                                                if (firstSlotForDate) {
+                                                    setSelectedSlot(firstSlotForDate);
+                                                }
+                                            }
+                                        }}
+                                        className={`p-3 rounded-lg text-sm border transition-colors ${
+                                            isSelected
+                                                ? 'border-[#273e8e] bg-[#273e8e] text-white'
+                                                : slot.available
+                                                ? 'border-blue-300 hover:bg-blue-100 text-gray-800'
+                                                : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                                        }`}
+                                    >
+                                        <div className="font-medium text-center">{dateStr}</div>
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
             
             {/* Installation fee note - only show if TrooSolar installer is selected */}
             {formData.installerChoice === 'troosolar' && (
@@ -2749,6 +2881,7 @@ const BuyNowFlow = () => {
     const renderStep6 = () => {
         // If audit flow and commercial, show commercial notification (same as BNPL)
         if (formData.optionType === 'audit' && formData.auditType === 'commercial') {
+
             return (
                 <div className="animate-fade-in max-w-3xl mx-auto text-center">
                     <div className="bg-yellow-50 border border-yellow-200 p-8 rounded-2xl">
@@ -2757,6 +2890,18 @@ const BuyNowFlow = () => {
                         <p className="text-gray-700 mb-6 text-lg">
                             Your commercial audit request has been submitted successfully.
                         </p>
+                        {auditRequestId && (
+                            <div className="bg-white p-4 rounded-lg border border-yellow-300 mb-4">
+                                <p className="text-sm text-gray-700">
+                                    <strong>Request ID:</strong> #{auditRequestId}
+                                </p>
+                                {auditRequestStatus && (
+                                    <p className="text-sm text-gray-700 mt-2">
+                                        <strong>Status:</strong> <span className="capitalize">{auditRequestStatus}</span>
+                                    </p>
+                                )}
+                            </div>
+                        )}
                         <p className="text-gray-600 mb-8">
                             Our team will review your request and contact you within 24-48 hours with a customized quote.
                             Commercial audits require manual review to ensure accurate pricing based on your specific requirements.
@@ -2797,7 +2942,7 @@ const BuyNowFlow = () => {
                             <p className="text-sm text-blue-700">
                                 <Calendar size={16} className="inline mr-2" />
                                 Installation scheduled for: <span className="font-bold">
-                                    {new Date(selectedSlot.date).toLocaleDateString('en-NG', { weekday: 'long', month: 'long', day: 'numeric' })} at {selectedSlot.time}
+                                    {new Date(selectedSlot.date).toLocaleDateString('en-NG', { weekday: 'long', month: 'long', day: 'numeric' })}
                                 </span>
                             </p>
                         </div>
@@ -2864,16 +3009,35 @@ const BuyNowFlow = () => {
                         <div className="flex justify-between text-sm font-medium text-gray-400 mb-2">
                             <span className={step >= 1 ? "text-[#273e8e]" : ""}>Type</span>
                             <span className={step >= 2 ? "text-[#273e8e]" : ""}>Product</span>
-                            <span className={step >= 3 ? "text-[#273e8e]" : ""}>Option</span>
+                            <span className={step >= 3 && step < 4 ? "text-[#273e8e]" : ""}>Option</span>
                             <span className={step >= 7 ? "text-[#273e8e]" : ""}>Summary</span>
-                            <span className={step >= 4 ? "text-[#273e8e]" : ""}>Checkout</span>
-                            <span className={step >= 5 ? "text-[#273e8e]" : ""}>Payment</span>
-                            <span className={step >= 6 ? "text-[#273e8e]" : ""}>Complete</span>
+                            <span className={step === 4 ? "text-[#273e8e]" : ""}>Checkout</span>
+                            <span className={step === 5 ? "text-[#273e8e]" : ""}>Payment</span>
+                            <span className={step === 6 ? "text-[#273e8e]" : ""}>Complete</span>
                         </div>
                         <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                             <div
                                 className="h-full bg-[#273e8e] transition-all duration-500 ease-out"
-                                style={{ width: `${Math.min((step / 8) * 100, 100)}%` }}
+                                style={{ 
+                                    width: `${(() => {
+                                        // Map steps to progress percentage (7 stages total)
+                                        // Type (1): ~14%
+                                        if (step === 1) return 14;
+                                        // Product (2, 2.5, 2.75): ~28%
+                                        if (step >= 2 && step < 3) return 28;
+                                        // Option (3, 3.5, 3.75): ~42%
+                                        if (step >= 3 && step < 4) return 42;
+                                        // Checkout (4): ~57%
+                                        if (step === 4) return 57;
+                                        // Payment (5): ~71%
+                                        if (step === 5) return 71;
+                                        // Complete (6): ~85%
+                                        if (step === 6) return 85;
+                                        // Summary (7, 8): ~100%
+                                        if (step >= 7) return 100;
+                                        return 0;
+                                    })()}%` 
+                                }}
                             />
                         </div>
                     </div>

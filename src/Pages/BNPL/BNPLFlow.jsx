@@ -36,6 +36,96 @@ const ensureFlutterwave = () =>
         document.body.appendChild(s);
     });
 
+// Mono Connect integration
+const ensureMono = () =>
+    new Promise((resolve, reject) => {
+        // Check if already loaded
+        if (window.MonoConnect) {
+            console.log("Mono Connect already loaded");
+            return resolve();
+        }
+        
+        // Check if script is already in the page (from HTML head or previous load)
+        const existingScript = document.querySelector('script[src*="connect.withmono.com"]');
+        if (existingScript) {
+            console.log("Mono Connect script found in page, waiting for class...");
+            // Wait for MonoConnect to become available (polling)
+            const checkInterval = setInterval(() => {
+                if (window.MonoConnect) {
+                    clearInterval(checkInterval);
+                    console.log("MonoConnect class is now available");
+                    resolve();
+                }
+            }, 100);
+            
+            // Timeout after 10 seconds
+            setTimeout(() => {
+                clearInterval(checkInterval);
+                if (!window.MonoConnect) {
+                    console.error("MonoConnect not available after waiting. Window keys:", Object.keys(window).filter(k => k.toLowerCase().includes('mono')));
+                    reject(new Error("Mono Connect script is loaded but MonoConnect class is not available. Please refresh the page."));
+                }
+            }, 10000);
+            return;
+        }
+        
+        // Create and load script
+        const s = document.createElement("script");
+        s.src = "https://connect.withmono.com/connect.js";
+        s.async = false; // Load synchronously to ensure it's available
+        s.type = "text/javascript";
+        s.crossOrigin = "anonymous"; // Handle CORS if needed
+        
+        // Poll for MonoConnect availability after script loads
+        const checkForMonoConnect = () => {
+            const maxAttempts = 100; // 10 seconds max (100 * 100ms)
+            let attempts = 0;
+            
+            const checkInterval = setInterval(() => {
+                attempts++;
+                // Check for both MonoConnect and window.MonoConnect
+                if (window.MonoConnect || window.Mono) {
+                    clearInterval(checkInterval);
+                    console.log("Mono Connect script loaded and MonoConnect class available");
+                    resolve();
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(checkInterval);
+                    console.error("Window object after script load:", Object.keys(window).filter(k => k.toLowerCase().includes('mono')));
+                    reject(new Error("Mono Connect script loaded but MonoConnect class is not available. The script may have failed to initialize. Please check the browser console for errors."));
+                }
+            }, 100); // Check every 100ms
+        };
+        
+        s.onload = () => {
+            console.log("Mono Connect script loaded, waiting for MonoConnect class...");
+            console.log("Checking window object:", window.MonoConnect, window.Mono);
+            // Start checking immediately
+            checkForMonoConnect();
+        };
+        
+        s.onerror = (error) => {
+            console.error("Script load error:", error);
+            reject(new Error("Failed to load Mono Connect script. Please check your internet connection and try again."));
+        };
+        
+        // Set overall timeout to prevent hanging
+        const timeoutId = setTimeout(() => {
+            if (!window.MonoConnect && !window.Mono) {
+                console.error("Timeout: Window object keys:", Object.keys(window).filter(k => k.toLowerCase().includes('mono')));
+                reject(new Error("Mono Connect script loading timeout. Please refresh and try again."));
+            }
+        }, 15000); // 15 second timeout
+        
+        // Clear timeout on success
+        const originalResolve = resolve;
+        resolve = () => {
+            clearTimeout(timeoutId);
+            originalResolve();
+        };
+        
+        document.head.appendChild(s); // Append to head instead of body
+    });
+
 const BNPLFlow = () => {
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
@@ -53,6 +143,7 @@ const BNPLFlow = () => {
     const [paymentResult, setPaymentResult] = useState(null); // 'success' | 'failed' | null
     const [showCreditCheckFeeModal, setShowCreditCheckFeeModal] = useState(false);
     const [processingCreditCheckPayment, setProcessingCreditCheckPayment] = useState(false);
+    const [monoConnectInstance, setMonoConnectInstance] = useState(null);
     const [auditOrderId, setAuditOrderId] = useState(null);
     const [auditCalendarSlots, setAuditCalendarSlots] = useState([]);
     const [selectedAuditSlot, setSelectedAuditSlot] = useState(null);
@@ -86,6 +177,8 @@ const BNPLFlow = () => {
         selectedProducts: [], // NEW: Array of selected products [{id, product, price}, ...]
         loanDetails: null,
         creditCheckMethod: '', // 'auto', 'manual'
+        creditScore: null, // Credit score from Mono (0-100)
+        creditReport: null, // Full credit report from Mono
         bvn: '',
         fullName: '',
         email: '',
@@ -161,6 +254,13 @@ const BNPLFlow = () => {
     };
 
     // --- Effects ---
+    
+    // Auto-select automatic credit check method when step 10 is reached
+    React.useEffect(() => {
+        if (step === 10 && !formData.creditCheckMethod) {
+            setFormData(prev => ({ ...prev, creditCheckMethod: 'auto' }));
+        }
+    }, [step]);
     
     // Check for custom order flow (cart token) or existing application on mount
     React.useEffect(() => {
@@ -627,7 +727,7 @@ const BNPLFlow = () => {
                     setStep(6); // Commercial Notification
                 } else {
                     // For home-office audits, proceed to order summary
-                    setStep(6.5); // Order Summary (for audit) before invoice
+        setStep(6.5); // Order Summary (for audit) before invoice
                 }
             } else {
                 alert("Failed to submit audit request. Please try again.");
@@ -789,10 +889,10 @@ const BNPLFlow = () => {
         ];
 
         return (
-            <div className="animate-fade-in">
+        <div className="animate-fade-in">
                 <button onClick={() => setStep(1)} className="mb-6 flex items-center text-gray-500 hover:text-emerald-600">
-                    <ArrowLeft size={16} className="mr-2" /> Back
-                </button>
+                <ArrowLeft size={16} className="mr-2" /> Back
+            </button>
                 {/* BNPL Badge */}
                 <div className="flex justify-center mb-4">
                     <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-bold bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md">
@@ -800,9 +900,9 @@ const BNPLFlow = () => {
                         Buy Now Pay Later
                     </span>
                 </div>
-                <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
-                    Select Product Category
-                </h2>
+            <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
+                Select Product Category
+            </h2>
                 {categories.length === 0 ? (
                     <div className="text-center py-12">
                         <Loader className="animate-spin mx-auto text-emerald-600" size={48} />
@@ -815,15 +915,15 @@ const BNPLFlow = () => {
                             const matchingCategoryIds = getCategoryIdsForGroup(group.id);
                             
                             return (
-                                <button
+                    <button
                                     key={group.id}
                                     onClick={() => handleCategorySelect(group.id)}
                                     className="group bg-white border-2 border-gray-100 hover:border-emerald-500 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden"
-                                >
+                    >
                                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-emerald-600"></div>
                                     <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-full mb-4 group-hover:from-green-100 group-hover:to-emerald-100 transition-colors flex items-center justify-center min-h-[64px]">
                                         <IconComponent size={32} className="text-emerald-600" />
-                                    </div>
+                        </div>
                                     <h3 className="text-lg font-bold text-gray-800 mb-1">{group.name}</h3>
                                     {group.subtitle && (
                                         <p className="text-sm text-gray-500 italic">{group.subtitle}</p>
@@ -833,13 +933,13 @@ const BNPLFlow = () => {
                                             {matchingCategoryIds.length} categor{matchingCategoryIds.length > 1 ? 'ies' : 'y'} available
                                         </p>
                                     )}
-                                </button>
+                    </button>
                             );
                         })}
-                    </div>
-                )}
             </div>
-        );
+                )}
+        </div>
+    );
     };
 
     const renderStep2_5 = () => {
@@ -1263,10 +1363,7 @@ const BNPLFlow = () => {
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
                                 >
-                                    <Link 
-                                        to={`/productBundle/details/${bundle.id}`}
-                                        className="block"
-                                    >
+                                    <div className="block">
                                         <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100 relative">
                                             <img
                                                 src={getBundleImage(bundle)}
@@ -1308,7 +1405,7 @@ const BNPLFlow = () => {
                                                 </span>
                                             )}
                                         </div>
-                                    </Link>
+                                    </div>
                                     <button
                                         onClick={() => handleBundleSelect(bundle)}
                                         className={`w-full py-2 rounded-lg font-semibold transition-colors mt-2 ${
@@ -1426,25 +1523,25 @@ const BNPLFlow = () => {
                 {states.length > 0 ? (
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
-                        <select
-                            required
-                            className="w-full p-3 border rounded-lg"
-                            onChange={e => {
-                                const stateId = e.target.value ? Number(e.target.value) : null;
-                                const selectedState = states.find(s => s.id === stateId);
-                                setFormData({ ...formData, state: selectedState?.name || '', stateId });
-                            }}
-                        >
-                            <option value="">Select State</option>
-                            {states.filter(s => s.is_active).map((state) => (
-                                <option key={state.id} value={state.id}>{state.name}</option>
-                            ))}
-                        </select>
+                    <select
+                        required
+                        className="w-full p-3 border rounded-lg"
+                        onChange={e => {
+                            const stateId = e.target.value ? Number(e.target.value) : null;
+                            const selectedState = states.find(s => s.id === stateId);
+                            setFormData({ ...formData, state: selectedState?.name || '', stateId });
+                        }}
+                    >
+                        <option value="">Select State</option>
+                        {states.filter(s => s.is_active).map((state) => (
+                            <option key={state.id} value={state.id}>{state.name}</option>
+                        ))}
+                    </select>
                     </div>
                 ) : (
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
-                        <input type="text" placeholder="State" required className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, state: e.target.value })} />
+                    <input type="text" placeholder="State" required className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, state: e.target.value })} />
                     </div>
                 )}
                 <div>
@@ -1600,8 +1697,8 @@ const BNPLFlow = () => {
                         onClick={() => navigate('/')} 
                         className="w-full bg-[#273e8e] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
                     >
-                        Return to Dashboard
-                    </button>
+                    Return to Dashboard
+                </button>
                     <button 
                         onClick={async () => {
                             // Check audit request status
@@ -1716,27 +1813,27 @@ const BNPLFlow = () => {
                     
                     {/* OLD: Show single bundle/product (for backward compatibility) */}
                     {formData.selectedBundles.length === 0 && formData.selectedProducts.length === 0 && (
-                        <div className="flex justify-between items-center">
-                            <div className="flex items-center">
-                                <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                    <Sun size={24} className="text-gray-600" />
-                                </div>
-                                <div>
-                                    <p className="font-bold text-gray-800">
+                    <div className="flex justify-between items-center">
+                        <div className="flex items-center">
+                            <div className="bg-gray-100 p-2 rounded-lg mr-4">
+                                <Sun size={24} className="text-gray-600" />
+                            </div>
+                            <div>
+                                <p className="font-bold text-gray-800">
                                         {formData.optionType === 'audit' ? 'Professional Energy Audit' : 
                                          formData.selectedBundle ? (formData.selectedBundle.title || 'Solar System Bundle') :
                                          formData.selectedProduct ? (formData.selectedProduct.title || formData.selectedProduct.name || 'Product') :
                                          'Solar System Bundle'}
-                                    </p>
-                                    <p className="text-sm text-gray-500">
-                                        {formData.optionType === 'audit' 
-                                            ? 'Home/Office Audit Service' 
-                                            : 'Inverter + Batteries + Panels'}
-                                    </p>
-                                </div>
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                    {formData.optionType === 'audit' 
+                                        ? 'Home/Office Audit Service' 
+                                        : 'Inverter + Batteries + Panels'}
+                                </p>
                             </div>
-                            <span className="font-bold">₦{Number(basePrice || 0).toLocaleString()}</span>
                         </div>
+                            <span className="font-bold">₦{Number(basePrice || 0).toLocaleString()}</span>
+                    </div>
                     )}
                     
                     {/* Subtotal for multiple items */}
@@ -1755,8 +1852,8 @@ const BNPLFlow = () => {
                                 <p><strong>Quantity:</strong> {formData.selectedBundles.length + formData.selectedProducts.length} item{formData.selectedBundles.length + formData.selectedProducts.length > 1 ? 's' : ''}</p>
                                 {formData.selectedBundles.length > 0 && (
                                     <>
-                                        <p><strong>Appliances:</strong> Standard household appliances</p>
-                                        <p><strong>Backup Time:</strong> 8-12 hours (depending on usage)</p>
+                                <p><strong>Appliances:</strong> Standard household appliances</p>
+                                <p><strong>Backup Time:</strong> 8-12 hours (depending on usage)</p>
                                     </>
                                 )}
                             </div>
@@ -1947,10 +2044,10 @@ const BNPLFlow = () => {
                             // Create audit order with audit_request_id and property details
                             // Backend will generate invoice based on location, address, floors, and rooms
                             const checkoutPayload = {
-                                customer_type: formData.customerType,
-                                product_category: 'audit',
+                                    customer_type: formData.customerType,
+                                    product_category: 'audit',
                                 amount: auditFee, // Base amount, backend may adjust based on property details
-                                audit_type: formData.auditType,
+                                    audit_type: formData.auditType,
                             };
                             
                             // Include audit_request_id if available (links order to audit request)
@@ -2246,36 +2343,67 @@ const BNPLFlow = () => {
                     </div>
 
                     {/* Calendar Slots Section */}
-                    {auditCalendarSlots.length > 0 ? (
+                    {auditCalendarSlots.length > 0 ? (() => {
+                        // Group slots by date to get unique dates only
+                        const uniqueDates = [];
+                        const dateMap = new Map();
+                        
+                        auditCalendarSlots.forEach(slot => {
+                            if (!dateMap.has(slot.date)) {
+                                dateMap.set(slot.date, slot);
+                                uniqueDates.push(slot);
+                            }
+                        });
+
+                        return (
                         <div className="mb-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
                             <h3 className="font-bold text-[#273e8e] mb-3 flex items-center">
                                 <Calendar size={20} className="mr-2" />
                                 Available Audit Dates
                             </h3>
                             <p className="text-sm text-gray-600 mb-3">
-                                Audit slots are available starting 48 hours after payment confirmation. Select your preferred date:
+                                    Audit slots are available starting 48 hours after payment confirmation. Select your preferred date:
                             </p>
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-                                {auditCalendarSlots.slice(0, 9).map((slot, idx) => (
+                                    {uniqueDates.slice(0, 9).map((slot, idx) => {
+                                        const dateStr = new Date(slot.date).toLocaleDateString('en-NG', { 
+                                            weekday: 'short', 
+                                            month: 'short', 
+                                            day: 'numeric' 
+                                        });
+                                        const isSelected = selectedAuditSlot?.date === slot.date;
+                                        
+                                        return (
                                     <button
                                         key={idx}
                                         disabled={!slot.available}
-                                        onClick={() => slot.available && setSelectedAuditSlot(slot)}
-                                        className={`p-2 rounded-lg text-sm border transition-colors ${
-                                            selectedAuditSlot?.date === slot.date && selectedAuditSlot?.time === slot.time
+                                                onClick={() => {
+                                                    if (slot.available) {
+                                                        // Select the first available slot for this date
+                                                        const firstSlotForDate = auditCalendarSlots.find(s => 
+                                                            s.date === slot.date && s.available
+                                                        );
+                                                        if (firstSlotForDate) {
+                                                            setSelectedAuditSlot(firstSlotForDate);
+                                                        }
+                                                    }
+                                                }}
+                                                className={`p-3 rounded-lg text-sm border transition-colors ${
+                                                    isSelected
                                                 ? 'border-[#273e8e] bg-[#273e8e] text-white'
                                                 : slot.available
                                                 ? 'border-blue-300 hover:bg-blue-100 text-gray-800'
                                                 : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
                                         }`}
                                     >
-                                        <div className="font-medium">{new Date(slot.date).toLocaleDateString('en-NG', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
-                                        <div className="text-xs">{slot.time}</div>
+                                                <div className="font-medium text-center">{dateStr}</div>
                                     </button>
-                                ))}
+                                        );
+                                    })}
                             </div>
                         </div>
-                    ) : (
+                        );
+                    })() : (
                         <div className="mb-8 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
                             <p className="text-sm text-yellow-700">
                                 Calendar slots will be available soon. Our team will contact you within 24-48 hours to schedule your audit.
@@ -2443,6 +2571,216 @@ const BNPLFlow = () => {
         </div>
     );
 
+    // Open Mono Connect for credit check
+    const openMonoConnect = async () => {
+        try {
+            // Load Mono Connect script
+            await ensureMono();
+            
+            // Verify MonoConnect is available
+            if (!window.MonoConnect) {
+                throw new Error("Mono Connect script failed to load. Please refresh the page and try again.");
+            }
+            
+            // Get Mono public key - using test key for now
+            const token = localStorage.getItem('access_token');
+            let monoPublicKey = 'test_pk_lvb3w2ez9zq6n3e8pdoc'; // Mono test public key
+            
+            // Try to get Mono public key from backend if available (for production)
+            try {
+                // You can add an API endpoint to get Mono config
+                // const configResponse = await axios.get(API.MONO_CONFIG, {
+                //     headers: { Authorization: `Bearer ${token}` }
+                // });
+                // monoPublicKey = configResponse.data.public_key;
+            } catch (e) {
+                console.warn("Could not fetch Mono config from backend, using configured key");
+            }
+            
+            console.log("Initializing Mono Connect with public key:", monoPublicKey.substring(0, 15) + "...");
+
+            // Validate public key
+            if (!monoPublicKey || monoPublicKey.length < 10) {
+                throw new Error("Invalid Mono public key. Please configure your Mono public key.");
+            }
+
+            // Wait a bit more to ensure MonoConnect is fully available
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Double check MonoConnect is available
+            if (!window.MonoConnect) {
+                console.error("MonoConnect still not available. Window keys:", Object.keys(window).filter(k => k.toLowerCase().includes('mono')));
+                throw new Error("MonoConnect class is not available. Please refresh the page and try again.");
+            }
+
+            // Initialize Mono Connect with scopes for BVN verification and account data
+            let monoConnect;
+            try {
+                console.log("Creating Mono Connect instance with key:", monoPublicKey.substring(0, 15) + "...");
+                console.log("MonoConnect constructor:", typeof window.MonoConnect);
+                
+                // Create Mono Connect configuration
+                const monoConfig = {
+                    key: monoPublicKey, // Use 'key' as per Mono documentation
+                    // Scopes needed for credit check: identity (BVN), accounts, transactions
+                    scope: 'identity,accounts,transactions',
+                    // Set environment to sandbox for test keys
+                    env: 'sandbox', // Use 'production' for live keys
+                    onSuccess: async (code) => {
+                    // User successfully connected their bank account via Mono
+                    // The code is used to exchange for account_id on the backend
+                    console.log("Mono connection successful, code:", code);
+                    
+                    try {
+                        // Show loading state
+                        setProcessingCreditCheckPayment(true);
+                        
+                        // Send the Mono code to your backend to process credit check
+                        // Backend will:
+                        // 1. Exchange code for account_id
+                        // 2. Fetch account data, transactions, and BVN info
+                        // 3. Analyze the data to generate credit score (0-100)
+                        const response = await axios.post(
+                            API.BNPL_PROCESS_CREDIT_CHECK,
+                            { 
+                                mono_code: code,
+                                application_data: {
+                                    credit_check_method: formData.creditCheckMethod || 'auto',
+                                    loan_amount: formData.loanDetails?.principal,
+                                    bvn: formData.bvn // Include BVN for verification
+                                }
+                            },
+                            {
+                                headers: {
+                                    'Authorization': `Bearer ${token}`,
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json'
+                                }
+                            }
+                        );
+
+                        // Backend processes the credit check and returns credit score (0-100)
+                        const creditScore = response.data?.credit_score || 0;
+                        const creditReport = response.data?.credit_report || {};
+                        
+                        console.log("Credit check completed. Score:", creditScore, "Report:", creditReport);
+                        
+                        // Store credit check results
+                        setFormData(prev => ({
+                            ...prev,
+                            creditScore: creditScore,
+                            creditReport: creditReport
+                        }));
+
+                        // Show success message
+                        alert(`Credit check completed! Your credit score: ${creditScore}/100`);
+
+                        // Reset processing state before submitting
+                        setProcessingCreditCheckPayment(false);
+
+                        // Now submit the application with credit check results
+                        try {
+                            const fakeEvent = { preventDefault: () => {} };
+                            await submitApplication(fakeEvent);
+                        } catch (submitError) {
+                            console.error("Application submission error after credit check:", submitError);
+                            alert("Credit check completed but failed to submit application. Please contact support.");
+                        }
+                        
+                    } catch (error) {
+                        console.error("Credit check processing error:", error);
+                        const errorMsg = error.response?.data?.message || error.message || "Credit check processing failed";
+                        alert(`Credit check completed but processing failed: ${errorMsg}. Please contact support.`);
+                        setProcessingCreditCheckPayment(false);
+                        
+                        // Offer fallback to manual review
+                        const useManual = confirm("Would you like to proceed with manual credit check review instead?");
+                        if (useManual) {
+                            setFormData(prev => ({ ...prev, creditCheckMethod: 'manual' }));
+                            try {
+                                const fakeEvent = { preventDefault: () => {} };
+                                await submitApplication(fakeEvent);
+                            } catch (submitError) {
+                                console.error("Manual submission error:", submitError);
+                                alert("Failed to submit application. Please contact support.");
+                            }
+                        }
+                    }
+                },
+                onClose: () => {
+                    // User closed the Mono widget without completing
+                    console.log("Mono Connect closed by user");
+                    alert("Credit check process was cancelled. Please complete the bank connection to proceed.");
+                    setProcessingCreditCheckPayment(false);
+                },
+                onError: (error) => {
+                    console.error("Mono Connect error:", error);
+                    alert("Failed to connect bank account. Please try again or contact support if the issue persists.");
+                    setProcessingCreditCheckPayment(false);
+                }
+                };
+                
+                // Create MonoConnect instance
+                console.log("Creating MonoConnect with config:", { ...monoConfig, key: monoConfig.key.substring(0, 15) + "..." });
+                
+                try {
+                    monoConnect = new window.MonoConnect(monoConfig);
+                    console.log("MonoConnect instance created successfully");
+                } catch (createError) {
+                    console.error("Error creating MonoConnect with 'key' parameter:", createError);
+                    // Try with publicKey instead
+                    console.log("Trying with 'publicKey' parameter instead...");
+                    monoConnect = new window.MonoConnect({
+                        publicKey: monoPublicKey,
+                        scope: monoConfig.scope,
+                        env: monoConfig.env,
+                        onSuccess: monoConfig.onSuccess,
+                        onClose: monoConfig.onClose,
+                        onError: monoConfig.onError
+                    });
+                    console.log("MonoConnect instance created with 'publicKey'");
+                }
+
+            setMonoConnectInstance(monoConnect);
+            
+            console.log("Opening Mono Connect widget...");
+            
+            // Open Mono Connect widget
+            try {
+                monoConnect.open();
+                console.log("Mono Connect widget opened successfully");
+            } catch (openError) {
+                console.error("Error opening Mono Connect widget:", openError);
+                throw new Error(`Failed to open Mono Connect widget: ${openError.message || 'Unknown error'}`);
+            }
+                
+            } catch (initError) {
+                console.error("Failed to create Mono Connect instance:", initError);
+                throw new Error(`Failed to initialize Mono Connect: ${initError.message || 'Unknown error'}`);
+            }
+            
+        } catch (error) {
+            console.error("Failed to initialize Mono Connect:", error);
+            const errorMessage = error.message || "Failed to initialize credit check";
+            
+            // Show user-friendly error message
+            alert(`${errorMessage}. Please try again or contact support if the issue persists.`);
+            
+            // Reset processing state
+            setProcessingCreditCheckPayment(false);
+            
+            // Optionally, you can proceed to submit application without Mono if needed
+            // For now, we'll let the user retry
+            // Uncomment below if you want to allow submission without Mono:
+            // const proceedWithoutMono = confirm("Credit check initialization failed. Would you like to proceed with manual review?");
+            // if (proceedWithoutMono) {
+            //     setFormData(prev => ({ ...prev, creditCheckMethod: 'manual' }));
+            //     const fakeEvent = { preventDefault: () => {} };
+            //     await submitApplication(fakeEvent);
+            // }
+        }
+    };
+
     const handleCreditCheckPayment = async () => {
         if (!formData.loanDetails?.principal) {
             alert("Loan details not found. Please go back and complete the loan calculator.");
@@ -2471,21 +2809,40 @@ const BNPLFlow = () => {
                     name: userName,
                 },
                 callback: async (response) => {
+                    console.log("Flutterwave payment callback:", response);
+                    
                     if (response?.status === "successful") {
-                        // Payment successful, now submit the application
+                        // Payment successful, now open Mono Connect for credit check
+                        console.log("Payment successful, opening Mono Connect...");
                         try {
-                            const fakeEvent = { preventDefault: () => {} };
-                            await submitApplication(fakeEvent);
+                            // Small delay to ensure payment is fully processed
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            await openMonoConnect();
                         } catch (error) {
-                            console.error("Application submission error:", error);
-                            alert("Payment successful but failed to submit application. Please contact support.");
+                            console.error("Mono Connect error:", error);
+                            const errorMsg = error.message || "Failed to open credit check";
+                            alert(`Payment successful but ${errorMsg.toLowerCase()}. Please contact support or try again.`);
+                            setProcessingCreditCheckPayment(false);
+                            
+                            // Option to proceed without Mono (manual review)
+                            const proceedManual = confirm("Would you like to proceed with manual credit check review instead?");
+                            if (proceedManual) {
+                                setFormData(prev => ({ ...prev, creditCheckMethod: 'manual' }));
+                                // Submit application with manual method
+                                const fakeEvent = { preventDefault: () => {} };
+                                await submitApplication(fakeEvent);
+                            }
                         }
                     } else {
+                        console.error("Payment failed:", response);
                         alert("Payment was not successful. Please try again.");
+                        setProcessingCreditCheckPayment(false);
                     }
-                    setProcessingCreditCheckPayment(false);
                 },
                 onclose: () => {
+                    console.log("Flutterwave payment modal closed");
+                    // Only reset if payment wasn't successful
+                    // If payment was successful, we should proceed to Mono
                     setProcessingCreditCheckPayment(false);
                 },
             });
@@ -2496,66 +2853,88 @@ const BNPLFlow = () => {
         }
     };
 
-    const renderStep10 = () => (
-        <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-            <button onClick={() => setStep(11)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
-                <ArrowLeft size={16} className="mr-2" /> Back
-            </button>
-            <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Credit Check Method</h2>
-            <div className="space-y-4 mb-6">
-                <button
-                    onClick={() => {
-                        setFormData({ ...formData, creditCheckMethod: 'auto' });
-                    }}
-                    className={`w-full p-6 rounded-xl border-2 text-left transition-all ${formData.creditCheckMethod === 'auto'
-                        ? 'border-[#273e8e] bg-blue-50'
-                        : 'border-gray-200 hover:border-blue-200'
-                        }`}
-                >
-                    <div className="flex items-center mb-2">
-                        <CheckCircle size={20} className={formData.creditCheckMethod === 'auto' ? 'text-[#273e8e]' : 'text-gray-300'} />
-                        <span className="ml-2 font-bold text-gray-800">Automatic (BVN Verification)</span>
-                    </div>
-                    <p className="text-sm text-gray-500 ml-7">Fast and automated credit check using your BVN.</p>
+    const renderStep10 = () => {
+        return (
+            <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                <button onClick={() => setStep(11)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                    <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
-                <button
-                    onClick={() => {
-                        setFormData({ ...formData, creditCheckMethod: 'manual' });
-                    }}
-                    className={`w-full p-6 rounded-xl border-2 text-left transition-all ${formData.creditCheckMethod === 'manual'
-                        ? 'border-[#273e8e] bg-blue-50'
-                        : 'border-gray-200 hover:border-blue-200'
+                <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Credit Check Method</h2>
+                <div className="space-y-4 mb-6">
+                    <button
+                        onClick={() => {
+                            setFormData({ ...formData, creditCheckMethod: 'auto' });
+                        }}
+                        disabled={formData.creditCheckMethod === 'manual'}
+                        className={`w-full p-6 rounded-xl border-2 text-left transition-all ${
+                            formData.creditCheckMethod === 'auto'
+                                ? 'border-[#273e8e] bg-blue-50'
+                                : formData.creditCheckMethod === 'manual'
+                                ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
+                                : 'border-gray-200 hover:border-blue-200'
                         }`}
-                >
-                    <div className="flex items-center mb-2">
-                        <CheckCircle size={20} className={formData.creditCheckMethod === 'manual' ? 'text-[#273e8e]' : 'text-gray-300'} />
-                        <span className="ml-2 font-bold text-gray-800">Manual (Bank Statement Review)</span>
+                    >
+                        <div className="flex items-center mb-2">
+                            <CheckCircle size={20} className={formData.creditCheckMethod === 'auto' ? 'text-[#273e8e]' : 'text-gray-300'} />
+                            <span className={`ml-2 font-bold ${formData.creditCheckMethod === 'manual' ? 'text-gray-400' : 'text-gray-800'}`}>
+                                Automatic (BVN Verification)
+                            </span>
+                        </div>
+                        <p className={`text-sm ml-7 ${formData.creditCheckMethod === 'manual' ? 'text-gray-400' : 'text-gray-500'}`}>
+                            Fast and automated credit check using your BVN. You'll connect your bank account via Mono to complete the verification.
+                        </p>
+                    </button>
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                        <p className="text-sm text-yellow-800 font-medium">
+                            <strong>Note:</strong> We will first use the automatic option. If unsuccessful, we will then request for manual upload and review.
+                        </p>
                     </div>
-                    <p className="text-sm text-gray-500 ml-7">Manual review of your bank statements (takes longer).</p>
+                    <button
+                        onClick={() => {
+                            setFormData({ ...formData, creditCheckMethod: 'manual' });
+                        }}
+                        disabled={formData.creditCheckMethod === 'auto'}
+                        className={`w-full p-6 rounded-xl border-2 text-left transition-all ${
+                            formData.creditCheckMethod === 'manual'
+                                ? 'border-[#273e8e] bg-blue-50'
+                                : formData.creditCheckMethod === 'auto'
+                                ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
+                                : 'border-gray-200 hover:border-blue-200'
+                        }`}
+                    >
+                        <div className="flex items-center mb-2">
+                            <CheckCircle size={20} className={formData.creditCheckMethod === 'manual' ? 'text-[#273e8e]' : 'text-gray-300'} />
+                            <span className={`ml-2 font-bold ${formData.creditCheckMethod === 'auto' ? 'text-gray-400' : 'text-gray-800'}`}>
+                                Manual (Bank Statement Review)
+                            </span>
+                        </div>
+                        <p className={`text-sm ml-7 ${formData.creditCheckMethod === 'auto' ? 'text-gray-400' : 'text-gray-500'}`}>
+                            Manual review of your bank statements (takes longer).
+                        </p>
+                    </button>
+                </div>
+                <button
+                    onClick={(e) => {
+                        e.preventDefault();
+                        if (!formData.creditCheckMethod) {
+                            alert("Please select a credit check method");
+                            return;
+                        }
+                        // Show credit check fee popup
+                        setShowCreditCheckFeeModal(true);
+                    }}
+                    disabled={loading || !formData.creditCheckMethod}
+                    className={`w-full py-4 rounded-xl font-bold transition-colors ${
+                        loading || !formData.creditCheckMethod
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
+                    }`}
+                >
+                    {loading ? 'Submitting Application...' : 'Proceed to Payment'}
                 </button>
-            </div>
-            <button
-                onClick={(e) => {
-                    e.preventDefault();
-                    if (!formData.creditCheckMethod) {
-                        alert("Please select a credit check method");
-                        return;
-                    }
-                    // Show credit check fee popup
-                    setShowCreditCheckFeeModal(true);
-                }}
-                disabled={loading || !formData.creditCheckMethod}
-                className={`w-full py-4 rounded-xl font-bold transition-colors ${
-                    loading || !formData.creditCheckMethod
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
-                }`}
-            >
-                {loading ? 'Submitting Application...' : 'Proceed to Payment'}
-            </button>
-            
-            {/* Credit Check Fee Modal */}
-            {showCreditCheckFeeModal && (
+                
+                {/* Credit Check Fee Modal */}
+                {showCreditCheckFeeModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowCreditCheckFeeModal(false)}>
                     <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-4">
@@ -2608,13 +2987,14 @@ const BNPLFlow = () => {
                         </div>
                     </div>
                 </div>
-            )}
-        </div>
-    );
+                )}
+            </div>
+        );
+    };
 
     const submitApplication = async (e) => {
         if (e && e.preventDefault) {
-            e.preventDefault();
+        e.preventDefault();
         }
         setLoading(true);
         try {
@@ -2758,8 +3138,9 @@ const BNPLFlow = () => {
             <form onSubmit={(e) => {
                 e.preventDefault();
                 // Validate required fields before proceeding to credit check
+                // Note: bankStatement and livePhoto removed - no longer required (handled via Mono)
                 if (!formData.fullName || !formData.bvn || !formData.phone || !formData.email || !formData.socialMedia || 
-                    !formData.state || !formData.address || !formData.bankStatement || !formData.livePhoto) {
+                    !formData.state || !formData.address) {
                     alert("Please fill in all required fields");
                     return;
                 }
@@ -2845,21 +3226,6 @@ const BNPLFlow = () => {
                             />
                         </div>
                     )}
-                </div>
-
-                {/* File Uploads */}
-                <div>
-                    <h3 className="text-lg font-bold mb-4 text-gray-800 border-b pb-2">Required Documents</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                            <p className="mb-2 font-medium">Bank Statement (Last 6 Months)</p>
-                            <input type="file" required accept=".pdf,.jpg,.png" onChange={e => setFormData({ ...formData, bankStatement: e.target.files[0] })} />
-                        </div>
-                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                            <p className="mb-2 font-medium">Live Photo / Selfie</p>
-                            <input type="file" required accept=".jpg,.png" onChange={e => setFormData({ ...formData, livePhoto: e.target.files[0] })} />
-                        </div>
-                    </div>
                 </div>
 
                 <button 
@@ -3455,18 +3821,18 @@ const BNPLFlow = () => {
                     <div>
                         <p className="font-medium text-gray-800">Solar Inverter</p>
                         <p className="text-sm text-gray-500">Quantity: 1</p>
-                    </div>
+                        </div>
                     <span className="font-bold">₦{Number((invoice.product_price || 0) * 0.4).toLocaleString()}</span>
                 </div>
                 
                 {/* Solar Panels */}
                 <div className="flex justify-between items-center">
-                    <div>
+                        <div>
                         <p className="font-medium text-gray-800">Solar Panels</p>
                         <p className="text-sm text-gray-500">Quantity: 1</p>
-                    </div>
+                        </div>
                     <span className="font-bold">₦{Number((invoice.product_price || 0) * 0.35).toLocaleString()}</span>
-                </div>
+                    </div>
                 
                 {/* Batteries */}
                 <div className="flex justify-between items-center">
@@ -3476,7 +3842,7 @@ const BNPLFlow = () => {
                     </div>
                     <span className="font-bold">₦{Number((invoice.product_price || 0) * 0.25).toLocaleString()}</span>
                 </div>
-                
+
                 {/* Material Cost */}
                 <div className="flex justify-between items-center text-sm text-gray-600">
                     <span>Material Cost (Cables, Breakers, Surge Protectors, Trunking, and Pipes)</span>

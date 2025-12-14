@@ -76,6 +76,7 @@ const API = {
     BNPL_GUARANTOR_UPLOAD: `${BASE_URL}/bnpl/guarantor/upload`,
     BNPL_COUNTEROFFER_ACCEPT: `${BASE_URL}/bnpl/counteroffer/accept`,
     BNPL_INVOICE: (applicationId) => `${BASE_URL}/bnpl/invoice/${applicationId}`,
+    BNPL_PROCESS_CREDIT_CHECK: `${BASE_URL}/bnpl/process-credit-check`,
     BUY_NOW_CHECKOUT: `${BASE_URL}/orders/checkout`,
     CALENDAR_SLOTS: `${BASE_URL}/calendar/slots`,
     
