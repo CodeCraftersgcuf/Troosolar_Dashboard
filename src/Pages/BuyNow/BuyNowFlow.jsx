@@ -1299,49 +1299,43 @@ const BuyNowFlow = () => {
                                         }`}
                                     >
                                         <div className="mb-3">
-                                            <Link 
-                                                to={`/homePage/product/${product.id}`}
-                                                className="block"
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100 relative">
-                                                    <img
-                                                        src={getProductImage(product)}
-                                                        alt={product.title || product.name}
-                                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                                        onError={(e) => {
-                                                            if (e.target.src && !e.target.src.includes('placeholder-product.png') && !e.target.src.includes('data:image')) {
-                                                                e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
-                                                            }
-                                                        }}
-                                                    />
-                                                    {isSelected && (
-                                                        <div className="absolute top-2 right-2 bg-[#273e8e] text-white rounded-full p-2">
-                                                            <CheckCircle size={20} />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <h3 className="font-bold text-lg mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">
-                                                    {product.title || product.name || `Product #${product.id}`}
-                                                </h3>
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <div>
-                                                        <p className="font-bold text-[#273e8e] text-lg">
-                                                            {formatPrice(price)}
-                                                        </p>
-                                                        {oldPrice && (
-                                                            <p className="text-sm text-gray-500 line-through">
-                                                                {formatPrice(oldPrice)}
-                                                            </p>
-                                                        )}
+                                            <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100 relative">
+                                                <img
+                                                    src={getProductImage(product)}
+                                                    alt={product.title || product.name}
+                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                    onError={(e) => {
+                                                        if (e.target.src && !e.target.src.includes('placeholder-product.png') && !e.target.src.includes('data:image')) {
+                                                            e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                                        }
+                                                    }}
+                                                />
+                                                {isSelected && (
+                                                    <div className="absolute top-2 right-2 bg-[#273e8e] text-white rounded-full p-2">
+                                                        <CheckCircle size={20} />
                                                     </div>
-                                                    {discount > 0 && (
-                                                        <span className="px-2 py-1 rounded-full text-xs font-bold bg-[#FFA500] text-white">
-                                                            -{discount}%
-                                                        </span>
+                                                )}
+                                            </div>
+                                            <h3 className="font-bold text-lg mb-2 text-gray-800">
+                                                {product.title || product.name || `Product #${product.id}`}
+                                            </h3>
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div>
+                                                    <p className="font-bold text-[#273e8e] text-lg">
+                                                        {formatPrice(price)}
+                                                    </p>
+                                                    {oldPrice && (
+                                                        <p className="text-sm text-gray-500 line-through">
+                                                            {formatPrice(oldPrice)}
+                                                        </p>
                                                     )}
                                                 </div>
-                                            </Link>
+                                                {discount > 0 && (
+                                                    <span className="px-2 py-1 rounded-full text-xs font-bold bg-[#FFA500] text-white">
+                                                        -{discount}%
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                         <button
                                             onClick={(e) => {
@@ -1464,49 +1458,43 @@ const BuyNowFlow = () => {
                                     }`}
                                 >
                                     <div className="mb-3">
-                                        <Link 
-                                            to={`/homePage/product/${product.id}`}
-                                            className="block"
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100 relative">
-                                                <img
-                                                    src={getProductImage(product)}
-                                                    alt={product.title || product.name}
-                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                                    onError={(e) => {
-                                                        if (e.target.src && !e.target.src.includes('placeholder-product.png') && !e.target.src.includes('data:image')) {
-                                                            e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
-                                                        }
-                                                    }}
-                                                />
-                                                {isSelected && (
-                                                    <div className="absolute top-2 right-2 bg-[#273e8e] text-white rounded-full p-2">
-                                                        <CheckCircle size={20} />
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <h3 className="font-bold text-lg mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">
-                                                {product.title || product.name || `Product #${product.id}`}
-                                            </h3>
-                                            <div className="flex items-center justify-between mb-3">
-                                                <div>
-                                                    <p className="font-bold text-[#273e8e] text-lg">
-                                                        {formatPrice(price)}
-                                                    </p>
-                                                    {oldPrice && (
-                                                        <p className="text-sm text-gray-500 line-through">
-                                                            {formatPrice(oldPrice)}
-                                                        </p>
-                                                    )}
+                                        <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100 relative">
+                                            <img
+                                                src={getProductImage(product)}
+                                                alt={product.title || product.name}
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                onError={(e) => {
+                                                    if (e.target.src && !e.target.src.includes('placeholder-product.png') && !e.target.src.includes('data:image')) {
+                                                        e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                                    }
+                                                }}
+                                            />
+                                            {isSelected && (
+                                                <div className="absolute top-2 right-2 bg-[#273e8e] text-white rounded-full p-2">
+                                                    <CheckCircle size={20} />
                                                 </div>
-                                                {discount > 0 && (
-                                                    <span className="px-2 py-1 rounded-full text-xs font-bold bg-[#FFA500] text-white">
-                                                        -{discount}%
-                                                    </span>
+                                            )}
+                                        </div>
+                                        <h3 className="font-bold text-lg mb-2 text-gray-800">
+                                            {product.title || product.name || `Product #${product.id}`}
+                                        </h3>
+                                        <div className="flex items-center justify-between mb-3">
+                                            <div>
+                                                <p className="font-bold text-[#273e8e] text-lg">
+                                                    {formatPrice(price)}
+                                                </p>
+                                                {oldPrice && (
+                                                    <p className="text-sm text-gray-500 line-through">
+                                                        {formatPrice(oldPrice)}
+                                                    </p>
                                                 )}
                                             </div>
-                                        </Link>
+                                            {discount > 0 && (
+                                                <span className="px-2 py-1 rounded-full text-xs font-bold bg-[#FFA500] text-white">
+                                                    -{discount}%
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                     <button
                                         onClick={(e) => {
