@@ -21,6 +21,7 @@ const mobileNavItems = [
   { name: "Home", link: "/", icon: assets.dashboard_mob },
   { name: "Store", link: "/homePage", icon: assets.ShopMgt_mob },
   { name: "Loans", link: "/loan", icon: assets.Loanmgt_mob },
+  { name: "BNPL", link: "/bnpl-credit-check", icon: assets.creditMgt },
   { name: "Tools", link: "/tools", icon: assets.settings_mob },
   { name: "More", link: "/more", icon: assets.userGear_mob },
 ];

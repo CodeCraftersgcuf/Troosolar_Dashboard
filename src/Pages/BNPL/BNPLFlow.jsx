@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Upload, CreditCard, Camera, Clock, Download, AlertCircle, Calendar, Loader, CheckCircle2, XCircle, X } from 'lucide-react';
 import LoanCalculator from '../../Component/LoanCalculator';
 import axios from 'axios';
@@ -56,6 +56,14 @@ const BNPLFlow = () => {
     const [auditOrderId, setAuditOrderId] = useState(null);
     const [auditCalendarSlots, setAuditCalendarSlots] = useState([]);
     const [selectedAuditSlot, setSelectedAuditSlot] = useState(null);
+    
+    // Custom order flow (from admin-created cart)
+    const [searchParams] = useSearchParams();
+    const [cartToken, setCartToken] = useState(null);
+    const [cartItems, setCartItems] = useState([]);
+    const [cartOrderType, setCartOrderType] = useState(null);
+    const [cartLoading, setCartLoading] = useState(false);
+    const [cartError, setCartError] = useState(null);
 
     const [formData, setFormData] = useState({
         customerType: '',
@@ -153,6 +161,180 @@ const BNPLFlow = () => {
     };
 
     // --- Effects ---
+    
+    // Check for custom order flow (cart token) or existing application on mount
+    React.useEffect(() => {
+        const token = searchParams.get('token');
+        const type = searchParams.get('type');
+        const applicationIdParam = searchParams.get('applicationId');
+        
+        if (token && (type === 'buy_now' || type === 'bnpl')) {
+            setCartToken(token);
+            setCartOrderType(type);
+            verifyCartAccess(token);
+        }
+        
+        // If applicationId is provided, load existing application and show summary/invoice
+        if (applicationIdParam) {
+            loadExistingApplication(Number(applicationIdParam));
+        }
+    }, [searchParams]);
+    
+    // Load existing application data
+    const loadExistingApplication = async (appId) => {
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                alert("Please login to continue");
+                navigate('/login');
+                return;
+            }
+            
+            const response = await axios.get(API.BNPL_STATUS(appId), {
+                headers: { 
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/json'
+                }
+            });
+            
+            if (response.data.status === 'success' && response.data.data) {
+                const app = response.data.data;
+                
+                // Set application ID
+                setApplicationId(app.id);
+                setApplicationStatus(app.status);
+                
+                // Populate form data from application
+                setFormData(prev => ({
+                    ...prev,
+                    customerType: app.customer_type || prev.customerType,
+                    productCategory: app.product_category || prev.productCategory,
+                    state: app.property_state || prev.state,
+                    address: app.property_address || prev.address,
+                    houseNo: app.property_house_no || prev.houseNo,
+                    streetName: app.property_street_name || prev.streetName,
+                    landmark: app.property_landmark || prev.landmark,
+                    floors: app.property_floors || prev.floors,
+                    rooms: app.property_rooms || prev.rooms,
+                    isGatedEstate: app.is_gated_estate || prev.isGatedEstate,
+                    estateName: app.estate_name || prev.estateName,
+                    estateAddress: app.estate_address || prev.estateAddress,
+                    creditCheckMethod: app.credit_check_method || prev.creditCheckMethod,
+                    fullName: app.full_name || prev.fullName,
+                    email: app.email || prev.email,
+                    phone: app.phone || prev.phone,
+                    socialMedia: app.social_media_handle || prev.socialMedia,
+                    selectedProductPrice: parseFloat((app.loan_amount || '0').replace(/,/g, '')) || prev.selectedProductPrice,
+                    auditRequestId: app.audit_request_id || prev.auditRequestId
+                }));
+                
+                // Set loan details if available
+                if (app.loan_calculation) {
+                    setFormData(prev => ({
+                        ...prev,
+                        loanDetails: {
+                            depositAmount: parseFloat((app.loan_calculation.down_payment || '0').replace(/,/g, '')),
+                            principal: parseFloat((app.loan_calculation.loan_amount || '0').replace(/,/g, '')),
+                            totalInterest: parseFloat((app.loan_calculation.total_amount || '0').replace(/,/g, '')) - parseFloat((app.loan_calculation.loan_amount || '0').replace(/,/g, '')),
+                            monthlyRepayment: parseFloat((app.loan_calculation.monthly_repayment || '0').replace(/,/g, '')),
+                            totalRepayment: parseFloat((app.loan_calculation.total_amount || '0').replace(/,/g, '')),
+                            duration: app.repayment_duration || 12,
+                            interestRate: app.loan_calculation.interest_rate || 4.0
+                        }
+                    }));
+                }
+                
+                // If approved, go directly to summary/invoice/payment flow
+                if (app.status === 'approved') {
+                    // Navigate to invoice (step 21) which shows summary, invoice, and upfront payment
+                    setStep(21);
+                } else {
+                    // For other statuses, show application status
+                    setStep(12);
+                }
+            } else {
+                alert('Application not found');
+                navigate('/bnpl-credit-check');
+            }
+        } catch (error) {
+            console.error('Error loading application:', error);
+            alert(error.response?.data?.message || 'Failed to load application');
+            navigate('/bnpl-credit-check');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Verify cart access and load cart items
+    const verifyCartAccess = async (token) => {
+        setCartLoading(true);
+        setCartError(null);
+        try {
+            const userToken = localStorage.getItem('access_token');
+            const response = await axios.get(API.CART_ACCESS(token), {
+                headers: {
+                    Accept: 'application/json',
+                    ...(userToken ? { Authorization: `Bearer ${userToken}` } : {}),
+                },
+            });
+
+            if (response.data.status === 'success') {
+                const cartData = response.data.data;
+                
+                // Check if login is required
+                if (cartData.requires_login) {
+                    const returnUrl = `/bnpl?token=${token}&type=${cartOrderType || 'bnpl'}`;
+                    alert('Please login to access your cart');
+                    navigate(`/login?return=${encodeURIComponent(returnUrl)}`);
+                    return;
+                }
+
+                // Store cart items
+                setCartItems(cartData.cart_items || []);
+                
+                // Pre-populate form with cart items if available
+                if (cartData.cart_items && cartData.cart_items.length > 0) {
+                    const products = [];
+                    const bundles = [];
+                    
+                    cartData.cart_items.forEach(item => {
+                        if (item.itemable_type === 'App\\Models\\Product' && item.itemable) {
+                            products.push({
+                                id: item.itemable_id,
+                                product: item.itemable,
+                                price: Number(item.unit_price || item.itemable.discount_price || item.itemable.price || 0)
+                            });
+                        } else if (item.itemable_type === 'App\\Models\\Bundle' && item.itemable) {
+                            bundles.push({
+                                id: item.itemable_id,
+                                bundle: item.itemable,
+                                price: Number(item.unit_price || item.itemable.discount_price || item.itemable.total_price || 0)
+                            });
+                        }
+                    });
+                    
+                    if (products.length > 0 || bundles.length > 0) {
+                        const totalPrice = [...products, ...bundles].reduce((sum, item) => sum + item.price, 0);
+                        setFormData(prev => ({
+                            ...prev,
+                            selectedProducts: products,
+                            selectedBundles: bundles,
+                            selectedProductPrice: totalPrice
+                        }));
+                    }
+                }
+            } else {
+                setCartError(response.data.message || 'Failed to access cart');
+            }
+        } catch (error) {
+            console.error('Cart access error:', error);
+            setCartError(error.response?.data?.message || 'Invalid or expired cart link');
+        } finally {
+            setCartLoading(false);
+        }
+    };
+
     React.useEffect(() => {
         const fetchConfig = async () => {
             try {
@@ -421,6 +603,11 @@ const BNPLFlow = () => {
             if (formData.isGatedEstate) {
                 auditRequestPayload.estate_name = formData.estateName;
                 auditRequestPayload.estate_address = formData.estateAddress;
+            }
+
+            // Add cart token if this is a custom order flow
+            if (cartToken) {
+                auditRequestPayload.cart_token = cartToken;
             }
 
             const auditRequestResponse = await axios.post(API.AUDIT_REQUEST, auditRequestPayload, {
@@ -1198,6 +1385,52 @@ const BNPLFlow = () => {
             <button onClick={() => setStep(4)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
+            
+            {/* Custom Order Flow Indicator */}
+            {cartToken && cartItems.length > 0 && (
+                <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-start">
+                        <CheckCircle size={20} className="text-blue-600 mr-3 mt-0.5" />
+                        <div className="flex-1">
+                            <h3 className="font-semibold text-blue-800 mb-2">Custom Order Items Loaded</h3>
+                            <p className="text-sm text-blue-700 mb-3">
+                                Your cart contains {cartItems.length} item{cartItems.length !== 1 ? 's' : ''} prepared by admin.
+                            </p>
+                            <div className="space-y-2">
+                                {cartItems.map((item, idx) => (
+                                    <div key={idx} className="text-sm text-blue-600 bg-white p-2 rounded border border-blue-200">
+                                        <span className="font-medium">
+                                            {item.itemable?.title || item.itemable?.name || `Item #${item.itemable_id}`}
+                                        </span>
+                                        <span className="ml-2">
+                                            (₦{Number(item.unit_price || 0).toLocaleString()})
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {cartLoading && (
+                <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="flex items-center">
+                        <Loader className="animate-spin text-yellow-600 mr-3" size={20} />
+                        <p className="text-sm text-yellow-700">Loading cart items...</p>
+                    </div>
+                </div>
+            )}
+            
+            {cartError && (
+                <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="flex items-center">
+                        <AlertCircle size={20} className="text-red-600 mr-3" />
+                        <p className="text-sm text-red-700">{cartError}</p>
+                    </div>
+                </div>
+            )}
+            
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Property Details</h2>
             <form onSubmit={handleAddressSubmit} className="space-y-4">
                 {states.length > 0 ? (
@@ -1567,6 +1800,106 @@ const BNPLFlow = () => {
                 </button>
             </div>
         );
+    };
+
+    const handleUpfrontDepositPayment = async () => {
+        if (!applicationId || !formData.loanDetails) {
+            alert("Application details missing. Please try again.");
+            return;
+        }
+
+        const depositAmount = formData.loanDetails.depositAmount;
+        if (!depositAmount || depositAmount <= 0) {
+            alert("Invalid deposit amount. Please contact support.");
+            return;
+        }
+
+        setProcessingPayment(true);
+        try {
+            await ensureFlutterwave();
+
+            const txRef = "deposit_" + applicationId + "_" + Date.now();
+            const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+            const userEmail = userInfo.email || 'customer@troosolar.com';
+            const userName = userInfo.name || userInfo.full_name || 'Customer';
+
+            window.FlutterwaveCheckout({
+                public_key: "FLWPUBK_TEST-dd1514f7562b1d623c4e63fb58b6aedb-X", // TODO: Move to env variable
+                tx_ref: txRef,
+                amount: depositAmount,
+                currency: "NGN",
+                payment_options: "card,ussd,banktransfer",
+                customer: {
+                    email: userEmail,
+                    name: userName,
+                },
+                callback: async (response) => {
+                    if (response?.status === "successful") {
+                        try {
+                            const token = localStorage.getItem('access_token');
+                            // Confirm deposit payment
+                            const confirmed = await confirmDepositPayment(
+                                applicationId,
+                                response.transaction_id,
+                                depositAmount
+                            );
+                            
+                            if (confirmed) {
+                                setPaymentResult('success');
+                                alert("Upfront deposit payment successful! Your application will proceed to the next step.");
+                                // Navigate back to credit check status
+                                navigate('/bnpl-credit-check');
+                            } else {
+                                alert("Payment verification failed. Please contact support if amount was debited.");
+                                setPaymentResult('failed');
+                            }
+                        } catch (error) {
+                            console.error("Payment confirmation error:", error);
+                            alert("Payment successful but confirmation failed. Please contact support.");
+                            setPaymentResult('failed');
+                        }
+                    } else {
+                        setPaymentResult('failed');
+                        alert("Payment was not successful. Please try again.");
+                    }
+                    setProcessingPayment(false);
+                },
+                onclose: () => {
+                    setProcessingPayment(false);
+                },
+            });
+        } catch (error) {
+            console.error("Payment initialization error:", error);
+            alert("Failed to initialize payment. Please try again.");
+            setProcessingPayment(false);
+        }
+    };
+
+    const confirmDepositPayment = async (applicationId, txId, amount) => {
+        const token = localStorage.getItem('access_token');
+        if (!token) return false;
+        try {
+            const { data } = await axios.post(
+                API.Payment_Confirmation,
+                {
+                    amount: String(amount),
+                    orderId: Number(applicationId),
+                    txId: String(txId || ""),
+                    type: "bnpl_deposit",
+                    application_id: applicationId
+                },
+                {
+                    headers: {
+                        Accept: "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+            return data?.status === "success";
+        } catch (e) {
+            console.error("Payment confirmation failed:", e);
+            return false;
+        }
     };
 
     const confirmAuditPayment = async (orderId, txId, amount) => {
@@ -3224,8 +3557,33 @@ const BNPLFlow = () => {
                 </p>
             </div>
 
-            <button className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors">
-                Proceed to Checkout
+            <button 
+                onClick={async () => {
+                    // Handle upfront deposit payment for approved applications
+                    if (applicationId && formData.loanDetails) {
+                        await handleUpfrontDepositPayment();
+                    } else {
+                        // For new applications, proceed to loan calculator
+                        setStep(8);
+                    }
+                }}
+                disabled={processingPayment || (applicationId && !formData.loanDetails)}
+                className={`w-full py-4 rounded-xl font-bold transition-colors flex items-center justify-center ${
+                    processingPayment || (applicationId && !formData.loanDetails)
+                        ? 'bg-gray-400 text-white cursor-not-allowed'
+                        : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
+                }`}
+            >
+                {processingPayment ? (
+                    <>
+                        <Loader className="animate-spin mr-2" size={20} />
+                        Processing Payment...
+                    </>
+                ) : (
+                    applicationId && formData.loanDetails 
+                        ? `Pay Upfront Deposit (₦${Number(formData.loanDetails.depositAmount || 0).toLocaleString()})`
+                        : 'Proceed to Loan Calculator'
+                )}
             </button>
         </div>
         );

@@ -19,6 +19,7 @@ import UploadDocement from "./Pages/UploadDocement";
 import LoanDashBoard from "./Pages/LoanDashBoard";
 import Tools from "./Pages/Tools";
 import More from "./Pages/More";
+import BNPLCreditCheckStatus from "./Pages/BNPLCreditCheckStatus";
 import ProductBundle from "./Pages/ProductBundleDetailPage";
 import SolarBundle from "./Pages/SolarBundle";
 import SolarBuilder from "./Pages/SolarBuilder";
@@ -82,6 +83,15 @@ const App = () => {
         <Route path="/loan" element={<LoanPage />} />
 
         <Route path="/tools" element={<Tools />} />
+
+        <Route
+          path="/bnpl-credit-check"
+          element={
+            <PrivateRoute>
+              <BNPLCreditCheckStatus />
+            </PrivateRoute>
+          }
+        />
 
         <Route path="/loanDetails/loanDashboard" element={<LoanDashBoard />} />
         <Route path="/uploadDocument" element={<UploadDocement />} />

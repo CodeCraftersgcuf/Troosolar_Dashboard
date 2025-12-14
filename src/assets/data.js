@@ -93,6 +93,7 @@ export const Sidebar_links = [
   { name: "Home", link: "/", icon: assets.dashboard, sublinks: [] },
   { name: "Store", link: "/homePage", icon: assets.ShopMgt, sublinks: [] },
   { name: "Loan", link: "/loan", icon: assets.Loanmgt, sublinks: [] },
+  { name: "BNPL Status", link: "/bnpl-credit-check", icon: assets.creditMgt, sublinks: [] },
   { name: "Tools", link: "/tools", icon: assets.settings, sublinks: [] },
   { name: "Cart", link: "/cart", icon: assets.cart, sublinks: [] },
   { name: "More", link: "/more", icon: assets.userGear, sublinks: [] },

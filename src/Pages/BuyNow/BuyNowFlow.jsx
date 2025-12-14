@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader, CheckCircle2, XCircle, AlertCircle, CreditCard } from 'lucide-react';
 import axios from 'axios';
 import API, { BASE_URL } from '../../config/api.config';
@@ -55,6 +55,14 @@ const BuyNowFlow = () => {
     const [selectedAddOns, setSelectedAddOns] = useState([]);
     const [configLoading, setConfigLoading] = useState(false);
     const [auditRequestId, setAuditRequestId] = useState(null);
+    
+    // Custom order flow (from admin-created cart)
+    const [searchParams] = useSearchParams();
+    const [cartToken, setCartToken] = useState(null);
+    const [cartItems, setCartItems] = useState([]);
+    const [cartOrderType, setCartOrderType] = useState(null);
+    const [cartLoading, setCartLoading] = useState(false);
+    const [cartError, setCartError] = useState(null);
 
     const [formData, setFormData] = useState({
         customerType: '',
@@ -93,6 +101,87 @@ const BuyNowFlow = () => {
     const [categoryProducts, setCategoryProducts] = useState([]);
     const [productsLoading, setProductsLoading] = useState(false);
     const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+
+    // Check for custom order flow (cart token) on mount
+    React.useEffect(() => {
+        const token = searchParams.get('token');
+        const type = searchParams.get('type');
+        
+        if (token && (type === 'buy_now' || type === 'bnpl')) {
+            setCartToken(token);
+            setCartOrderType(type);
+            verifyCartAccess(token);
+        }
+    }, [searchParams]);
+
+    // Verify cart access and load cart items
+    const verifyCartAccess = async (token) => {
+        setCartLoading(true);
+        setCartError(null);
+        try {
+            const userToken = localStorage.getItem('access_token');
+            const response = await axios.get(API.CART_ACCESS(token), {
+                headers: {
+                    Accept: 'application/json',
+                    ...(userToken ? { Authorization: `Bearer ${userToken}` } : {}),
+                },
+            });
+
+            if (response.data.status === 'success') {
+                const cartData = response.data.data;
+                
+                // Check if login is required
+                if (cartData.requires_login) {
+                    const returnUrl = `/buy-now?token=${token}&type=${cartOrderType || 'buy_now'}`;
+                    alert('Please login to access your cart');
+                    navigate(`/login?return=${encodeURIComponent(returnUrl)}`);
+                    return;
+                }
+
+                // Store cart items
+                setCartItems(cartData.cart_items || []);
+                
+                // Pre-populate form with cart items if available
+                if (cartData.cart_items && cartData.cart_items.length > 0) {
+                    const products = [];
+                    const bundles = [];
+                    
+                    cartData.cart_items.forEach(item => {
+                        if (item.itemable_type === 'App\\Models\\Product' && item.itemable) {
+                            products.push({
+                                id: item.itemable_id,
+                                product: item.itemable,
+                                price: Number(item.unit_price || item.itemable.discount_price || item.itemable.price || 0)
+                            });
+                        } else if (item.itemable_type === 'App\\Models\\Bundle' && item.itemable) {
+                            bundles.push({
+                                id: item.itemable_id,
+                                bundle: item.itemable,
+                                price: Number(item.unit_price || item.itemable.discount_price || item.itemable.total_price || 0)
+                            });
+                        }
+                    });
+                    
+                    if (products.length > 0 || bundles.length > 0) {
+                        const totalPrice = [...products, ...bundles].reduce((sum, item) => sum + item.price, 0);
+                        setFormData(prev => ({
+                            ...prev,
+                            selectedProducts: products,
+                            selectedBundles: bundles,
+                            selectedProductPrice: totalPrice
+                        }));
+                    }
+                }
+            } else {
+                setCartError(response.data.message || 'Failed to access cart');
+            }
+        } catch (error) {
+            console.error('Cart access error:', error);
+            setCartError(error.response?.data?.message || 'Invalid or expired cart link');
+        } finally {
+            setCartLoading(false);
+        }
+    };
 
     // Fetch categories and audit types on mount
     React.useEffect(() => {
@@ -430,6 +519,11 @@ const BuyNowFlow = () => {
                 auditRequestPayload.estate_address = formData.estateAddress;
             }
 
+            // Add cart token if this is a custom order flow
+            if (cartToken) {
+                auditRequestPayload.cart_token = cartToken;
+            }
+
             const auditRequestResponse = await axios.post(API.AUDIT_REQUEST, auditRequestPayload, {
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -456,6 +550,11 @@ const BuyNowFlow = () => {
                             audit_request_id: auditRequestId,
                             amount: 0 // Will be calculated by backend
                         };
+
+                        // Add cart token if this is a custom order flow
+                        if (cartToken) {
+                            checkoutPayload.cart_token = cartToken;
+                        }
 
                         const checkoutResponse = await axios.post(API.BUY_NOW_CHECKOUT, checkoutPayload, {
                             headers: { 
@@ -2233,6 +2332,52 @@ const BuyNowFlow = () => {
                     <button onClick={() => setStep(4)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                         <ArrowLeft size={16} className="mr-2" /> Back
                     </button>
+                    
+                    {/* Custom Order Flow Indicator */}
+                    {cartToken && cartItems.length > 0 && (
+                        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <div className="flex items-start">
+                                <CheckCircle size={20} className="text-blue-600 mr-3 mt-0.5" />
+                                <div className="flex-1">
+                                    <h3 className="font-semibold text-blue-800 mb-2">Custom Order Items Loaded</h3>
+                                    <p className="text-sm text-blue-700 mb-3">
+                                        Your cart contains {cartItems.length} item{cartItems.length !== 1 ? 's' : ''} prepared by admin.
+                                    </p>
+                                    <div className="space-y-2">
+                                        {cartItems.map((item, idx) => (
+                                            <div key={idx} className="text-sm text-blue-600 bg-white p-2 rounded border border-blue-200">
+                                                <span className="font-medium">
+                                                    {item.itemable?.title || item.itemable?.name || `Item #${item.itemable_id}`}
+                                                </span>
+                                                <span className="ml-2">
+                                                    (₦{Number(item.unit_price || 0).toLocaleString()})
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {cartLoading && (
+                        <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <div className="flex items-center">
+                                <Loader className="animate-spin text-yellow-600 mr-3" size={20} />
+                                <p className="text-sm text-yellow-700">Loading cart items...</p>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {cartError && (
+                        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+                            <div className="flex items-center">
+                                <AlertCircle size={20} className="text-red-600 mr-3" />
+                                <p className="text-sm text-red-700">{cartError}</p>
+                            </div>
+                        </div>
+                    )}
+                    
                     <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Property Details</h2>
                     <form onSubmit={handleAuditAddressSubmit} className="space-y-4">
                         {states.length > 0 ? (
