@@ -6,6 +6,7 @@ import BNPLFlow from "./Pages/BNPL/BNPLFlow";
 import BuyNowFlow from "./Pages/BuyNow/BuyNowFlow";
 import SolarShop from "./Pages/SolarShop";
 import Otp from "./Pages/Otp";
+import ForgotPassword from "./Pages/ForgotPassword";
 import Home from "./Pages/Home";
 import HomePage from "./Pages/HomePage";
 import ProductDetails from "./Pages/ProductDetails";
@@ -64,6 +65,7 @@ const App = () => {
 
         <Route path="/register" element={<Auth />} />
         <Route path="/login" element={<Auth />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route
           path="/inverterLoadCalculator"
           element={<InverterLoadCalculator />}

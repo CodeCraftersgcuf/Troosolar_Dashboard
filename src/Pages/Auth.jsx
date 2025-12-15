@@ -260,6 +260,8 @@ const Auth = () => {
 
               {error && <p className="text-red-600 text-sm">{error}</p>}
 
+             
+
               <button
                 type="submit"
                 disabled={loading || !isFormValid()}
@@ -273,13 +275,21 @@ const Auth = () => {
                   ? "Login"
                   : "Create Account"}
               </button>
-
+<div className="flex justify-between">
               <p className="text-start text-sm">
                 {isLogin
                   ? "Don't have an account?"
                   : "I already have an account"}
               </p>
-
+              {isLogin && (
+                <Link
+                  to="/forgot-password"
+                  className="block text-end text-sm font-bold text-[#273e8e] hover:underline mb-2"
+                >
+                  Forgotten password?
+                </Link>
+              )}
+              </div>
               <Link
                 to={isLogin ? "/register" : "/login"}
                 className="block text-center w-full bg-[#e8a91d] text-white py-3 rounded-lg transition duration-200"
@@ -372,6 +382,15 @@ const Auth = () => {
             onChange={handleChange}
             isMobile={true}
           />
+
+          {isLogin && (
+            <Link
+              to="/forgot-password"
+              className="block text-end text-sm font-bold text-[#273e8e] hover:underline mb-2"
+            >
+              Forgotten password?
+            </Link>
+          )}
 
           {!isLogin && (
             <Input
