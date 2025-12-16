@@ -130,8 +130,9 @@ const SideBar = () => {
           </button>
         </div>
 
-        {/* Sidebar Footer Image */}
+        {/* Sidebar Footer Images */}
         <img src={assets.sidebar} alt="" />
+        <img src={assets.sidebar} alt="" className="mt-2" />
       </div>
 
       {/* Mobile Bottom Navigation */}

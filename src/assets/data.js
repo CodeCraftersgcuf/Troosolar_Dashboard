@@ -14,7 +14,8 @@ import house3 from "../assets/house3.svg";
 import uploadArea from "../assets/uploadArea.svg";
 import house4 from "../assets/house4.svg";
 import loginImage from "../assets/loginImage.jpg";
-import logo from "../assets/logo.png";
+import logo from "../assets/new-logo.png";
+import newLogo from "../assets/new-logo.png";
 import twitter from "../assets/twitter.png";
 import whatsApp from "../assets/whatsApp.png";
 import store from "../assets/store.png";
@@ -91,9 +92,9 @@ export const assets = {
 
 export const Sidebar_links = [
   { name: "Home", link: "/", icon: assets.dashboard, sublinks: [] },
-  { name: "Store", link: "/homePage", icon: assets.ShopMgt, sublinks: [] },
-  { name: "Loan", link: "/loan", icon: assets.Loanmgt, sublinks: [] },
-  { name: "BNPL Status", link: "/bnpl-credit-check", icon: assets.creditMgt, sublinks: [] },
+  { name: "Solar Store", link: "/homePage", icon: assets.ShopMgt, sublinks: [] },
+  { name: "Buy Solar Bundle", link: "/solar-bundles", icon: assets.Loanmgt, sublinks: [] },
+  { name: "Buy Now, Pay Later", link: "/bnpl", icon: assets.creditMgt, sublinks: [] },
   { name: "Tools", link: "/tools", icon: assets.settings, sublinks: [] },
   { name: "Cart", link: "/cart", icon: assets.cart, sublinks: [] },
   { name: "More", link: "/more", icon: assets.userGear, sublinks: [] },
