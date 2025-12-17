@@ -66,6 +66,7 @@ const TopNavbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [bellAnimating, setBellAnimating] = useState(false);
   const { cartCount } = useContext(ContextApi);
 
   useEffect(() => {
@@ -96,6 +97,12 @@ const TopNavbar = () => {
   }, [location.pathname]);
 
   const handleNotificationsClick = () => {
+    // Trigger animation
+    setBellAnimating(true);
+    setTimeout(() => {
+      setBellAnimating(false);
+    }, 600); // Animation duration
+    
     navigate("/more?section=notifications");
   };
 
@@ -109,13 +116,25 @@ const TopNavbar = () => {
         {/* Notifications */}
         <button
           onClick={handleNotificationsClick}
-          className={`rounded-lg flex justify-center items-center shadow-md h-10 w-10 transition-colors ${
+          className={`rounded-lg flex justify-center items-center shadow-md h-10 w-10 transition-colors relative ${
             changeBg ? "bg-[#ffffff]" : "bg-white"
           }`}
           aria-label="Notifications"
           title="Notifications"
         >
-          <Bell size={24} />
+          <Bell 
+            size={24} 
+            className={`transition-all duration-300 ${
+              bellAnimating 
+                ? "text-yellow-500 animate-bell-dangle" 
+                : changeBg 
+                ? "text-[#273e8e]" 
+                : "text-gray-700"
+            }`}
+            style={{
+              transformOrigin: 'top center',
+            }}
+          />
         </button>
 
         {/* Cart (only on selected pages) */}
