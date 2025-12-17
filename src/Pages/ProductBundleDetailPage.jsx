@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { Link, useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate, useLocation } from "react-router-dom";
 
 import SideBar from "../Component/SideBar";
 import TopNavbar from "../Component/TopNavbar";
@@ -100,9 +100,27 @@ const mapBundleDetail = (b) => {
   };
 };
 
+// Appliances from load calculator
+const loadCalculatorAppliances = [
+  { name: "Ceiling Fan", power: 70 },
+  { name: "Laptop", power: 70 },
+  { name: "LED Bulbs", power: 70 },
+  { name: "Fridge", power: 70 },
+  { name: "Washing Machine", power: 70 },
+  { name: "Rech Fan", power: 70 },
+  { name: "OX Fan", power: 70 },
+  { name: '65" TV', power: 70 },
+  { name: "CCTV Camera", power: 70 },
+  { name: "Desktop", power: 70 },
+];
+
 const ProductBundle = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const flowType = searchParams.get("flow"); // 'buy_now' or 'bnpl'
+  const cartToken = searchParams.get("token");
 
   const [productData, setProductData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -142,6 +160,55 @@ const ProductBundle = () => {
 
   const handleBuyNow = async () => {
     const token = localStorage.getItem("access_token");
+    
+    // If customer came from a flow (buy_now or bnpl), continue in that flow
+    if (flowType === "buy_now" || flowType === "bnpl") {
+      try {
+        // Add bundle to cart
+        await axios.post(
+          API.CART,
+          { itemable_type: "bundle", itemable_id: Number(id), quantity: 1 },
+          {
+            headers: {
+              Accept: "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          }
+        );
+        
+        // Navigate to the appropriate flow with bundle context
+        if (flowType === "buy_now") {
+          const returnUrl = cartToken 
+            ? `/buy-now?token=${cartToken}&type=buy_now&bundleId=${id}`
+            : `/buy-now?bundleId=${id}`;
+          navigate(returnUrl);
+        } else if (flowType === "bnpl") {
+          const returnUrl = cartToken
+            ? `/bnpl?token=${cartToken}&type=bnpl&bundleId=${id}`
+            : `/bnpl?bundleId=${id}`;
+          navigate(returnUrl);
+        }
+      } catch (e) {
+        if (e?.response?.status === 409) {
+          // Item already in cart, proceed to flow
+          if (flowType === "buy_now") {
+            navigate(cartToken ? `/buy-now?token=${cartToken}&type=buy_now&bundleId=${id}` : `/buy-now?bundleId=${id}`);
+          } else if (flowType === "bnpl") {
+            navigate(cartToken ? `/bnpl?token=${cartToken}&type=bnpl&bundleId=${id}` : `/bnpl?bundleId=${id}`);
+          }
+          return;
+        }
+        if (e?.response?.status === 401) {
+          return alert("Please log in to continue.");
+        }
+        alert(
+          e?.response?.data?.message || e?.message || "Failed to add to cart."
+        );
+      }
+      return;
+    }
+
+    // Default behavior: Add to cart and show flow selection or go to cart
     try {
       await axios.post(
         API.CART,
@@ -153,6 +220,7 @@ const ProductBundle = () => {
           },
         }
       );
+      // Navigate to flow selection or cart
       navigate("/cart");
     } catch (e) {
       if (e?.response?.status === 409) return navigate("/cart");
@@ -162,6 +230,11 @@ const ProductBundle = () => {
         e?.response?.data?.message || e?.message || "Failed to add to cart."
       );
     }
+  };
+
+  const handleEditBundle = () => {
+    // Navigate back to tools page (load calculator) so customers can edit their load calculation
+    navigate("/tools");
   };
 
   if (loading) return <div className="p-6 text-gray-600">Loading…</div>;
@@ -187,7 +260,7 @@ const ProductBundle = () => {
             {/* Desktop Title + Back */}
             <div className="hidden sm:block">
               <h1 className="text-2xl font-semibold mb-2">
-                Recommended Bundles
+                Recommended Bundle
               </h1>
               <Link
                 to="/productBundle"
@@ -314,16 +387,48 @@ const ProductBundle = () => {
                       )}
                     </div>
                   </div>
+
+                  {/* Appliances from Load Calculator */}
+                  <div className="p-4">
+                    <h3 className="text-lg font-medium mb-3">
+                      Appliances from Load Calculator
+                    </h3>
+                    <div className="space-y-2">
+                      {loadCalculatorAppliances.map((appliance, index) => (
+                        <div
+                          key={index}
+                          className="flex justify-between items-center bg-gray-100 h-[80px] px-3 py-2 rounded-md"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="bg-[#B0B7D0] rounded-md w-[60px] h-[60px] flex items-center justify-center overflow-hidden">
+                              <span className="text-xs text-white">APP</span>
+                            </div>
+                            <div>
+                              <div className="text-[#273E8E] text-base font-semibold">
+                                {appliance.name}
+                              </div>
+                              <div className="text-sm text-[#273E8E]">
+                                {appliance.power}W
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Actions */}
                 <div className="flex gap-4 mt-6 px-2">
-                  <button className="flex-1 text-sm border border-[#273E8E] text-[#273E8E] py-4 rounded-full">
+                  <button
+                    onClick={handleEditBundle}
+                    className="flex-1 text-sm border border-[#273E8E] text-[#273E8E] py-4 rounded-full hover:bg-[#273E8E] hover:text-white transition-colors"
+                  >
                     Edit Bundle
                   </button>
                   <button
                     onClick={handleBuyNow}
-                    className="flex-1 text-sm bg-[#273E8E] text-white py-4 rounded-full"
+                    className="flex-1 text-sm bg-[#273E8E] text-white py-4 rounded-full hover:bg-[#1a2b6b] transition-colors"
                   >
                     Buy Now
                   </button>
@@ -360,13 +465,43 @@ const ProductBundle = () => {
                   </div>
 
                   <div className="bg-white border rounded-2xl p-4">
-                    <div className="flex justify-between text-sm mb-2">
-                      <span>Items</span>
-                      <span>{productData.itemsIncluded?.length ?? 0}</span>
+                    <h3 className="text-base font-semibold text-gray-800 mb-4">Order Summary</h3>
+                    
+                    {/* Bundle Details */}
+                    <div className="space-y-3 mb-4">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Items</span>
+                        <span className="font-medium">{productData.itemsIncluded?.length ?? 0}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Bundle Price</span>
+                        <span className="font-medium">{productData.price}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span>Bundle Price</span>
-                      <span>{productData.price}</span>
+
+                    <hr className="my-4 border-gray-200" />
+
+                    {/* What the bundle is powering */}
+                    <div className="mb-4">
+                      <h4 className="text-sm font-semibold text-gray-800 mb-2">What this bundle powers:</h4>
+                      <div className="space-y-1 max-h-[120px] overflow-y-auto">
+                        {loadCalculatorAppliances.map((appliance, idx) => (
+                          <div key={idx} className="text-xs text-gray-600 flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 bg-[#273E8E] rounded-full"></span>
+                            <span>{appliance.name} ({appliance.power}W)</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <hr className="my-4 border-gray-200" />
+
+                    {/* Backup Time */}
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-800 mb-2">Backup Time</h4>
+                      <p className="text-xs text-gray-600">
+                        {productData.backupInfo || "8-12 hours (depending on usage)"}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -505,14 +640,47 @@ const ProductBundle = () => {
                   </div>
                 </div>
 
+                {/* Appliances from Load Calculator - Mobile */}
+                <div className="mt-3">
+                  <p className="text-[12px] lg:text-[14px] font-medium mb-2">
+                    Appliances from Load Calculator
+                  </p>
+
+                  <div className="space-y-2">
+                    {loadCalculatorAppliances.map((appliance, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between bg-[#E8EDF8] rounded-[12px] px-3 py-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-[44px] h-[44px] rounded-md bg-[#C9D0E6] flex items-center justify-center overflow-hidden">
+                            <span className="text-[10px] text-white">APP</span>
+                          </div>
+                          <div className="text-[10px] lg:text-[13px] text-[#273E8E]">
+                            <div className="font-medium leading-4">
+                              {appliance.name}
+                            </div>
+                            <div className="font-semibold mt-[2px]">
+                              {appliance.power}W
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Actions */}
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  <button className="h-11 rounded-full border border-[#273E8E] text-[#273E8E] text-[11px] lg:text-[14px]">
+                  <button
+                    onClick={handleEditBundle}
+                    className="h-11 rounded-full border border-[#273E8E] text-[#273E8E] text-[11px] lg:text-[14px] hover:bg-[#273E8E] hover:text-white transition-colors"
+                  >
                     Edit Bundle
                   </button>
                   <button
                     onClick={handleBuyNow}
-                    className="h-11 rounded-full bg-[#273E8E] text-white text-[11px] lg:text-[14px]"
+                    className="h-11 rounded-full bg-[#273E8E] text-white text-[11px] lg:text-[14px] hover:bg-[#1a2b6b] transition-colors"
                   >
                     Buy Now
                   </button>

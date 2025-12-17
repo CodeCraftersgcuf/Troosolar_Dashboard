@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import SideBar from "../Component/SideBar";
 import TopNavbar from "../Component/TopNavbar";
 import SearchBar from "../Component/SearchBar";
 import SolarBundleComponent from "../Component/SolarBundleComponent";
 import API, { BASE_URL } from "../config/api.config";
 import { assets } from "../assets/data";
+import { Edit } from "lucide-react";
 
 // --- utils -------------------------------------------------------------
 
@@ -78,6 +79,7 @@ const normalizeBundles = (data) => {
 
 const SolarBundle = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const qParam = searchParams.get("q")?.trim();
 
@@ -137,18 +139,29 @@ const SolarBundle = () => {
               <h1 className="text-md font-semibold text-white">Solar Bundles</h1>
               <p className="text-white text-xs">
                 {qParam
-                  ? `Closest match for total output ≈ ${qParam}`
+                  ? "Choose from recommended bundles based on your load calculation"
                   : "Welcome to the dashboard"}
               </p>
             </div>
-            <SearchBar />
+            {!qParam && <SearchBar />}
           </div>
+          {qParam && (
+            <div className="mt-4">
+              <button
+                onClick={() => navigate("/tools")}
+                className="flex items-center gap-2 text-white hover:text-gray-200 transition-colors text-sm font-medium"
+              >
+                <Edit size={16} />
+                <span>Edit Load</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Grid */}
         <div className="px-6 py-6 w-full overflow-scroll">
           <h1 className="text-2xl font-semibold text-gray-800 mb-4">
-            {qParam ? "Recommended Bundle" : "All Bundles"}
+            {qParam ? "Choose from Recommended Bundle(s)" : "All Bundles"}
           </h1>
 
           {err && <p className="text-red-600 text-sm mb-3">{err}</p>}
