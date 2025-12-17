@@ -30,13 +30,12 @@ const Auth = () => {
       // For login, only email and password are required
       return formData.email.trim() !== "" && formData.password.trim() !== "";
     } else {
-      // For registration, all fields except referral code are required
+      // For registration, all fields except referral code and BVN are required
       return (
         formData.firstName.trim() !== "" &&
         formData.surname.trim() !== "" &&
         formData.email.trim() !== "" &&
         formData.phone.trim() !== "" &&
-        formData.bvn.trim() !== "" &&
         formData.password.trim() !== ""
       );
     }
@@ -63,7 +62,7 @@ const Auth = () => {
           email: formData.email?.trim(),
           password: formData.password,
           phone: formData.phone?.trim(),
-          bvn: String(formData.bvn ?? "").trim(),
+          // BVN removed - no longer required for registration
           referral_code: formData.code ? String(formData.code).trim() : null,
           role: "Admin",
         };
@@ -247,15 +246,6 @@ const Auth = () => {
                       onChange={handleChange}
                     />
                     <Input
-                      id="bvn"
-                      name="bvn" // ✅
-                      label="BVN Number"
-                      placeholder="BVN Number"
-                      type="number"
-                      value={formData.bvn}
-                      onChange={handleChange}
-                    />
-                    <Input
                       id="code"
                       name="code" // ✅
                       label="Referral Code (Optional)"
@@ -303,7 +293,7 @@ const Auth = () => {
 
       <div className="w-full min-h-screen sm:hidden block relative">
         <img
-          src={assets.loginImageForSm}
+          src={assets.loginImage}
           className="w-full h-[40vh] object-cover"
           alt="Mobile Background"
         />
@@ -364,16 +354,6 @@ const Auth = () => {
                 placeholder="Phone Number"
                 type="tel"
                 value={formData.phone}
-                onChange={handleChange}
-                isMobile={true}
-              />
-              <Input
-                id="bvn"
-                name="bvn" // ✅
-                label="BVN Number"
-                placeholder="BVN Number"
-                type="number"
-                value={formData.bvn}
                 onChange={handleChange}
                 isMobile={true}
               />
