@@ -7,6 +7,7 @@ import TopNavbar from "../Component/TopNavbar";
 import { assets } from "../assets/data";
 import API, { BASE_URL } from "../config/api.config";
 import { ChevronLeft, ShoppingCart } from "lucide-react"; // ← chevron back
+import Loading from "../Component/Loading";
 
 // Turn BASE_URL (http://localhost:8000/api) into origin (http://localhost:8000)
 const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, "");
@@ -237,7 +238,21 @@ const ProductBundle = () => {
     navigate("/tools");
   };
 
-  if (loading) return <div className="p-6 text-gray-600">Loading…</div>;
+  if (loading) {
+    return (
+      <div className="flex min-h-screen w-full relative bg-[#F5F7FF]">
+        <SideBar />
+        <div className="w-full sm:w-[calc(100%-250px)]">
+          <div className="sm:block hidden">
+            <TopNavbar />
+          </div>
+          <div className="flex items-center justify-center min-h-screen">
+            <Loading fullScreen={false} message="Loading bundle details..." progress={null} />
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (err) return <div className="p-6 text-red-600">{err}</div>;
   if (!productData) return <div className="p-6">Not found.</div>;
 

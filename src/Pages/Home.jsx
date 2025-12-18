@@ -13,6 +13,7 @@ import SolarBundleComponent from "../Component/SolarBundleComponent";
 import ServiceCards from "../Component/ServiceCards";
 import HrLine from "../Component/MobileSectionResponsive/HrLine";
 import API, { BASE_URL } from "../config/api.config";
+import Loading from "../Component/Loading";
 
 /* ---------------- helpers ---------------- */
 
@@ -454,22 +455,11 @@ const Home = () => {
                 </div>
               )}
               {(bundlesLoading || prodLoading) ? (
-                <div className="flex gap-5 overflow-x-auto pb-4 scrollbar-hide">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="flex-shrink-0 w-[243px] bg-white rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col border border-gray-200 animate-pulse"
-                    >
-                      <div className="bg-gray-200 h-[140px] sm:h-[180px] rounded-2xl mb-2" />
-                      <div className="h-4 bg-gray-200 rounded mb-2" />
-                      <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
-                      <div className="h-3 bg-gray-200 rounded w-1/2 mt-2" />
-                      <div className="grid grid-cols-2 gap-3 mt-auto">
-                        <div className="h-10 bg-gray-200 rounded-full" />
-                        <div className="h-10 bg-gray-200 rounded-full" />
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex justify-center items-center py-12 w-full">
+                  <Loading 
+                    message="Loading featured products..." 
+                    progress={bundlesLoading && prodLoading ? 50 : bundlesLoading ? 30 : 70}
+                  />
                 </div>
               ) : !bundlesLoading &&
                 !prodLoading &&

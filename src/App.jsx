@@ -21,6 +21,7 @@ import LoanDashBoard from "./Pages/LoanDashBoard";
 import Tools from "./Pages/Tools";
 import More from "./Pages/More";
 import BNPLCreditCheckStatus from "./Pages/BNPLCreditCheckStatus";
+import BNPLLoanDetails from "./Pages/BNPLLoanDetails";
 import ProductBundle from "./Pages/ProductBundleDetailPage";
 import SolarBundle from "./Pages/SolarBundle";
 import SolarBuilder from "./Pages/SolarBuilder";
@@ -91,6 +92,15 @@ const App = () => {
           element={
             <PrivateRoute>
               <BNPLCreditCheckStatus />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="/bnpl-loans/:id?"
+          element={
+            <PrivateRoute>
+              <BNPLLoanDetails />
             </PrivateRoute>
           }
         />

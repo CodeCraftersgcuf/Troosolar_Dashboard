@@ -5,6 +5,7 @@ import TopNavbar from '../Component/TopNavbar';
 import axios from 'axios';
 import API from '../config/api.config';
 import { Loader, CheckCircle, XCircle, Clock, AlertCircle, FileText, ChevronLeft, ChevronRight, Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import Loading from '../Component/Loading';
 
 const BNPLCreditCheckStatus = () => {
     const navigate = useNavigate();
@@ -235,8 +236,7 @@ const BNPLCreditCheckStatus = () => {
                         {/* Loading State */}
                         {loading && (
                             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-                                <Loader className="animate-spin mx-auto text-[#273e8e]" size={48} />
-                                <p className="mt-4 text-gray-600">Loading applications...</p>
+                                <Loading fullScreen={false} message="Loading applications..." progress={null} />
                             </div>
                         )}
 

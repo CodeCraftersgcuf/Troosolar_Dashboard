@@ -4,6 +4,7 @@ import ReviewModal from "./ReviewModal";
 import { assets } from "../../assets/data";
 import API, { BASE_URL } from "../../config/api.config";
 import axios from "axios";
+import Loading from "../Loading";
 
 const OrderSummary = ({ order, onBack }) => {
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -234,10 +235,7 @@ const OrderSummary = ({ order, onBack }) => {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-[#273e8e]" />
-          <p className="text-gray-600">Loading order details...</p>
-        </div>
+        <Loading fullScreen={false} message="Loading order details..." progress={null} />
       </div>
     );
   }

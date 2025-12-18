@@ -1,0 +1,667 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import SideBar from '../Component/SideBar';
+import TopNavbar from '../Component/TopNavbar';
+import axios from 'axios';
+import API from '../config/api.config';
+import { 
+  CheckCircle, 
+  XCircle, 
+  Clock, 
+  AlertCircle, 
+  FileText, 
+  ChevronLeft,
+  Calendar,
+  DollarSign,
+  CreditCard,
+  Home,
+  User,
+  MapPin,
+  Phone,
+  Mail,
+  Building,
+  Package,
+  TrendingUp,
+  Receipt,
+  ArrowRight,
+  CheckCircle2,
+  X
+} from 'lucide-react';
+import Loading from '../Component/Loading';
+
+const BNPLLoanDetails = () => {
+    const navigate = useNavigate();
+    const { id } = useParams(); // Get order ID from URL
+    const [orderData, setOrderData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [pagination, setPagination] = useState({
+        current_page: 1,
+        last_page: 1,
+        per_page: 15,
+        total: 0
+    });
+
+    useEffect(() => {
+        if (id) {
+            fetchOrderDetails(id);
+        } else {
+            fetchAllOrders();
+        }
+    }, [id]);
+
+    const fetchOrderDetails = async (orderId) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                setError('Please login to view loan details');
+                setLoading(false);
+                return;
+            }
+
+            const response = await axios.get(API.BNPL_ORDER_DETAILS(orderId), {
+                headers: { 
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/json'
+                }
+            });
+
+            if (response.data.status === 'success' && response.data.data) {
+                setOrderData(response.data.data);
+            } else {
+                setError(response.data.message || 'Failed to fetch order details');
+            }
+        } catch (err) {
+            console.error('Error fetching order details:', err);
+            setError(err.response?.data?.message || 'Failed to load order details');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchAllOrders = async (page = 1) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                setError('Please login to view loan details');
+                setLoading(false);
+                return;
+            }
+
+            const response = await axios.get(API.BNPL_ORDERS, {
+                headers: { 
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/json'
+                },
+                params: {
+                    per_page: pagination.per_page,
+                    page: page
+                }
+            });
+
+            if (response.data.status === 'success') {
+                const orders = response.data.data.data || [];
+                setOrderData({ orders: orders, isList: true });
+                setPagination(response.data.data.pagination || {
+                    current_page: 1,
+                    last_page: 1,
+                    per_page: 15,
+                    total: 0
+                });
+            } else {
+                setError(response.data.message || 'Failed to fetch orders');
+            }
+        } catch (err) {
+            console.error('Error fetching orders:', err);
+            setError(err.response?.data?.message || 'Failed to load orders');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const getStatusIcon = (status) => {
+        switch (status?.toLowerCase()) {
+            case 'approved':
+            case 'completed':
+            case 'paid':
+                return <CheckCircle size={24} className="text-green-600" />;
+            case 'rejected':
+            case 'cancelled':
+                return <XCircle size={24} className="text-red-600" />;
+            case 'pending':
+            case 'processing':
+                return <Clock size={24} className="text-blue-600" />;
+            default:
+                return <AlertCircle size={24} className="text-yellow-600" />;
+        }
+    };
+
+    const getStatusBadge = (status) => {
+        const statusLower = status?.toLowerCase() || 'pending';
+        const badges = {
+            approved: 'bg-green-100 text-green-800 border-green-300',
+            completed: 'bg-green-100 text-green-800 border-green-300',
+            paid: 'bg-green-100 text-green-800 border-green-300',
+            rejected: 'bg-red-100 text-red-800 border-red-300',
+            cancelled: 'bg-red-100 text-red-800 border-red-300',
+            pending: 'bg-blue-100 text-blue-800 border-blue-300',
+            processing: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+            overdue: 'bg-red-100 text-red-800 border-red-300'
+        };
+        return badges[statusLower] || badges.pending;
+    };
+
+    const formatDate = (dateString) => {
+        if (!dateString) return 'N/A';
+        try {
+            return new Date(dateString).toLocaleDateString('en-NG', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        } catch {
+            return dateString;
+        }
+    };
+
+    const formatCurrency = (amount) => {
+        if (!amount) return '₦0.00';
+        const numAmount = typeof amount === 'string' 
+            ? parseFloat(amount.replace(/,/g, '')) 
+            : amount;
+        return new Intl.NumberFormat('en-NG', {
+            style: 'currency',
+            currency: 'NGN'
+        }).format(numAmount || 0);
+    };
+
+    const renderOrderList = () => {
+        if (!orderData?.orders || orderData.orders.length === 0) {
+            return (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+                    <FileText size={64} className="mx-auto text-gray-400 mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-800 mb-2">
+                        No BNPL Orders Found
+                    </h3>
+                    <p className="text-gray-600 mb-6">
+                        You don't have any BNPL orders yet.
+                    </p>
+                    <button
+                        onClick={() => navigate('/bnpl')}
+                        className="px-6 py-3 bg-[#273e8e] text-white rounded-lg font-semibold hover:bg-[#1a2b6b] transition-colors"
+                    >
+                        Apply for BNPL
+                    </button>
+                </div>
+            );
+        }
+
+        return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-6 border-b border-gray-200">
+                    <h2 className="text-xl font-semibold text-gray-800">
+                        Your BNPL Orders ({pagination.total})
+                    </h2>
+                </div>
+                <div className="divide-y divide-gray-200">
+                    {orderData.orders.map((order) => (
+                        <div
+                            key={order.id}
+                            className="p-6 hover:bg-gray-50 transition-colors cursor-pointer"
+                            onClick={() => navigate(`/bnpl-loans/${order.id}`)}
+                        >
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4 flex-1">
+                                    {getStatusIcon(order.status)}
+                                    <div className="flex-1">
+                                        <p className="font-semibold text-gray-800">
+                                            Order #{order.id}
+                                        </p>
+                                        {order.loan_summary && (
+                                            <p className="text-sm text-gray-500">
+                                                {formatCurrency(order.loan_summary.loan_amount || order.loan_summary.total_amount)} • 
+                                                {order.loan_summary.repayment_duration || order.loan_summary.duration} months
+                                            </p>
+                                        )}
+                                        {order.application && (
+                                            <p className="text-xs text-gray-400 mt-1">
+                                                Application #{order.application.id}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusBadge(order.status)}`}>
+                                        {order.status?.toUpperCase().replace(/_/g, ' ') || 'PENDING'}
+                                    </span>
+                                    <ArrowRight className="text-gray-400" size={20} />
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Pagination */}
+                {pagination.last_page > 1 && (
+                    <div className="p-4 border-t border-gray-200 flex items-center justify-between">
+                        <div className="text-sm text-gray-600">
+                            Showing {pagination.current_page} of {pagination.last_page} pages
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => fetchAllOrders(pagination.current_page - 1)}
+                                disabled={pagination.current_page === 1}
+                                className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                <ChevronLeft size={20} />
+                            </button>
+                            <span className="px-4 py-2 text-sm font-medium text-gray-700">
+                                Page {pagination.current_page} of {pagination.last_page}
+                            </span>
+                            <button
+                                onClick={() => fetchAllOrders(pagination.current_page + 1)}
+                                disabled={pagination.current_page === pagination.last_page}
+                                className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                <ChevronLeft size={20} className="rotate-180" />
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const renderOrderDetails = () => {
+        if (!orderData || orderData.isList) return null;
+
+        const order = orderData;
+        const loanApp = order.loan_application || order.application;
+        const loanCalc = order.loan_calculation || loanApp?.loan_calculation;
+        const repaymentSchedule = order.repayment_schedule || [];
+        const repaymentSummary = order.repayment_summary || {};
+        const repaymentHistory = order.repayment_history || [];
+
+        return (
+            <div className="space-y-6">
+                {/* Header Section */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-4">
+                            {getStatusIcon(order.status)}
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-800">
+                                    BNPL Order #{order.id}
+                                </h2>
+                                <p className="text-sm text-gray-500">
+                                    Created on {formatDate(order.created_at)}
+                                </p>
+                            </div>
+                        </div>
+                        <span className={`px-4 py-2 rounded-full text-sm font-semibold border ${getStatusBadge(order.status)}`}>
+                            {order.status?.toUpperCase().replace(/_/g, ' ') || 'PENDING'}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Repayment Summary */}
+                {repaymentSummary && (
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-sm border border-blue-200 p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <TrendingUp className="text-[#273e8e]" size={24} />
+                            <h3 className="text-xl font-semibold text-gray-800">Repayment Summary</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="bg-white rounded-lg p-4 border border-blue-100">
+                                <p className="text-sm text-gray-500 mb-1">Total Amount</p>
+                                <p className="text-xl font-bold text-gray-800">
+                                    {formatCurrency(repaymentSummary.total_amount || repaymentSummary.total)}
+                                </p>
+                            </div>
+                            <div className="bg-white rounded-lg p-4 border border-blue-100">
+                                <p className="text-sm text-gray-500 mb-1">Amount Paid</p>
+                                <p className="text-xl font-bold text-green-600">
+                                    {formatCurrency(repaymentSummary.paid_amount || repaymentSummary.paid)}
+                                </p>
+                            </div>
+                            <div className="bg-white rounded-lg p-4 border border-blue-100">
+                                <p className="text-sm text-gray-500 mb-1">Pending Amount</p>
+                                <p className="text-xl font-bold text-yellow-600">
+                                    {formatCurrency(repaymentSummary.pending_amount || repaymentSummary.pending)}
+                                </p>
+                            </div>
+                            <div className="bg-white rounded-lg p-4 border border-blue-100">
+                                <p className="text-sm text-gray-500 mb-1">Overdue Amount</p>
+                                <p className="text-xl font-bold text-red-600">
+                                    {formatCurrency(repaymentSummary.overdue_amount || repaymentSummary.overdue || 0)}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Loan Calculation Summary */}
+                {loanCalc && (
+                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl shadow-sm border border-green-200 p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <DollarSign className="text-[#273e8e]" size={24} />
+                            <h3 className="text-xl font-semibold text-gray-800">Loan Calculation</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="bg-white rounded-lg p-4 border border-green-100">
+                                <p className="text-sm text-gray-500 mb-1">Loan Amount</p>
+                                <p className="text-xl font-bold text-gray-800">
+                                    {formatCurrency(loanCalc.loan_amount)}
+                                </p>
+                            </div>
+                            <div className="bg-white rounded-lg p-4 border border-green-100">
+                                <p className="text-sm text-gray-500 mb-1">Down Payment</p>
+                                <p className="text-xl font-bold text-gray-800">
+                                    {formatCurrency(loanCalc.down_payment)}
+                                </p>
+                            </div>
+                            <div className="bg-white rounded-lg p-4 border border-green-100">
+                                <p className="text-sm text-gray-500 mb-1">Total Amount</p>
+                                <p className="text-xl font-bold text-gray-800">
+                                    {formatCurrency(loanCalc.total_amount)}
+                                </p>
+                            </div>
+                            <div className="bg-white rounded-lg p-4 border border-green-100">
+                                <p className="text-sm text-gray-500 mb-1">Interest Rate</p>
+                                <p className="text-xl font-bold text-gray-800">
+                                    {loanCalc.interest_rate || 'N/A'}%
+                                </p>
+                            </div>
+                        </div>
+                        {loanCalc.monthly_repayment && (
+                            <div className="mt-4 bg-white rounded-lg p-4 border border-green-100">
+                                <p className="text-sm text-gray-500 mb-1">Monthly Repayment</p>
+                                <p className="text-2xl font-bold text-[#273e8e]">
+                                    {formatCurrency(loanCalc.monthly_repayment)}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Repayment Schedule */}
+                {repaymentSchedule && repaymentSchedule.length > 0 && (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <Calendar className="text-[#273e8e]" size={20} />
+                            <h3 className="text-lg font-semibold text-gray-800">Repayment Schedule</h3>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Installment #</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                    {repaymentSchedule.map((installment, index) => {
+                                        const isOverdue = new Date(installment.due_date) < new Date() && installment.status !== 'paid';
+                                        return (
+                                            <tr key={installment.id || index} className={isOverdue ? 'bg-red-50' : ''}>
+                                                <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                                    {installment.installment_number || index + 1}
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-gray-700">
+                                                    {formatDate(installment.due_date)}
+                                                </td>
+                                                <td className="px-4 py-3 text-sm font-semibold text-gray-900">
+                                                    {formatCurrency(installment.amount)}
+                                                </td>
+                                                <td className="px-4 py-3 text-sm">
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadge(installment.status)}`}>
+                                                        {installment.status?.toUpperCase() || 'PENDING'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-gray-700">
+                                                    {installment.payment_date ? formatDate(installment.payment_date) : '-'}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* Repayment History */}
+                {repaymentHistory && repaymentHistory.length > 0 && (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <Receipt className="text-[#273e8e]" size={20} />
+                            <h3 className="text-lg font-semibold text-gray-800">Repayment History</h3>
+                        </div>
+                        <div className="space-y-4">
+                            {repaymentHistory.map((payment, index) => (
+                                <div key={payment.id || index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                    <div className="flex items-center gap-4">
+                                        <CheckCircle2 className="text-green-600" size={20} />
+                                        <div>
+                                            <p className="font-semibold text-gray-800">
+                                                {formatCurrency(payment.amount)}
+                                            </p>
+                                            <p className="text-sm text-gray-500">
+                                                Paid on {formatDate(payment.payment_date || payment.created_at)}
+                                            </p>
+                                            {payment.reference && (
+                                                <p className="text-xs text-gray-400">
+                                                    Reference: {payment.reference}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusBadge(payment.status || 'paid')}`}>
+                                        {payment.status?.toUpperCase() || 'PAID'}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Loan Application Details */}
+                {loanApp && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                            <div className="flex items-center gap-3 mb-4">
+                                <FileText className="text-[#273e8e]" size={20} />
+                                <h3 className="text-lg font-semibold text-gray-800">Application Details</h3>
+                            </div>
+                            <div className="space-y-4">
+                                <div>
+                                    <p className="text-sm text-gray-500 mb-1">Application ID</p>
+                                    <p className="font-semibold text-gray-800">#{loanApp.id}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-gray-500 mb-1">Loan Amount</p>
+                                    <p className="font-semibold text-gray-800">
+                                        {formatCurrency(loanApp.loan_amount)}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-gray-500 mb-1">Repayment Duration</p>
+                                    <p className="font-semibold text-gray-800">
+                                        {loanApp.repayment_duration || 'N/A'} months
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-gray-500 mb-1">Credit Check Method</p>
+                                    <p className="font-semibold text-gray-800 capitalize">
+                                        {loanApp.credit_check_method || 'N/A'}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-gray-500 mb-1">Customer Type</p>
+                                    <p className="font-semibold text-gray-800 capitalize">
+                                        {loanApp.customer_type || 'N/A'}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-gray-500 mb-1">Status</p>
+                                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold border ${getStatusBadge(loanApp.status)}`}>
+                                        {loanApp.status?.toUpperCase().replace(/_/g, ' ') || 'PENDING'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Property Information */}
+                        {(loanApp.property_address || loanApp.property_state) && (
+                            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <Home className="text-[#273e8e]" size={20} />
+                                    <h3 className="text-lg font-semibold text-gray-800">Property Information</h3>
+                                </div>
+                                <div className="space-y-4">
+                                    {loanApp.property_state && (
+                                        <div>
+                                            <p className="text-sm text-gray-500 mb-1">State</p>
+                                            <p className="font-semibold text-gray-800">
+                                                {loanApp.property_state}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {loanApp.property_address && (
+                                        <div>
+                                            <p className="text-sm text-gray-500 mb-1">Address</p>
+                                            <p className="font-semibold text-gray-800">
+                                                {loanApp.property_address}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {loanApp.property_landmark && (
+                                        <div>
+                                            <p className="text-sm text-gray-500 mb-1">Landmark</p>
+                                            <p className="font-semibold text-gray-800">
+                                                {loanApp.property_landmark}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Guarantor Information */}
+                {loanApp?.guarantor && (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <User className="text-[#273e8e]" size={20} />
+                            <h3 className="text-lg font-semibold text-gray-800">Guarantor Information</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <p className="text-sm text-gray-500 mb-1">Full Name</p>
+                                <p className="font-semibold text-gray-800">
+                                    {loanApp.guarantor.full_name || 'N/A'}
+                                </p>
+                            </div>
+                            {loanApp.guarantor.email && (
+                                <div>
+                                    <p className="text-sm text-gray-500 mb-1">Email</p>
+                                    <p className="font-semibold text-gray-800">
+                                        {loanApp.guarantor.email}
+                                    </p>
+                                </div>
+                            )}
+                            {loanApp.guarantor.phone && (
+                                <div>
+                                    <p className="text-sm text-gray-500 mb-1">Phone</p>
+                                    <p className="font-semibold text-gray-800">
+                                        {loanApp.guarantor.phone}
+                                    </p>
+                                </div>
+                            )}
+                            <div>
+                                <p className="text-sm text-gray-500 mb-1">Status</p>
+                                <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold border ${getStatusBadge(loanApp.guarantor.status)}`}>
+                                    {loanApp.guarantor.status?.toUpperCase() || 'PENDING'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Back Button */}
+                <div className="flex justify-start">
+                    <button
+                        onClick={() => navigate('/bnpl-loans')}
+                        className="flex items-center gap-2 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-colors"
+                    >
+                        <ChevronLeft size={20} />
+                        Back to Orders List
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="min-h-screen bg-[#F5F7FF] flex">
+            <SideBar />
+            <div className="flex-1 flex flex-col">
+                <TopNavbar />
+                <div className="flex-1 p-6 overflow-y-auto">
+                    <div className="max-w-7xl mx-auto">
+                        {/* Header */}
+                        <div className="mb-6">
+                            <h1 className="text-3xl font-bold text-[#273e8e] mb-2">
+                                {id ? 'BNPL Loan Details' : 'My BNPL Loans'}
+                            </h1>
+                            <p className="text-gray-600">
+                                {id 
+                                    ? 'Complete details of your Buy Now Pay Later loan order'
+                                    : 'View and manage all your Buy Now Pay Later loan orders'}
+                            </p>
+                        </div>
+
+                        {/* Loading State */}
+                        {loading && (
+                            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+                                <Loading fullScreen={false} message="Loading loan details..." progress={null} />
+                            </div>
+                        )}
+
+                        {/* Error State */}
+                        {error && !loading && (
+                            <div className="bg-red-50 border border-red-200 rounded-xl p-6 mb-6">
+                                <div className="flex items-center">
+                                    <AlertCircle className="text-red-600 mr-3" size={24} />
+                                    <div>
+                                        <h3 className="font-semibold text-red-800">Error</h3>
+                                        <p className="text-red-600">{error}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Content */}
+                        {!loading && !error && (
+                            <>
+                                {orderData?.isList ? renderOrderList() : renderOrderDetails()}
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default BNPLLoanDetails;

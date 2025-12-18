@@ -7,6 +7,7 @@ import { Bell, CheckCircle, Clock, AlertCircle } from "lucide-react";
 import { assets } from "../assets/data";
 import Terms from "../Component/Terms";
 import TopNavbar from "../Component/TopNavbar";
+import Loading from "../Component/Loading";
 
 import API from "../config/api.config";
 import axios from "axios";
@@ -195,8 +196,7 @@ const LoanPage = () => {
     if (loading) {
       return (
         <div className="flex flex-col items-center text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#273e8e] mb-4"></div>
-          <p className="text-gray-600">Loading loan information...</p>
+          <Loading fullScreen={false} message="Loading loan information..." progress={null} />
         </div>
       );
     }

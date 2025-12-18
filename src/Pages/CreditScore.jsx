@@ -10,6 +10,7 @@ import LoanRepaymentCard from "../Component/LoanRepaymentCard";
 import TopNavbar from "../Component/TopNavbar";
 import axios from "axios";
 import API from "../config/api.config";
+import Loading from "../Component/Loading";
 
 const CreditScore = () => {
   // shows the Terms screen first; when false, show offer/repayment details
@@ -137,8 +138,7 @@ const CreditScore = () => {
                 </div>
               ) : loading ? (
                 <div className="w-1/2 flex flex-col items-center justify-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#273e8e] mb-4"></div>
-                  <p className="text-gray-600">Loading loan information...</p>
+                  <Loading fullScreen={false} message="Loading loan information..." progress={null} />
                 </div>
               ) : error ? (
                 <div className="w-1/2 flex flex-col items-center justify-center">

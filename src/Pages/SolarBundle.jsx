@@ -8,6 +8,7 @@ import SolarBundleComponent from "../Component/SolarBundleComponent";
 import API, { BASE_URL } from "../config/api.config";
 import { assets } from "../assets/data";
 import { Edit } from "lucide-react";
+import Loading from "../Component/Loading";
 
 // --- utils -------------------------------------------------------------
 
@@ -165,7 +166,11 @@ const SolarBundle = () => {
           </h1>
 
           {err && <p className="text-red-600 text-sm mb-3">{err}</p>}
-          {loading && <p className="text-gray-600 text-sm">Loading…</p>}
+          {loading && (
+            <div className="flex justify-center items-center py-12">
+              <Loading message="Loading bundles..." progress={null} />
+            </div>
+          )}
 
           <div className="grid xl:grid-cols-4 lg:grid-cols-4 md:grid-cols-2 grid-cols-1 gap-4">
             {bundles.map((item) => (

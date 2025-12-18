@@ -4,6 +4,7 @@ import axios from "axios";
 import API from "../config/api.config";
 import { assets } from "../assets/data";
 import { Input } from "../Component/Input";
+import Loading from "../Component/Loading";
 
 const Auth = () => {
   const location = useLocation();
@@ -144,6 +145,13 @@ const Auth = () => {
 
   return (
     <>
+      {loading && (
+        <Loading 
+          fullScreen={true} 
+          message={isLogin ? "Logging in..." : "Creating your account..."}
+          progress={null}
+        />
+      )}
       {/* Desktop */}
       <div className="w-full h-screen sm:flex hidden overflow-clip">
         <div className="relative w-1/2 overflow-hidden">
