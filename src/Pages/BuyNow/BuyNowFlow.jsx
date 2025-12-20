@@ -1071,36 +1071,36 @@ const BuyNowFlow = () => {
     const renderStep1 = () => (
         <div className="animate-fade-in">
             {/* Buy Now Badge */}
-            <div className="flex justify-center mb-4">
-                <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-bold bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-md">
+            <div className="flex justify-center mb-6">
+                <span className="inline-flex items-center px-5 py-2.5 rounded-full text-sm font-bold bg-gradient-to-r from-[#E8A91D] to-[#d4991a] text-white shadow-lg">
                     <CreditCard size={16} className="mr-2" />
                     Buy Now
                 </span>
             </div>
-            <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
+            <h2 className="text-3xl font-bold text-center mb-10 text-[#273e8e]">
                 Who are you purchasing for?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-                <button onClick={() => handleCustomerTypeSelect('residential')} className="group bg-white border-2 border-gray-100 hover:border-orange-500 rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-amber-600"></div>
-                    <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-6 rounded-full mb-6 group-hover:from-orange-100 group-hover:to-amber-100 transition-colors">
-                        <Home size={40} className="text-orange-600" />
+                <button onClick={() => handleCustomerTypeSelect('residential')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
+                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
+                        <Home size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800">For Residential</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">For Residential</h3>
                 </button>
-                <button onClick={() => handleCustomerTypeSelect('sme')} className="group bg-white border-2 border-gray-100 hover:border-orange-500 rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-amber-600"></div>
-                    <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-6 rounded-full mb-6 group-hover:from-orange-100 group-hover:to-amber-100 transition-colors">
-                        <Building2 size={40} className="text-orange-600" />
+                <button onClick={() => handleCustomerTypeSelect('sme')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
+                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
+                        <Building2 size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800">For SMEs</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">For SMEs</h3>
                 </button>
-                <button onClick={() => handleCustomerTypeSelect('commercial')} className="group bg-white border-2 border-gray-100 hover:border-orange-500 rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-amber-600"></div>
-                    <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-6 rounded-full mb-6 group-hover:from-orange-100 group-hover:to-amber-100 transition-colors">
-                        <Factory size={40} className="text-orange-600" />
+                <button onClick={() => handleCustomerTypeSelect('commercial')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
+                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
+                        <Factory size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800">Commercial & Industrial</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Commercial & Industrial</h3>
                 </button>
             </div>
         </div>
@@ -1147,22 +1147,22 @@ const BuyNowFlow = () => {
 
         return (
             <div className="animate-fade-in">
-                <button onClick={() => navigate('/')} className="mb-6 flex items-center text-gray-500 hover:text-orange-600">
+                <button onClick={() => navigate('/')} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e] transition-colors">
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
                 {/* Buy Now Badge */}
-                <div className="flex justify-center mb-4">
-                    <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-bold bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-md">
+                <div className="flex justify-center mb-6">
+                    <span className="inline-flex items-center px-5 py-2.5 rounded-full text-sm font-bold bg-gradient-to-r from-[#E8A91D] to-[#d4991a] text-white shadow-lg">
                         <CreditCard size={16} className="mr-2" />
                         Buy Now
                     </span>
                 </div>
-                <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
+                <h2 className="text-3xl font-bold text-center mb-10 text-[#273e8e]">
                     Select Product Category
                 </h2>
                 {categories.length === 0 ? (
                     <div className="text-center py-12">
-                        <Loader className="animate-spin mx-auto text-orange-600" size={48} />
+                        <Loader className="animate-spin mx-auto text-[#273e8e]" size={48} />
                         <p className="mt-4 text-gray-600">Loading categories...</p>
                     </div>
                 ) : (
@@ -1175,20 +1175,15 @@ const BuyNowFlow = () => {
                                 <button
                                     key={group.id}
                                     onClick={() => handleCategorySelect(group.id)}
-                                    className="group bg-white border-2 border-gray-100 hover:border-orange-500 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden"
+                                    className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1"
                                 >
-                                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-amber-600"></div>
-                                    <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 rounded-full mb-4 group-hover:from-orange-100 group-hover:to-amber-100 transition-colors flex items-center justify-center min-h-[64px]">
-                                        <IconComponent size={32} className="text-orange-600" />
+                                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
+                                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-5 rounded-full mb-4 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300 flex items-center justify-center min-h-[72px] w-[72px]">
+                                        <IconComponent size={36} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                                     </div>
-                                    <h3 className="text-lg font-bold text-gray-800 mb-1">{group.name}</h3>
+                                    <h3 className="text-lg font-bold text-gray-800 mb-1 group-hover:text-[#273e8e] transition-colors">{group.name}</h3>
                                     {group.subtitle && (
                                         <p className="text-sm text-gray-500 italic">{group.subtitle}</p>
-                                    )}
-                                    {matchingCategoryIds.length > 0 && (
-                                        <p className="text-xs text-gray-400 mt-2">
-                                            {matchingCategoryIds.length} categor{matchingCategoryIds.length > 1 ? 'ies' : 'y'} available
-                                        </p>
                                     )}
                                 </button>
                             );
@@ -1637,40 +1632,40 @@ const BuyNowFlow = () => {
     // NEW: Render Step 3 - Action Selection (3 options, same as BNPL)
     const renderStep3 = () => (
         <div className="animate-fade-in">
-            <button onClick={() => setStep(2)} className="mb-6 flex items-center text-gray-500 hover:text-orange-600">
+            <button onClick={() => setStep(2)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e] transition-colors">
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
             {/* Buy Now Badge */}
-            <div className="flex justify-center mb-4">
-                <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-bold bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-md">
+            <div className="flex justify-center mb-6">
+                <span className="inline-flex items-center px-5 py-2.5 rounded-full text-sm font-bold bg-gradient-to-r from-[#E8A91D] to-[#d4991a] text-white shadow-lg">
                     <CreditCard size={16} className="mr-2" />
                     Buy Now
                 </span>
             </div>
-            <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
+            <h2 className="text-3xl font-bold text-center mb-10 text-[#273e8e]">
                 How would you like to proceed?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-                <button onClick={() => handleOptionSelect('choose-system')} className="group bg-white border-2 border-gray-100 hover:border-orange-500 rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-amber-600"></div>
-                    <div className="bg-gradient-to-br from-yellow-50 to-amber-50 p-6 rounded-full mb-6 group-hover:from-yellow-100 group-hover:to-amber-100 transition-colors">
-                        <Zap size={40} className="text-orange-600" />
+                <button onClick={() => handleOptionSelect('choose-system')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
+                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
+                        <Zap size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800">Choose my solar system</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose my solar system</h3>
                 </button>
-                <button onClick={() => handleOptionSelect('build-system')} className="group bg-white border-2 border-gray-100 hover:border-orange-500 rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-amber-600"></div>
-                    <div className="bg-gradient-to-br from-purple-50 to-violet-50 p-6 rounded-full mb-6 group-hover:from-purple-100 group-hover:to-violet-100 transition-colors">
-                        <Wrench size={40} className="text-orange-600" />
+                <button onClick={() => handleOptionSelect('build-system')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
+                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
+                        <Wrench size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800">Build My System</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Build My System</h3>
                 </button>
-                <button onClick={() => handleOptionSelect('audit')} className="group bg-white border-2 border-gray-100 hover:border-orange-500 rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-amber-600"></div>
-                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-full mb-6 group-hover:from-green-100 group-hover:to-emerald-100 transition-colors">
-                        <FileText size={40} className="text-orange-600" />
+                <button onClick={() => handleOptionSelect('audit')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
+                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
+                        <FileText size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800">Request Professional Audit</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Request Professional Audit</h3>
                 </button>
             </div>
         </div>

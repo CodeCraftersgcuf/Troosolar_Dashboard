@@ -149,7 +149,7 @@ const SolarBundle = () => {
           {qParam && (
             <div className="mt-4">
               <button
-                onClick={() => navigate("/tools")}
+                onClick={() => navigate("/tools?solarPanel=true&fromBundles=true&q=" + qParam)}
                 className="flex items-center gap-2 text-white hover:text-gray-200 transition-colors text-sm font-medium"
               >
                 <Edit size={16} />

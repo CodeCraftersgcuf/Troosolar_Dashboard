@@ -16,6 +16,7 @@ import house4 from "../assets/house4.svg";
 import loginImage from "../assets/loginImage.jpg";
 import logo from "../assets/new-logo.png";
 import newLogo from "../assets/new-logo.png";
+import fullLogo from "../assets/FUll Logo-01.png";
 import twitter from "../assets/twitter.png";
 import whatsApp from "../assets/whatsApp.png";
 import store from "../assets/store.png";
@@ -78,17 +79,18 @@ import userGear_mob from "../assets/userGear_mob.svg";
 import logout_mob from "../assets/logout_mob.png";
 import loading1 from "../assets/loading1 (1).png";
 import loading2 from "../assets/loading2.png";
+import loadingGif from "../assets/200w.gif";
 
 export const assets = {
   product, star1, star2, uploadArea, LoanBox, creditNeedle, house1, house2, house3, house4,
   battery, solar, bulb, inverter, mttp, solarfan, surge, connector, light, kwc, support,
   insta, smLogo, sale, vec1, vec2, vec3, vec4, greenTick, b1, b2, line, stars, solarProject,
-  loginImage, logout, logo, store, loans, userGear, window, userImage,
+  loginImage, logout, logo, fullLogo, store, loans, userGear, window, userImage,
   shopping, GearSix, sidebar, twitter, whatsApp, yt, loginImageForSm, telegram,
   dashboard, usermgt, creditMgt, Loanmgt, loansDisbursement, Transactions,
   balance, ShopMgt, referral, analytics, settings, UserGear1, cart, rePayIcon, solarInverted, solar1,
   dashboard_mob, ShopMgt_mob, Loanmgt_mob, settings_mob, userGear_mob,logout_mob,tick,
-  loading1, loading2
+  loading1, loading2, loadingGif
 };
 
 

@@ -26,35 +26,37 @@ const Loading = ({
     return () => clearInterval(interval);
   }, [progress]);
 
-  // Determine which image to show based on progress
-  const loadingImage = currentProgress < 50 ? assets.loading1 : assets.loading2;
   const displayProgress = Math.min(100, Math.max(0, currentProgress));
 
   const content = (
     <div className={`flex flex-col items-center justify-center ${className}`}>
       <div className="relative mb-4">
         <img 
-          src={loadingImage} 
+          src={assets.loadingGif} 
           alt="Loading" 
           className="w-64 h-64 sm:w-80 sm:h-80 object-contain"
         />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-4xl sm:text-5xl font-bold text-white">
-            {displayProgress}%
-          </span>
-        </div>
+        {progress !== null && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-4xl sm:text-5xl font-bold text-white drop-shadow-lg">
+              {displayProgress}%
+            </span>
+          </div>
+        )}
       </div>
       {message && (
         <p className="text-gray-600 text-sm sm:text-base mt-4 text-center">
           {message}
         </p>
       )}
-      <div className="mt-4 w-64 sm:w-80 h-2 bg-gray-200 rounded-full overflow-hidden">
-        <div 
-          className="h-full bg-[#273e8e] transition-all duration-500 ease-out"
-          style={{ width: `${displayProgress}%` }}
-        />
-      </div>
+      {progress !== null && (
+        <div className="mt-4 w-64 sm:w-80 h-2 bg-gray-200 rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-[#273e8e] transition-all duration-500 ease-out"
+            style={{ width: `${displayProgress}%` }}
+          />
+        </div>
+      )}
     </div>
   );
 

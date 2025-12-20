@@ -82,7 +82,13 @@ const LoanDashBoard = () => {
 
         {!showLoanTerms && (
           <div className="absolute inset-0 z-50 flex items-center justify-center">
-            <Terms link="/linkAccount" />
+            <div className="absolute inset-0 bg-black/40" />
+            <div className="relative z-10">
+              <Terms 
+                link="/linkAccount" 
+                onClose={() => setShowLoanTerms(true)}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -124,7 +130,10 @@ const LoanDashBoard = () => {
         {/* Mobile terms modal */}
         {!showLoanTerms && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <Terms link="/linkAccount" />
+            <Terms 
+              link="/linkAccount" 
+              onClose={() => setShowLoanTerms(true)}
+            />
           </div>
         )}
       </div>

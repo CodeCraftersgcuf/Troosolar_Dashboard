@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Upload, CreditCard, Camera, Clock, Download, AlertCircle, Calendar, Loader, CheckCircle2, XCircle, X } from 'lucide-react';
+import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Upload, CreditCard, Camera, Clock, Download, AlertCircle, Calendar, Loader, CheckCircle2, XCircle, X, Minus, Plus } from 'lucide-react';
 import LoanCalculator from '../../Component/LoanCalculator';
 import axios from 'axios';
 import API, { BASE_URL } from '../../config/api.config';
@@ -76,25 +76,40 @@ const ensureMono = () =>
         s.type = "text/javascript";
         s.crossOrigin = "anonymous"; // Handle CORS if needed
         
+        // Variables for cleanup
+        let checkInterval = null;
+        let timeoutId = null;
+        
         // Poll for MonoConnect availability after script loads
         const checkForMonoConnect = () => {
-            const maxAttempts = 100; // 10 seconds max (100 * 100ms)
+            const maxAttempts = 150; // 15 seconds max (150 * 100ms)
             let attempts = 0;
             
-            const checkInterval = setInterval(() => {
+            checkInterval = setInterval(() => {
                 attempts++;
                 // Check for both MonoConnect and window.MonoConnect
                 if (window.MonoConnect || window.Mono) {
-                    clearInterval(checkInterval);
+                    if (checkInterval) clearInterval(checkInterval);
+                    if (timeoutId) clearTimeout(timeoutId);
                     console.log("Mono Connect script loaded and MonoConnect class available");
                     resolve();
                 } else if (attempts >= maxAttempts) {
-                    clearInterval(checkInterval);
+                    if (checkInterval) clearInterval(checkInterval);
+                    if (timeoutId) clearTimeout(timeoutId);
                     console.error("Window object after script load:", Object.keys(window).filter(k => k.toLowerCase().includes('mono')));
-                    reject(new Error("Mono Connect script loaded but MonoConnect class is not available. The script may have failed to initialize. Please check the browser console for errors."));
+                    reject(new Error("Mono Connect script loaded but MonoConnect class is not available. Please refresh the page and try again."));
                 }
             }, 100); // Check every 100ms
         };
+        
+        // Set overall timeout to prevent hanging
+        timeoutId = setTimeout(() => {
+            if (checkInterval) clearInterval(checkInterval);
+            if (!window.MonoConnect && !window.Mono) {
+                console.error("Timeout: Window object keys:", Object.keys(window).filter(k => k.toLowerCase().includes('mono')));
+                reject(new Error("Mono Connect script loading timeout. Please refresh and try again."));
+            }
+        }, 15000); // 15 second timeout
         
         s.onload = () => {
             console.log("Mono Connect script loaded, waiting for MonoConnect class...");
@@ -104,23 +119,10 @@ const ensureMono = () =>
         };
         
         s.onerror = (error) => {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (checkInterval) clearInterval(checkInterval);
             console.error("Script load error:", error);
             reject(new Error("Failed to load Mono Connect script. Please check your internet connection and try again."));
-        };
-        
-        // Set overall timeout to prevent hanging
-        const timeoutId = setTimeout(() => {
-            if (!window.MonoConnect && !window.Mono) {
-                console.error("Timeout: Window object keys:", Object.keys(window).filter(k => k.toLowerCase().includes('mono')));
-                reject(new Error("Mono Connect script loading timeout. Please refresh and try again."));
-            }
-        }, 15000); // 15 second timeout
-        
-        // Clear timeout on success
-        const originalResolve = resolve;
-        resolve = () => {
-            clearTimeout(timeoutId);
-            originalResolve();
         };
         
         document.head.appendChild(s); // Append to head instead of body
@@ -143,7 +145,9 @@ const BNPLFlow = () => {
     const [paymentResult, setPaymentResult] = useState(null); // 'success' | 'failed' | null
     const [showCreditCheckFeeModal, setShowCreditCheckFeeModal] = useState(false);
     const [processingCreditCheckPayment, setProcessingCreditCheckPayment] = useState(false);
+    const [acceptedTerms, setAcceptedTerms] = useState(false);
     const [monoConnectInstance, setMonoConnectInstance] = useState(null);
+    const [monoFailed, setMonoFailed] = useState(false); // Track if Mono has failed
     const [auditOrderId, setAuditOrderId] = useState(null);
     const [auditCalendarSlots, setAuditCalendarSlots] = useState([]);
     const [selectedAuditSlot, setSelectedAuditSlot] = useState(null);
@@ -267,6 +271,9 @@ const BNPLFlow = () => {
         const token = searchParams.get('token');
         const type = searchParams.get('type');
         const applicationIdParam = searchParams.get('applicationId');
+        const bundleIdParam = searchParams.get('bundleId');
+        const stepParam = searchParams.get('step');
+        const fromBundle = searchParams.get('fromBundle') === 'true';
         
         if (token && (type === 'buy_now' || type === 'bnpl')) {
             setCartToken(token);
@@ -278,7 +285,56 @@ const BNPLFlow = () => {
         if (applicationIdParam) {
             loadExistingApplication(Number(applicationIdParam));
         }
+        
+        // If coming from bundle detail page, load bundle and skip to order summary
+        if (bundleIdParam && fromBundle) {
+            loadBundleAndSkipToStep(Number(bundleIdParam), stepParam ? Number(stepParam) : 6.5);
+        }
     }, [searchParams]);
+    
+    // Load bundle and skip to order summary step
+    const loadBundleAndSkipToStep = async (bundleId, targetStep) => {
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('access_token');
+            const response = await axios.get(API.BUNDLE_BY_ID(bundleId), {
+                headers: {
+                    Accept: 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+            });
+            
+            const bundle = response.data?.data ?? response.data;
+            if (bundle) {
+                const price = Number(bundle.discount_price || bundle.total_price || 0);
+                
+                // Set bundle in formData (with default quantity of 1)
+                setFormData(prev => ({
+                    ...prev,
+                    selectedBundles: [{
+                        id: bundle.id,
+                        bundle: bundle,
+                        price: price,
+                        quantity: 1
+                    }],
+                    selectedBundleId: bundle.id,
+                    selectedBundle: bundle,
+                    selectedProductPrice: price,
+                    optionType: 'choose-system', // Assume choose-system when coming from bundle
+                    productCategory: 'full-kit', // Default category
+                    customerType: prev.customerType || 'residential' // Set default customer type if not already set
+                }));
+                
+                // Skip to the target step (Order Summary)
+                setStep(targetStep);
+            }
+        } catch (error) {
+            console.error('Failed to load bundle:', error);
+            alert('Failed to load bundle. Please try again.');
+        } finally {
+            setLoading(false);
+        }
+    };
     
     // Load existing application data
     const loadExistingApplication = async (appId) => {
@@ -409,7 +465,8 @@ const BNPLFlow = () => {
                             bundles.push({
                                 id: item.itemable_id,
                                 bundle: item.itemable,
-                                price: Number(item.unit_price || item.itemable.discount_price || item.itemable.total_price || 0)
+                                price: Number(item.unit_price || item.itemable.discount_price || item.itemable.total_price || 0),
+                                quantity: Number(item.quantity || 1)
                             });
                         }
                     });
@@ -420,7 +477,8 @@ const BNPLFlow = () => {
                             ...prev,
                             selectedProducts: products,
                             selectedBundles: bundles,
-                            selectedProductPrice: totalPrice
+                            selectedProductPrice: totalPrice,
+                            customerType: prev.customerType || 'residential' // Set default customer type if not already set
                         }));
                     }
                 }
@@ -759,17 +817,18 @@ const BNPLFlow = () => {
                 // Remove bundle if already selected
                 updatedBundles = prev.selectedBundles.filter(b => b.id !== bundle.id);
             } else {
-                // Add bundle if not selected
+                // Add bundle if not selected (with default quantity of 1)
                 updatedBundles = [...prev.selectedBundles, {
                     id: bundle.id,
                     bundle: bundle,
-                    price: price
+                    price: price,
+                    quantity: 1
                 }];
             }
             
-            // Calculate total price from all selected bundles and products
-            const bundlesTotal = updatedBundles.reduce((sum, b) => sum + b.price, 0);
-            const productsTotal = prev.selectedProducts.reduce((sum, p) => sum + p.price, 0);
+            // Calculate total price from all selected bundles and products (accounting for quantity)
+            const bundlesTotal = updatedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+            const productsTotal = prev.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
             const totalPrice = bundlesTotal + productsTotal;
             
             return {
@@ -782,6 +841,28 @@ const BNPLFlow = () => {
             };
         });
         // Don't auto-navigate - let user select multiple items
+    };
+
+    // Update bundle quantity
+    const updateBundleQuantity = (bundleId, newQuantity) => {
+        if (newQuantity < 1) return; // Don't allow quantity less than 1
+        
+        setFormData(prev => {
+            const updatedBundles = prev.selectedBundles.map(b => 
+                b.id === bundleId ? { ...b, quantity: newQuantity } : b
+            );
+            
+            // Calculate total price from all selected bundles and products (accounting for quantity)
+            const bundlesTotal = updatedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+            const productsTotal = prev.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
+            const totalPrice = bundlesTotal + productsTotal;
+            
+            return {
+                ...prev,
+                selectedBundles: updatedBundles,
+                selectedProductPrice: totalPrice
+            };
+        });
     };
 
     const handleProductSelect = (product) => {
@@ -803,9 +884,9 @@ const BNPLFlow = () => {
                 }];
             }
             
-            // Calculate total price from all selected bundles and products
-            const bundlesTotal = prev.selectedBundles.reduce((sum, b) => sum + b.price, 0);
-            const productsTotal = updatedProducts.reduce((sum, p) => sum + p.price, 0);
+            // Calculate total price from all selected bundles and products (accounting for quantity)
+            const bundlesTotal = prev.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+            const productsTotal = updatedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
             const totalPrice = bundlesTotal + productsTotal;
             
             return {
@@ -890,22 +971,22 @@ const BNPLFlow = () => {
 
         return (
         <div className="animate-fade-in">
-                <button onClick={() => setStep(1)} className="mb-6 flex items-center text-gray-500 hover:text-emerald-600">
+                <button onClick={() => setStep(1)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e] transition-colors">
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
                 {/* BNPL Badge */}
-                <div className="flex justify-center mb-4">
-                    <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-bold bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md">
+                <div className="flex justify-center mb-6">
+                    <span className="inline-flex items-center px-5 py-2.5 rounded-full text-sm font-bold bg-gradient-to-r from-[#273e8e] to-[#1a2b6b] text-white shadow-lg">
                         <CreditCard size={16} className="mr-2" />
                         Buy Now Pay Later
                     </span>
                 </div>
-            <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
+            <h2 className="text-3xl font-bold text-center mb-10 text-[#273e8e]">
                 Select Product Category
             </h2>
                 {categories.length === 0 ? (
                     <div className="text-center py-12">
-                        <Loader className="animate-spin mx-auto text-emerald-600" size={48} />
+                        <Loader className="animate-spin mx-auto text-[#273e8e]" size={48} />
                         <p className="mt-4 text-gray-600">Loading categories...</p>
                     </div>
                 ) : (
@@ -918,20 +999,15 @@ const BNPLFlow = () => {
                     <button
                                     key={group.id}
                                     onClick={() => handleCategorySelect(group.id)}
-                                    className="group bg-white border-2 border-gray-100 hover:border-emerald-500 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden"
+                                    className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1"
                     >
-                                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-emerald-600"></div>
-                                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-full mb-4 group-hover:from-green-100 group-hover:to-emerald-100 transition-colors flex items-center justify-center min-h-[64px]">
-                                        <IconComponent size={32} className="text-emerald-600" />
+                                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
+                                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-5 rounded-full mb-4 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300 flex items-center justify-center min-h-[72px] w-[72px]">
+                                        <IconComponent size={36} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                         </div>
-                                    <h3 className="text-lg font-bold text-gray-800 mb-1">{group.name}</h3>
+                                    <h3 className="text-lg font-bold text-gray-800 mb-1 group-hover:text-[#273e8e] transition-colors">{group.name}</h3>
                                     {group.subtitle && (
                                         <p className="text-sm text-gray-500 italic">{group.subtitle}</p>
-                                    )}
-                                    {matchingCategoryIds.length > 0 && (
-                                        <p className="text-xs text-gray-400 mt-2">
-                                            {matchingCategoryIds.length} categor{matchingCategoryIds.length > 1 ? 'ies' : 'y'} available
-                                        </p>
                                     )}
                     </button>
                             );
@@ -1249,40 +1325,40 @@ const BNPLFlow = () => {
 
     const renderStep3 = () => (
         <div className="animate-fade-in">
-            <button onClick={() => setStep(2)} className="mb-6 flex items-center text-gray-500 hover:text-emerald-600">
+            <button onClick={() => setStep(2)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e] transition-colors">
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
             {/* BNPL Badge */}
-            <div className="flex justify-center mb-4">
-                <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-bold bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md">
+            <div className="flex justify-center mb-6">
+                <span className="inline-flex items-center px-5 py-2.5 rounded-full text-sm font-bold bg-gradient-to-r from-[#273e8e] to-[#1a2b6b] text-white shadow-lg">
                     <CreditCard size={16} className="mr-2" />
                     Buy Now Pay Later
                 </span>
             </div>
-            <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
+            <h2 className="text-3xl font-bold text-center mb-10 text-[#273e8e]">
                 How would you like to proceed?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-                <button onClick={() => handleOptionSelect('choose-system')} className="group bg-white border-2 border-gray-100 hover:border-emerald-500 rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-emerald-600"></div>
-                    <div className="bg-gradient-to-br from-yellow-50 to-amber-50 p-6 rounded-full mb-6 group-hover:from-yellow-100 group-hover:to-amber-100 transition-colors">
-                        <Zap size={40} className="text-emerald-600" />
+                <button onClick={() => handleOptionSelect('choose-system')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
+                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
+                        <Zap size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800">Choose my solar system</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose my solar system</h3>
                 </button>
-                <button onClick={() => handleOptionSelect('build-system')} className="group bg-white border-2 border-gray-100 hover:border-emerald-500 rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-emerald-600"></div>
-                    <div className="bg-gradient-to-br from-purple-50 to-violet-50 p-6 rounded-full mb-6 group-hover:from-purple-100 group-hover:to-violet-100 transition-colors">
-                        <Wrench size={40} className="text-emerald-600" />
+                <button onClick={() => handleOptionSelect('build-system')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
+                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
+                        <Wrench size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800">Build My System</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Build My System</h3>
                 </button>
-                <button onClick={() => handleOptionSelect('audit')} className="group bg-white border-2 border-gray-100 hover:border-emerald-500 rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-emerald-600"></div>
-                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-full mb-6 group-hover:from-green-100 group-hover:to-emerald-100 transition-colors">
-                        <FileText size={40} className="text-emerald-600" />
+                <button onClick={() => handleOptionSelect('audit')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
+                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
+                        <FileText size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800">Request Professional Audit</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Request Professional Audit</h3>
                 </button>
             </div>
         </div>
@@ -1414,7 +1490,7 @@ const BNPLFlow = () => {
                                                 : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
                                         }`}
                                     >
-                                        {isSelected ? 'Remove from Selection' : 'Add to Selection'}
+                                        {isSelected ? 'Remove from Selection' : 'Select bundle'}
                                     </button>
                                 </div>
                             );
@@ -1734,9 +1810,9 @@ const BNPLFlow = () => {
 
     const renderStep6_5 = () => {
         // Calculate total amount for order summary
-        // NEW: Calculate from all selected bundles and products
-        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + b.price, 0);
-        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + p.price, 0);
+        // NEW: Calculate from all selected bundles and products (accounting for quantity)
+        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
         const itemsSubtotal = bundlesTotal + productsTotal;
         
         // Use itemsSubtotal if available, otherwise fallback to selectedProductPrice (for backward compatibility)
@@ -1769,22 +1845,52 @@ const BNPLFlow = () => {
                     {formData.selectedBundles.length > 0 && (
                         <div className="space-y-3">
                             <h3 className="font-semibold text-gray-700 mb-2">Selected Bundles ({formData.selectedBundles.length})</h3>
-                            {formData.selectedBundles.map((selectedBundle) => (
-                                <div key={selectedBundle.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
-                                    <div className="flex items-center">
-                                        <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                            <Sun size={20} className="text-gray-600" />
+                            {formData.selectedBundles.map((selectedBundle) => {
+                                const quantity = selectedBundle.quantity || 1;
+                                const unitPrice = selectedBundle.price || 0;
+                                const totalPrice = unitPrice * quantity;
+                                
+                                return (
+                                    <div key={selectedBundle.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
+                                        <div className="flex items-center flex-1">
+                                            <div className="bg-gray-100 p-2 rounded-lg mr-4">
+                                                <Sun size={20} className="text-gray-600" />
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className="font-bold text-gray-800">
+                                                    {selectedBundle.bundle.title || selectedBundle.bundle.name || `Bundle #${selectedBundle.id}`}
+                                                </p>
+                                                <p className="text-sm text-gray-500">Solar System Bundle</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="font-bold text-gray-800">
-                                                {selectedBundle.bundle.title || selectedBundle.bundle.name || `Bundle #${selectedBundle.id}`}
-                                            </p>
-                                            <p className="text-sm text-gray-500">Solar System Bundle</p>
+                                        <div className="flex items-center gap-4">
+                                            {/* Quantity Controls */}
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => updateBundleQuantity(selectedBundle.id, Math.max(1, quantity - 1))}
+                                                    className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors"
+                                                    disabled={quantity <= 1}
+                                                >
+                                                    <Minus size={16} />
+                                                </button>
+                                                <span className="w-8 text-center font-medium">{quantity}</span>
+                                                <button
+                                                    onClick={() => updateBundleQuantity(selectedBundle.id, quantity + 1)}
+                                                    className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors"
+                                                >
+                                                    <Plus size={16} />
+                                                </button>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="font-bold block">₦{Number(totalPrice).toLocaleString()}</span>
+                                                {quantity > 1 && (
+                                                    <span className="text-xs text-gray-500">₦{Number(unitPrice).toLocaleString()} each</span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                    <span className="font-bold">₦{Number(selectedBundle.price || 0).toLocaleString()}</span>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                     
@@ -1934,8 +2040,8 @@ const BNPLFlow = () => {
                             if (confirmed) {
                                 setPaymentResult('success');
                                 alert("Upfront deposit payment successful! Your application will proceed to the next step.");
-                                // Navigate back to credit check status
-                                navigate('/bnpl-credit-check');
+                                // Navigate to BNPL loans page to view order details
+                                navigate('/bnpl-loans');
                             } else {
                                 alert("Payment verification failed. Please contact support if amount was debited.");
                                 setPaymentResult('failed');
@@ -2148,9 +2254,9 @@ const BNPLFlow = () => {
 
     const renderStep6_75 = () => {
         // Calculate total amount for invoice
-        // Calculate from all selected bundles and products
-        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + b.price, 0);
-        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + p.price, 0);
+        // Calculate from all selected bundles and products (accounting for quantity)
+        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
         const itemsSubtotal = bundlesTotal + productsTotal;
         
         // Use itemsSubtotal if available, otherwise fallback to selectedProductPrice (for backward compatibility)
@@ -2186,34 +2292,62 @@ const BNPLFlow = () => {
                     {/* Selected Bundles */}
                     {formData.selectedBundles.length > 0 && (
                         <div className="space-y-3 mb-4">
-                            {formData.selectedBundles.map((selectedBundle) => (
-                                <div key={selectedBundle.id} className="flex justify-between items-center">
-                                    <div>
-                                        <p className="font-medium text-gray-800">
-                                            {selectedBundle.bundle.title || selectedBundle.bundle.name || `Bundle #${selectedBundle.id}`}
-                                        </p>
-                                        <p className="text-sm text-gray-500">Solar System Bundle</p>
+                            {formData.selectedBundles.map((selectedBundle) => {
+                                const quantity = selectedBundle.quantity || 1;
+                                const unitPrice = selectedBundle.price || 0;
+                                const totalPrice = unitPrice * quantity;
+                                
+                                return (
+                                    <div key={selectedBundle.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
+                                        <div className="flex-1">
+                                            <p className="font-medium text-gray-800">
+                                                {selectedBundle.bundle.title || selectedBundle.bundle.name || `Bundle #${selectedBundle.id}`}
+                                            </p>
+                                            <p className="text-sm text-gray-500">
+                                                Solar System Bundle
+                                                {quantity > 1 && <span className="ml-2">× {quantity}</span>}
+                                            </p>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="font-bold block">₦{Number(totalPrice).toLocaleString()}</span>
+                                            {quantity > 1 && (
+                                                <span className="text-xs text-gray-500">₦{Number(unitPrice).toLocaleString()} each</span>
+                                            )}
+                                        </div>
                                     </div>
-                                    <span className="font-bold">₦{Number(selectedBundle.price || 0).toLocaleString()}</span>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                     
                     {/* Selected Products */}
                     {formData.selectedProducts.length > 0 && (
                         <div className="space-y-3 mb-4">
-                            {formData.selectedProducts.map((selectedProduct) => (
-                                <div key={selectedProduct.id} className="flex justify-between items-center">
-                                    <div>
-                                        <p className="font-medium text-gray-800">
-                                            {selectedProduct.product.title || selectedProduct.product.name || `Product #${selectedProduct.id}`}
-                                        </p>
-                                        <p className="text-sm text-gray-500">Individual Component</p>
+                            {formData.selectedProducts.map((selectedProduct) => {
+                                const quantity = selectedProduct.quantity || 1;
+                                const unitPrice = selectedProduct.price || 0;
+                                const totalPrice = unitPrice * quantity;
+                                
+                                return (
+                                    <div key={selectedProduct.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
+                                        <div className="flex-1">
+                                            <p className="font-medium text-gray-800">
+                                                {selectedProduct.product.title || selectedProduct.product.name || `Product #${selectedProduct.id}`}
+                                            </p>
+                                            <p className="text-sm text-gray-500">
+                                                Individual Component
+                                                {quantity > 1 && <span className="ml-2">× {quantity}</span>}
+                                            </p>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="font-bold block">₦{Number(totalPrice).toLocaleString()}</span>
+                                            {quantity > 1 && (
+                                                <span className="text-xs text-gray-500">₦{Number(unitPrice).toLocaleString()} each</span>
+                                            )}
+                                        </div>
                                     </div>
-                                    <span className="font-bold">₦{Number(selectedProduct.price || 0).toLocaleString()}</span>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
 
@@ -2451,9 +2585,9 @@ const BNPLFlow = () => {
 
     const renderStep8 = () => {
         // Calculate total amount including compulsory add-ons (Insurance for BNPL)
-        // NEW: Calculate from all selected bundles and products
-        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + b.price, 0);
-        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + p.price, 0);
+        // NEW: Calculate from all selected bundles and products (accounting for quantity)
+        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
         const itemsSubtotal = bundlesTotal + productsTotal;
         
         // Use itemsSubtotal if available, otherwise fallback to selectedProductPrice (for backward compatibility)
@@ -2574,6 +2708,9 @@ const BNPLFlow = () => {
     // Open Mono Connect for credit check
     const openMonoConnect = async () => {
         try {
+            // Set processing state to show loading
+            setProcessingCreditCheckPayment(true);
+            
             // Load Mono Connect script
             await ensureMono();
             
@@ -2605,12 +2742,24 @@ const BNPLFlow = () => {
             }
 
             // Wait a bit more to ensure MonoConnect is fully available
-            await new Promise(resolve => setTimeout(resolve, 300));
+            // Poll for MonoConnect with retries
+            let retries = 0;
+            const maxRetries = 30; // 3 seconds (30 * 100ms)
+            while (!window.MonoConnect && retries < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                retries++;
+            }
             
             // Double check MonoConnect is available
             if (!window.MonoConnect) {
-                console.error("MonoConnect still not available. Window keys:", Object.keys(window).filter(k => k.toLowerCase().includes('mono')));
-                throw new Error("MonoConnect class is not available. Please refresh the page and try again.");
+                console.error("MonoConnect still not available after waiting. Window keys:", Object.keys(window).filter(k => k.toLowerCase().includes('mono')));
+                // Check if script is loaded
+                const scriptLoaded = document.querySelector('script[src*="connect.withmono.com"]');
+                if (scriptLoaded) {
+                    throw new Error("Mono Connect script is loaded but MonoConnect class is not available. Please refresh the page and try again.");
+                } else {
+                    throw new Error("Mono Connect script failed to load. Please check your internet connection and try again.");
+                }
             }
 
             // Initialize Mono Connect with scopes for BVN verification and account data
@@ -2682,9 +2831,12 @@ const BNPLFlow = () => {
                         try {
                             const fakeEvent = { preventDefault: () => {} };
                             await submitApplication(fakeEvent);
+                            // submitApplication will navigate to step 12 (pending) or step 21 (approved) on success
+                            // The flow will continue automatically based on application status
                         } catch (submitError) {
                             console.error("Application submission error after credit check:", submitError);
                             alert("Credit check completed but failed to submit application. Please contact support.");
+                            setProcessingCreditCheckPayment(false);
                         }
                         
                     } catch (error) {
@@ -2710,12 +2862,18 @@ const BNPLFlow = () => {
                 onClose: () => {
                     // User closed the Mono widget without completing
                     console.log("Mono Connect closed by user");
-                    alert("Credit check process was cancelled. Please complete the bank connection to proceed.");
+                    // Mark Mono as failed and switch to manual
+                    setMonoFailed(true);
+                    setFormData(prev => ({ ...prev, creditCheckMethod: 'manual' }));
+                    alert("Automatic credit check was cancelled. Please upload your documents for manual review.");
                     setProcessingCreditCheckPayment(false);
                 },
                 onError: (error) => {
                     console.error("Mono Connect error:", error);
-                    alert("Failed to connect bank account. Please try again or contact support if the issue persists.");
+                    // Mark Mono as failed and switch to manual
+                    setMonoFailed(true);
+                    setFormData(prev => ({ ...prev, creditCheckMethod: 'manual' }));
+                    alert("Automatic credit check failed. Please upload your documents for manual review.");
                     setProcessingCreditCheckPayment(false);
                 }
                 };
@@ -2763,21 +2921,15 @@ const BNPLFlow = () => {
             console.error("Failed to initialize Mono Connect:", error);
             const errorMessage = error.message || "Failed to initialize credit check";
             
+            // Mark Mono as failed and switch to manual
+            setMonoFailed(true);
+            setFormData(prev => ({ ...prev, creditCheckMethod: 'manual' }));
+            
             // Show user-friendly error message
-            alert(`${errorMessage}. Please try again or contact support if the issue persists.`);
+            alert(`${errorMessage}. Please upload your documents for manual review.`);
             
             // Reset processing state
             setProcessingCreditCheckPayment(false);
-            
-            // Optionally, you can proceed to submit application without Mono if needed
-            // For now, we'll let the user retry
-            // Uncomment below if you want to allow submission without Mono:
-            // const proceedWithoutMono = confirm("Credit check initialization failed. Would you like to proceed with manual review?");
-            // if (proceedWithoutMono) {
-            //     setFormData(prev => ({ ...prev, creditCheckMethod: 'manual' }));
-            //     const fakeEvent = { preventDefault: () => {} };
-            //     await submitApplication(fakeEvent);
-            // }
         }
     };
 
@@ -2787,7 +2939,7 @@ const BNPLFlow = () => {
             return;
         }
 
-        const creditCheckFee = Math.round((formData.loanDetails.principal * 0.05)); // 5% of loan amount
+        const creditCheckFee = 1000; // Fixed credit check fee (can be controlled from admin settings)
         setProcessingCreditCheckPayment(true);
         
         try {
@@ -2795,8 +2947,9 @@ const BNPLFlow = () => {
 
             const txRef = "credit_check_" + Date.now();
             const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-            const userEmail = userInfo.email || 'customer@troosolar.com';
-            const userName = userInfo.name || userInfo.full_name || 'Customer';
+            // Get email from various possible locations in user_info
+            const userEmail = userInfo.email || userInfo.user?.email || userInfo.data?.email || 'customer@troosolar.com';
+            const userName = userInfo.name || userInfo.full_name || userInfo.user?.name || userInfo.data?.name || 'Customer';
 
             window.FlutterwaveCheckout({
                 public_key: "FLWPUBK_TEST-dd1514f7562b1d623c4e63fb58b6aedb-X", // TODO: Move to env variable
@@ -2812,25 +2965,74 @@ const BNPLFlow = () => {
                     console.log("Flutterwave payment callback:", response);
                     
                     if (response?.status === "successful") {
-                        // Payment successful, now open Mono Connect for credit check
-                        console.log("Payment successful, opening Mono Connect...");
-                        try {
-                            // Small delay to ensure payment is fully processed
-                            await new Promise(resolve => setTimeout(resolve, 500));
-                            await openMonoConnect();
-                        } catch (error) {
-                            console.error("Mono Connect error:", error);
-                            const errorMsg = error.message || "Failed to open credit check";
-                            alert(`Payment successful but ${errorMsg.toLowerCase()}. Please contact support or try again.`);
-                            setProcessingCreditCheckPayment(false);
+                        // Payment successful
+                        console.log("Payment successful");
+                        
+                        // Small delay to ensure payment is fully processed
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        
+                        // Set processing state to show loading
+                        setProcessingCreditCheckPayment(true);
+                        
+                        // Check if manual credit check is selected or Mono has already failed
+                        // If so, skip Mono and directly submit application
+                        if (formData.creditCheckMethod === 'manual' || monoFailed) {
+                            console.log("Manual credit check selected or Mono already failed, submitting application directly...");
                             
-                            // Option to proceed without Mono (manual review)
-                            const proceedManual = confirm("Would you like to proceed with manual credit check review instead?");
-                            if (proceedManual) {
-                                setFormData(prev => ({ ...prev, creditCheckMethod: 'manual' }));
-                                // Submit application with manual method
+                            // Verify files are uploaded for manual credit check
+                            if (!formData.bankStatement || !formData.livePhoto) {
+                                alert("Please upload your bank statement and live photo for manual review.");
+                                setProcessingCreditCheckPayment(false);
+                                return;
+                            }
+                            
+                            // Submit application directly with manual credit check
+                            try {
                                 const fakeEvent = { preventDefault: () => {} };
                                 await submitApplication(fakeEvent);
+                                // submitApplication will navigate to step 12 (pending) or step 21 (approved) on success
+                            } catch (submitError) {
+                                console.error("Application submission error:", submitError);
+                                const errorMsg = submitError.response?.data?.message || submitError.message || "Failed to submit application";
+                                alert(`Payment successful but ${errorMsg}. Please contact support.`);
+                                setProcessingCreditCheckPayment(false);
+                            }
+                            return; // Exit early, don't try Mono
+                        }
+                        
+                        // Automatic credit check - Try Mono Connect
+                        console.log("Attempting Mono Connect for automatic credit check...");
+                        
+                        // Reset Mono failed flag for new attempt
+                        setMonoFailed(false);
+                        
+                        // Try Mono Connect (automatic credit check)
+                        try {
+                            await openMonoConnect();
+                            // If Mono succeeds, it will handle submission in onSuccess callback
+                            // If Mono fails, onError/onClose will set monoFailed to true and switch to manual
+                        } catch (monoError) {
+                            console.error("Mono Connect failed:", monoError);
+                            // Mono failed - switch to manual and require file uploads
+                            setMonoFailed(true);
+                            setFormData(prev => ({ ...prev, creditCheckMethod: 'manual' }));
+                            
+                            // Check if files are already uploaded
+                            if (!formData.bankStatement || !formData.livePhoto) {
+                                alert("Automatic credit check failed. Please upload your bank statement and live photo for manual review.");
+                                setProcessingCreditCheckPayment(false);
+                                return;
+                            }
+                            
+                            // Files are uploaded, proceed with manual submission
+                            try {
+                                const fakeEvent = { preventDefault: () => {} };
+                                await submitApplication(fakeEvent);
+                            } catch (submitError) {
+                                console.error("Application submission error:", submitError);
+                                const errorMsg = submitError.response?.data?.message || submitError.message || "Failed to submit application";
+                                alert(`Payment successful but ${errorMsg}. Please contact support.`);
+                                setProcessingCreditCheckPayment(false);
                             }
                         }
                     } else {
@@ -2855,7 +3057,17 @@ const BNPLFlow = () => {
 
     const renderStep10 = () => {
         return (
-            <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+            <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100 relative">
+                {/* Loading overlay when processing Mono Connect */}
+                {processingCreditCheckPayment && formData.creditCheckMethod === 'auto' && !monoFailed && (
+                    <div className="absolute inset-0 bg-white/90 z-50 flex flex-col items-center justify-center rounded-2xl">
+                        <div className="text-center">
+                            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#273e8e] mb-4"></div>
+                            <p className="text-lg font-semibold text-[#273e8e] mb-2">Checking Mono Connect...</p>
+                            <p className="text-sm text-gray-600">Please wait while we initialize the credit check process.</p>
+                        </div>
+                    </div>
+                )}
                 <button onClick={() => setStep(11)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
@@ -2864,6 +3076,7 @@ const BNPLFlow = () => {
                     <button
                         onClick={() => {
                             setFormData({ ...formData, creditCheckMethod: 'auto' });
+                            setMonoFailed(false); // Reset monoFailed when selecting auto
                         }}
                         disabled={formData.creditCheckMethod === 'manual'}
                         className={`w-full p-6 rounded-xl border-2 text-left transition-all ${
@@ -2892,6 +3105,7 @@ const BNPLFlow = () => {
                     <button
                         onClick={() => {
                             setFormData({ ...formData, creditCheckMethod: 'manual' });
+                            setMonoFailed(false); // Reset monoFailed when manually selecting manual
                         }}
                         disabled={formData.creditCheckMethod === 'auto'}
                         className={`w-full p-6 rounded-xl border-2 text-left transition-all ${
@@ -2913,6 +3127,87 @@ const BNPLFlow = () => {
                         </p>
                     </button>
                 </div>
+
+                {/* File Uploads - Only show when manual credit check is selected OR Mono has failed */}
+                {(formData.creditCheckMethod === 'manual' || monoFailed) && (
+                <div className="space-y-4 mb-6">
+                    <h3 className="text-lg font-bold text-gray-800 border-b pb-2">Required Documents</h3>
+                    {monoFailed && (
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                            <p className="text-sm text-yellow-800 font-medium">
+                                <strong>Note:</strong> Automatic credit check was unsuccessful. Please upload the required documents for manual review.
+                            </p>
+                        </div>
+                    )}
+                    
+                    {/* Bank Statement Upload */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Bank Statement (Last 6 Months) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={(e) => {
+                                const file = e.target.files[0];
+                                if (file) {
+                                    // Validate file size (max 10MB)
+                                    if (file.size > 10 * 1024 * 1024) {
+                                        alert("Bank statement file size must be less than 10MB");
+                                        e.target.value = '';
+                                        return;
+                                    }
+                                    setFormData(prev => ({ ...prev, bankStatement: file }));
+                                }
+                            }}
+                            required
+                            className="w-full p-3 border rounded-lg file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[#273e8e] file:text-white hover:file:bg-[#1a2b6b]"
+                        />
+                        {formData.bankStatement && (
+                            <p className="text-sm text-green-600 mt-1">
+                                ✓ {formData.bankStatement.name}
+                            </p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-1">
+                            Accepted formats: PDF, JPG, PNG (Max 10MB)
+                        </p>
+                    </div>
+
+                    {/* Live Photo Upload */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Live Photo / Selfie <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                            type="file"
+                            accept=".jpg,.jpeg,.png"
+                            onChange={(e) => {
+                                const file = e.target.files[0];
+                                if (file) {
+                                    // Validate file size (max 5MB)
+                                    if (file.size > 5 * 1024 * 1024) {
+                                        alert("Live photo file size must be less than 5MB");
+                                        e.target.value = '';
+                                        return;
+                                    }
+                                    setFormData(prev => ({ ...prev, livePhoto: file }));
+                                }
+                            }}
+                            required
+                            className="w-full p-3 border rounded-lg file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[#273e8e] file:text-white hover:file:bg-[#1a2b6b]"
+                        />
+                        {formData.livePhoto && (
+                            <p className="text-sm text-green-600 mt-1">
+                                ✓ {formData.livePhoto.name}
+                            </p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-1">
+                            Accepted formats: JPG, PNG (Max 5MB)
+                        </p>
+                    </div>
+                </div>
+                )}
+
                 <button
                     onClick={(e) => {
                         e.preventDefault();
@@ -2920,12 +3215,21 @@ const BNPLFlow = () => {
                             alert("Please select a credit check method");
                             return;
                         }
+                        // Only validate files if manual method is selected or Mono has failed
+                        if ((formData.creditCheckMethod === 'manual' || monoFailed) && !formData.bankStatement) {
+                            alert("Please upload your bank statement (Last 6 Months)");
+                            return;
+                        }
+                        if ((formData.creditCheckMethod === 'manual' || monoFailed) && !formData.livePhoto) {
+                            alert("Please upload your live photo / selfie");
+                            return;
+                        }
                         // Show credit check fee popup
                         setShowCreditCheckFeeModal(true);
                     }}
-                    disabled={loading || !formData.creditCheckMethod}
+                    disabled={loading || !formData.creditCheckMethod || ((formData.creditCheckMethod === 'manual' || monoFailed) && (!formData.bankStatement || !formData.livePhoto))}
                     className={`w-full py-4 rounded-xl font-bold transition-colors ${
-                        loading || !formData.creditCheckMethod
+                        loading || !formData.creditCheckMethod || ((formData.creditCheckMethod === 'manual' || monoFailed) && (!formData.bankStatement || !formData.livePhoto))
                             ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                             : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
                     }`}
@@ -2935,51 +3239,88 @@ const BNPLFlow = () => {
                 
                 {/* Credit Check Fee Modal */}
                 {showCreditCheckFeeModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowCreditCheckFeeModal(false)}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => {
+                    setShowCreditCheckFeeModal(false);
+                    setAcceptedTerms(false); // Reset terms acceptance when closing
+                }}>
                     <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-4">
+                        <div className="flex justify-between items-center mb-6">
                             <h3 className="text-2xl font-bold text-[#273e8e]">Credit Check Fee</h3>
                             <button
-                                onClick={() => setShowCreditCheckFeeModal(false)}
+                                onClick={() => {
+                                    setShowCreditCheckFeeModal(false);
+                                    setAcceptedTerms(false); // Reset terms acceptance when closing
+                                }}
                                 className="text-gray-400 hover:text-gray-600 transition-colors"
                             >
                                 <X size={24} />
                             </button>
                         </div>
-                        <div className="space-y-4 mb-6">
-                            <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
-                                <p className="text-sm text-gray-600 mb-2">Loan Amount:</p>
-                                <p className="text-xl font-bold text-[#273e8e]">
-                                    ₦{Number(formData.loanDetails?.principal || 0).toLocaleString()}
+                        <div className="space-y-6 mb-6">
+                            {/* User Email Display */}
+                            {(() => {
+                                const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+                                // Get email from various possible locations in user_info
+                                const userEmail = userInfo.email || userInfo.user?.email || userInfo.data?.email || '';
+                                return userEmail ? (
+                                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                        <p className="text-xs text-gray-500 mb-1">Payment will be processed for:</p>
+                                        <p className="text-sm font-semibold text-gray-800">{userEmail}</p>
+                                    </div>
+                                ) : null;
+                            })()}
+                            
+                            {/* Credit Check Fee Display */}
+                            <div className="text-center">
+                                <p className="text-sm text-gray-600 mb-2">Credit Check Fee</p>
+                                <p className="text-3xl font-bold text-[#273e8e]">
+                                    ₦1,000
                                 </p>
                             </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-700">Credit Check Fee (5%):</span>
-                                <span className="text-xl font-bold text-[#273e8e]">
-                                    ₦{Number((formData.loanDetails?.principal || 0) * 0.05).toLocaleString()}
-                                </span>
-                            </div>
-                            <div className="border-t pt-3">
-                                <p className="text-sm text-gray-600">
-                                    This fee covers the cost of processing your credit check. Payment is required before your application can be submitted.
-                                </p>
+                            
+                            {/* Terms Acceptance Checkbox */}
+                            <div className="flex items-start gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setAcceptedTerms(!acceptedTerms)}
+                                    className={`mt-1 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                                        acceptedTerms 
+                                            ? 'bg-[#273e8e] border-[#273e8e]' 
+                                            : 'border-gray-300 hover:border-[#273e8e]'
+                                    }`}
+                                >
+                                    {acceptedTerms && <CheckCircle size={16} className="text-white" />}
+                                </button>
+                                <label 
+                                    onClick={() => setAcceptedTerms(!acceptedTerms)}
+                                    className="text-sm text-gray-700 cursor-pointer flex-1"
+                                >
+                                    I accept the terms and conditions for the credit check fee payment.
+                                </label>
                             </div>
                         </div>
                         <div className="flex gap-4">
                             <button
-                                onClick={() => setShowCreditCheckFeeModal(false)}
+                                onClick={() => {
+                                    setShowCreditCheckFeeModal(false);
+                                    setAcceptedTerms(false); // Reset terms acceptance when closing
+                                }}
                                 className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-50 transition-colors"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={async () => {
+                                    if (!acceptedTerms) {
+                                        alert("Please accept the terms and conditions to proceed.");
+                                        return;
+                                    }
                                     setShowCreditCheckFeeModal(false);
                                     await handleCreditCheckPayment();
                                 }}
-                                disabled={processingCreditCheckPayment}
-                                className={`flex-1 bg-[#273e8e] text-white py-3 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors ${
-                                    processingCreditCheckPayment ? 'opacity-50 cursor-not-allowed' : ''
+                                disabled={processingCreditCheckPayment || !acceptedTerms}
+                                className={`flex-1 bg-[#273e8e] text-white py-3 px-6 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors ${
+                                    processingCreditCheckPayment || !acceptedTerms ? 'opacity-50 cursor-not-allowed' : ''
                                 }`}
                             >
                                 {processingCreditCheckPayment ? 'Processing...' : 'Proceed to Payment'}
@@ -3005,10 +3346,17 @@ const BNPLFlow = () => {
                 return;
             }
 
+            // Validate required fields
+            if (!formData.customerType || formData.customerType.trim() === '') {
+                alert("Customer type is required. Please go back and select a customer type.");
+                setLoading(false);
+                return;
+            }
+
             // Step 1: Create loan calculation first (required by backend)
-            // NEW: Calculate total from all selected items
-            const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + b.price, 0);
-            const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + p.price, 0);
+            // NEW: Calculate total from all selected items (accounting for quantity)
+            const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+            const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
             const itemsSubtotal = bundlesTotal + productsTotal;
             const basePrice = itemsSubtotal > 0 ? itemsSubtotal : formData.selectedProductPrice;
             
@@ -3043,9 +3391,10 @@ const BNPLFlow = () => {
             // Step 2: Submit BNPL application
             const formDataToSend = new FormData();
 
-            // Basic Fields
-            formDataToSend.append('customer_type', formData.customerType);
-            formDataToSend.append('product_category', formData.productCategory);
+            // Basic Fields - Ensure customer_type is not empty
+            const customerType = formData.customerType || 'residential'; // Default to residential if empty
+            formDataToSend.append('customer_type', customerType);
+            formDataToSend.append('product_category', formData.productCategory || 'full-kit');
             formDataToSend.append('loan_amount', formData.loanDetails?.totalRepayment || formData.selectedProductPrice);
             formDataToSend.append('repayment_duration', formData.loanDetails?.tenor || 6);
             formDataToSend.append('credit_check_method', formData.creditCheckMethod || 'auto');
@@ -3102,9 +3451,17 @@ const BNPLFlow = () => {
                 compulsoryAddOns.forEach(id => formDataToSend.append('add_on_ids[]', id));
             }
 
-            // Files
-            if (formData.bankStatement) formDataToSend.append('bank_statement', formData.bankStatement);
-            if (formData.livePhoto) formDataToSend.append('live_photo', formData.livePhoto);
+            // Files - Only required for manual credit check or when Mono has failed
+            if (formData.creditCheckMethod === 'manual' || monoFailed) {
+                if (!formData.bankStatement || !formData.livePhoto) {
+                    alert("Bank statement and live photo are required for manual credit check. Please upload both documents.");
+                    setLoading(false);
+                    return;
+                }
+                formDataToSend.append('bank_statement', formData.bankStatement);
+                formDataToSend.append('live_photo', formData.livePhoto);
+            }
+            // For automatic (Mono) credit check, files are not required as Mono handles it automatically
 
             const response = await axios.post(API.BNPL_APPLY, formDataToSend, {
                 headers: {
@@ -3115,8 +3472,16 @@ const BNPLFlow = () => {
 
             if (response.data.status === 'success') {
                 setApplicationId(response.data.data.loan_application.id);
-                setApplicationStatus(response.data.data.loan_application.status);
-                setStep(12); // Go to Status/Pending screen
+                const appStatus = response.data.data.loan_application.status;
+                setApplicationStatus(appStatus);
+                
+                // If application is already approved, go directly to invoice (step 21)
+                // Otherwise, go to pending status (step 12)
+                if (appStatus === 'approved') {
+                    setStep(21); // Go to invoice/payment screen
+                } else {
+                    setStep(12); // Go to Status/Pending screen
+                }
             }
         } catch (error) {
             console.error("Application Submit Error:", error);
@@ -3322,29 +3687,12 @@ const BNPLFlow = () => {
                 <p className="text-sm text-gray-500 mb-8">Status: <span className="font-bold text-[#273e8e]">{applicationStatus}</span></p>
                 <div className="flex gap-4 justify-center">
                     <button 
-                        onClick={async () => {
-                            try {
-                                const token = localStorage.getItem('access_token');
-                                const response = await axios.get(API.BNPL_STATUS(applicationId), {
-                                    headers: { Authorization: `Bearer ${token}` }
-                                });
-                                
-                                if (response.data.status === 'success' && response.data.data?.loan_application) {
-                                    const status = response.data.data.loan_application.status;
-                                    setApplicationStatus(status);
-                                    
-                                    if (status === 'approved') {
-                                        setStep(13);
-                                    } else if (status === 'rejected') {
-                                        setStep(14);
-                                    } else if (status === 'counter_offer') {
-                                        setStep(15);
-                                    } else {
-                                        alert(`Current status: ${status}. Please check again later.`);
-                                    }
-                                }
-                            } catch (error) {
-                                alert("Failed to check status. Please try again later.");
+                        onClick={() => {
+                            // Navigate to BNPL loans page to view loan details with app- prefix
+                            if (applicationId) {
+                                navigate(`/bnpl-loans/app-${applicationId}`);
+                            } else {
+                                navigate('/bnpl-loans');
                             }
                         }} 
                         className="bg-[#273e8e] text-white px-6 py-2 rounded-lg font-bold hover:bg-[#1a2b6b] transition-colors"

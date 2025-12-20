@@ -541,12 +541,12 @@ const Home = () => {
                   !prodError &&
                   !bundlesErr &&
                   featuredItems.length > 0 ? (
-                <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2">
+                <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2 items-stretch">
                   {featuredItems.map((item) => (
                     <Link
                       to={item.link}
                       key={`${item.type}-${item.id}`}
-                      className="w-full max-[380px]:w-[160px] min-sm:w-[190px]" // keep card height consistent
+                      className="w-full max-[380px]:w-[160px] min-sm:w-[190px] h-full flex" // keep card height consistent
                     >
                       {item.type === 'bundle' ? (
                         <SolarBundleComponent

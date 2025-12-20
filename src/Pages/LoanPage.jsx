@@ -546,7 +546,7 @@ const LoanPage = () => {
             <div className="relative z-10 w-[92%] max-w-md">
               <Terms
                 link="/linkAccount"
-                pnClose={() => setShowLoanTerms(true)}
+                onClose={() => setShowLoanTerms(true)}
               />
             </div>
           </div>

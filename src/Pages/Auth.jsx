@@ -181,7 +181,7 @@ const Auth = () => {
             <form className="space-y-6" onSubmit={handleSubmit}>
               <div className="text-center">
                 <img
-                  src={assets.logo}
+                  src={assets.fullLogo}
                   alt="Logo"
                   className="w-[200px] mx-auto mb-8"
                   loading="lazy"

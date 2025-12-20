@@ -72,7 +72,10 @@ const Terms = ({ link, onClose, showFullWidth }) => {
       {/* Header: centered title + back arrow */}
       <div className="relative flex items-center justify-center py-3 px-4 border-b">
         <button
-          onClick={() => setHide(false)}
+          onClick={() => {
+            setHide(false);
+            if (onClose) onClose();
+          }}
           className="absolute left-4 h-8 w-8 rounded-full flex items-center justify-center"
           aria-label="Back"
         >
@@ -183,8 +186,10 @@ const Terms = ({ link, onClose, showFullWidth }) => {
             <X
               size={28}
               className="absolute right-4 top-4 cursor-pointer hover:text-gray-600 transition-colors"
-              onClick={() => setHide(false)}
-              onClose={onClose}
+              onClick={() => {
+                setHide(false);
+                if (onClose) onClose();
+              }}
               aria-label="Close terms"
             />
             <hr className="my-4" />

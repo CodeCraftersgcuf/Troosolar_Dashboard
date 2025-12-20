@@ -159,58 +159,11 @@ const ProductBundle = () => {
     };
   }, [id]);
 
-  const handleBuyNow = async () => {
+  const handleBuyNowPayLater = async () => {
     const token = localStorage.getItem("access_token");
     
-    // If customer came from a flow (buy_now or bnpl), continue in that flow
-    if (flowType === "buy_now" || flowType === "bnpl") {
-      try {
-        // Add bundle to cart
-        await axios.post(
-          API.CART,
-          { itemable_type: "bundle", itemable_id: Number(id), quantity: 1 },
-          {
-            headers: {
-              Accept: "application/json",
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-          }
-        );
-        
-        // Navigate to the appropriate flow with bundle context
-        if (flowType === "buy_now") {
-          const returnUrl = cartToken 
-            ? `/buy-now?token=${cartToken}&type=buy_now&bundleId=${id}`
-            : `/buy-now?bundleId=${id}`;
-          navigate(returnUrl);
-        } else if (flowType === "bnpl") {
-          const returnUrl = cartToken
-            ? `/bnpl?token=${cartToken}&type=bnpl&bundleId=${id}`
-            : `/bnpl?bundleId=${id}`;
-          navigate(returnUrl);
-        }
-      } catch (e) {
-        if (e?.response?.status === 409) {
-          // Item already in cart, proceed to flow
-          if (flowType === "buy_now") {
-            navigate(cartToken ? `/buy-now?token=${cartToken}&type=buy_now&bundleId=${id}` : `/buy-now?bundleId=${id}`);
-          } else if (flowType === "bnpl") {
-            navigate(cartToken ? `/bnpl?token=${cartToken}&type=bnpl&bundleId=${id}` : `/bnpl?bundleId=${id}`);
-          }
-          return;
-        }
-        if (e?.response?.status === 401) {
-          return alert("Please log in to continue.");
-        }
-        alert(
-          e?.response?.data?.message || e?.message || "Failed to add to cart."
-        );
-      }
-      return;
-    }
-
-    // Default behavior: Add to cart and show flow selection or go to cart
     try {
+      // Add bundle to cart
       await axios.post(
         API.CART,
         { itemable_type: "bundle", itemable_id: Number(id), quantity: 1 },
@@ -221,12 +174,63 @@ const ProductBundle = () => {
           },
         }
       );
-      // Navigate to flow selection or cart
-      navigate("/cart");
+      
+      // Navigate to BNPL flow, continuing from after bundle selection (step 6.5 - Order Summary)
+      const returnUrl = cartToken
+        ? `/bnpl?token=${cartToken}&bundleId=${id}&step=6.5&fromBundle=true`
+        : `/bnpl?bundleId=${id}&step=6.5&fromBundle=true`;
+      navigate(returnUrl);
     } catch (e) {
-      if (e?.response?.status === 409) return navigate("/cart");
-      if (e?.response?.status === 401)
-        return alert("Please log in to add items to your cart.");
+      if (e?.response?.status === 409) {
+        // Item already in cart, proceed to BNPL flow
+        const returnUrl = cartToken
+          ? `/bnpl?token=${cartToken}&bundleId=${id}&step=6.5&fromBundle=true`
+          : `/bnpl?bundleId=${id}&step=6.5&fromBundle=true`;
+        navigate(returnUrl);
+        return;
+      }
+      if (e?.response?.status === 401) {
+        return alert("Please log in to continue.");
+      }
+      alert(
+        e?.response?.data?.message || e?.message || "Failed to add to cart."
+      );
+    }
+  };
+
+  const handleBuyNow = async () => {
+    const token = localStorage.getItem("access_token");
+    
+    try {
+      // Add bundle to cart
+      await axios.post(
+        API.CART,
+        { itemable_type: "bundle", itemable_id: Number(id), quantity: 1 },
+        {
+          headers: {
+            Accept: "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        }
+      );
+      
+      // Navigate to Buy Now flow, continuing from after bundle selection (step 7 - Order Summary)
+      const returnUrl = cartToken
+        ? `/buy-now?token=${cartToken}&bundleId=${id}&step=7&fromBundle=true`
+        : `/buy-now?bundleId=${id}&step=7&fromBundle=true`;
+      navigate(returnUrl);
+    } catch (e) {
+      if (e?.response?.status === 409) {
+        // Item already in cart, proceed to Buy Now flow
+        const returnUrl = cartToken
+          ? `/buy-now?token=${cartToken}&bundleId=${id}&step=7&fromBundle=true`
+          : `/buy-now?bundleId=${id}&step=7&fromBundle=true`;
+        navigate(returnUrl);
+        return;
+      }
+      if (e?.response?.status === 401) {
+        return alert("Please log in to continue.");
+      }
       alert(
         e?.response?.data?.message || e?.message || "Failed to add to cart."
       );
@@ -234,8 +238,8 @@ const ProductBundle = () => {
   };
 
   const handleEditBundle = () => {
-    // Navigate back to tools page (load calculator) so customers can edit their load calculation
-    navigate("/tools");
+    // Navigate to solar builder with bundle ID so customers can edit the products in the bundle
+    navigate(`/solar-builder?bundleId=${id}&editMode=true`);
   };
 
   if (loading) {
@@ -278,7 +282,7 @@ const ProductBundle = () => {
                 Recommended Bundle
               </h1>
               <Link
-                to="/productBundle"
+                to="/solar-bundles"
                 className="text-blue-500 underline mb-3 block"
               >
                 Back
@@ -434,19 +438,27 @@ const ProductBundle = () => {
                 </div>
 
                 {/* Actions */}
-                <div className="flex gap-4 mt-6 px-2">
+                <div className="flex flex-col gap-3 mt-6 px-2">
                   <button
                     onClick={handleEditBundle}
-                    className="flex-1 text-sm border border-[#273E8E] text-[#273E8E] py-4 rounded-full hover:bg-[#273E8E] hover:text-white transition-colors"
+                    className="w-full text-sm border border-[#273E8E] text-[#273E8E] py-4 rounded-full hover:bg-[#273E8E] hover:text-white transition-colors"
                   >
                     Edit Bundle
                   </button>
-                  <button
-                    onClick={handleBuyNow}
-                    className="flex-1 text-sm bg-[#273E8E] text-white py-4 rounded-full hover:bg-[#1a2b6b] transition-colors"
-                  >
-                    Buy Now
-                  </button>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleBuyNowPayLater}
+                      className="flex-1 text-sm bg-[#E8A91D] text-white py-4 rounded-full hover:bg-[#d4991a] transition-colors"
+                    >
+                      Buy Now Pay Later
+                    </button>
+                    <button
+                      onClick={handleBuyNow}
+                      className="flex-1 text-sm bg-[#273E8E] text-white py-4 rounded-full hover:bg-[#1a2b6b] transition-colors"
+                    >
+                      Buy Now
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -686,19 +698,27 @@ const ProductBundle = () => {
                 </div>
 
                 {/* Actions */}
-                <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="mt-4 flex flex-col gap-3">
                   <button
                     onClick={handleEditBundle}
-                    className="h-11 rounded-full border border-[#273E8E] text-[#273E8E] text-[11px] lg:text-[14px] hover:bg-[#273E8E] hover:text-white transition-colors"
+                    className="w-full h-11 rounded-full border border-[#273E8E] text-[#273E8E] text-[11px] lg:text-[14px] hover:bg-[#273E8E] hover:text-white transition-colors"
                   >
                     Edit Bundle
                   </button>
-                  <button
-                    onClick={handleBuyNow}
-                    className="h-11 rounded-full bg-[#273E8E] text-white text-[11px] lg:text-[14px] hover:bg-[#1a2b6b] transition-colors"
-                  >
-                    Buy Now
-                  </button>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={handleBuyNowPayLater}
+                      className="h-11 rounded-full bg-[#E8A91D] text-white text-[11px] lg:text-[14px] hover:bg-[#d4991a] transition-colors"
+                    >
+                      Buy Now Pay Later
+                    </button>
+                    <button
+                      onClick={handleBuyNow}
+                      className="h-11 rounded-full bg-[#273E8E] text-white text-[11px] lg:text-[14px] hover:bg-[#1a2b6b] transition-colors"
+                    >
+                      Buy Now
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

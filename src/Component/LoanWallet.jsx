@@ -121,7 +121,7 @@ const LoanWallet = () => {
 
       {/* CTA Button */}
       <button
-        onClick={() => navigate("/loan")}
+        onClick={() => navigate(path ? "/loan" : "/bnpl")}
         className="bg-white text-[#000] text-sm rounded-full py-3 mt-2 w-full cursor-pointer text-[12px] hover:bg-gray-100 transition-colors"
       >
         {path ? "Transfer to Wallet" : "Apply for Loan"}

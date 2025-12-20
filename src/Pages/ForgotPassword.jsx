@@ -188,7 +188,7 @@ const ForgotPassword = () => {
 
             <div className="text-center mb-6">
               <img
-                src={assets.logo}
+                src={assets.fullLogo}
                 alt="Logo"
                 className="w-[200px] mx-auto mb-8"
                 loading="lazy"

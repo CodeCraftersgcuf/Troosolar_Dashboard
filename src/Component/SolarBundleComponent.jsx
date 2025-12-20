@@ -32,7 +32,7 @@ const SolarBundleComponent = ({
   };
   return (
     <div
-      className="w-full sm:w-[243px] bg-white rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col"
+      className="w-full h-full sm:w-[243px] bg-white rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col min-h-[320px] sm:min-h-0"
       style={{ border: `2px solid ${borderColor || '#273e8e'}` }}
     >
       {/* Image: Fixed height container to prevent layout shift - matches Product component */}

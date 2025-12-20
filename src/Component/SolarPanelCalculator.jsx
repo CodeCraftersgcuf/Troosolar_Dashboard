@@ -1,9 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Minus, Plus, Search } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 const SolarPanelCalculator = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const fromBundles = searchParams.get("fromBundles") === "true";
+  const qParam = searchParams.get("q");
   
   // Sample appliance data matching the photo
   const applianceList = [
@@ -33,26 +37,71 @@ const SolarPanelCalculator = () => {
     </>
   );
 
+  // Restore saved data from localStorage if coming from bundles
+  const getSavedData = () => {
+    try {
+      const saved = localStorage.getItem("solarCalculatorData");
+      if (saved && fromBundles) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.warn("Failed to restore calculator data:", e);
+    }
+    return null;
+  };
+
+  const savedData = getSavedData();
+
   // State for appliances with quantity
   // NOTE: default hours = 1 so calculations aren't zeroed out
-  const [appliances, setAppliances] = useState(
-    applianceList.map((appliance) => ({ ...appliance, quantity: 2, hours: 1 }))
-  );
+  const [appliances, setAppliances] = useState(() => {
+    if (savedData?.appliances) {
+      return savedData.appliances;
+    }
+    return applianceList.map((appliance) => ({ ...appliance, quantity: 2, hours: 1 }));
+  });
   const [searchTerm, setSearchTerm] = useState("");
 
   // Show/Hide results card after clicking "Calculate Savings"
-  const [showCalc, setShowCalc] = useState(false);
+  const [showCalc, setShowCalc] = useState(() => {
+    if (savedData?.showCalc) {
+      return savedData.showCalc;
+    }
+    return false;
+  });
   
   // Editable calculation values
-  const [calcValues, setCalcValues] = useState({
-    inverterCapacity: 200,
-    inverterQuantity: 3,
-    batteryCapacity: 40,
-    batteryCapacityVoltage: 24,
-    batteryQuantity: 1,
-    solarPanelCapacity: 200,
-    solarPanelQuantity: 2,
+  const [calcValues, setCalcValues] = useState(() => {
+    if (savedData?.calcValues) {
+      return savedData.calcValues;
+    }
+    return {
+      inverterCapacity: 200,
+      inverterQuantity: 3,
+      batteryCapacity: 40,
+      batteryCapacityVoltage: 24,
+      batteryQuantity: 1,
+      solarPanelCapacity: 200,
+      solarPanelQuantity: 2,
+    };
   });
+
+  // Restore showCalc state when coming from bundles
+  useEffect(() => {
+    if (fromBundles) {
+      try {
+        const saved = localStorage.getItem("solarCalculatorData");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.showCalc) {
+            setShowCalc(true);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to restore showCalc state:", e);
+      }
+    }
+  }, [fromBundles]);
 
   // ---- Assumptions for solar sizing (kept internal; tweak as needed) ----
   const panelWatt = 200; // W per panel
@@ -149,8 +198,35 @@ const SolarPanelCalculator = () => {
   };
 
   // Proceed -> /solar-bundles?q=<peakLoadW>
+  // Save calculator data before navigating
   const handleProceed = () => {
-    const q = Math.max(0, Math.round(peakLoadW));
+    // Calculate values before saving
+    const currentPeakLoadW = appliances.reduce(
+      (sum, a) => sum + a.power * a.quantity,
+      0
+    );
+    const currentDailyWh = appliances.reduce(
+      (sum, a) => sum + a.power * a.quantity * (a.hours || 0),
+      0
+    );
+    
+    const q = Math.max(0, Math.round(currentPeakLoadW));
+    
+    // Save current state to localStorage
+    const dataToSave = {
+      appliances,
+      calcValues,
+      showCalc,
+      peakLoadW: currentPeakLoadW,
+      dailyWh: currentDailyWh,
+    };
+    
+    try {
+      localStorage.setItem("solarCalculatorData", JSON.stringify(dataToSave));
+    } catch (e) {
+      console.warn("Failed to save calculator data:", e);
+    }
+    
     navigate(`/solar-bundles?q=${q}`);
   };
 
@@ -272,14 +348,16 @@ const SolarPanelCalculator = () => {
                 
                 <div className="flex justify-between items-center">
                   <span className={labelStyle}>Inverter capacity</span>
-                  <input
-                    type="number"
-                    value={calcValues.inverterCapacity}
-                    onChange={(e) => setCalcValues({...calcValues, inverterCapacity: Number(e.target.value) || 0})}
-                    className="w-24 px-2 py-1 text-center border rounded bg-white outline-none focus:border-[#273e8e] focus:ring-1 focus:ring-[#273e8e]"
-                    min="0"
-                  />
-                  <span className="text-xs text-gray-500">w</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={calcValues.inverterCapacity}
+                      onChange={(e) => setCalcValues({...calcValues, inverterCapacity: Number(e.target.value) || 0})}
+                      className="w-24 px-2 py-1 text-center border rounded bg-white outline-none focus:border-[#273e8e] focus:ring-1 focus:ring-[#273e8e]"
+                      min="0"
+                    />
+                    <span className="text-xs text-gray-500">w</span>
+                  </div>
                 </div>
                 <hr className="text-gray-400" />
                 

@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import SideBar from "../Component/SideBar";
 import TopNavbar from "../Component/TopNavbar";
 import { assets } from "../assets/data";
@@ -60,9 +61,31 @@ const Navbar = ({ activeTool, setActiveTool }) => {
 };
 
 const Tools = () => {
-  const [activeTool, setActiveTool] = useState("inverter"); // Default tool
-  const [mobileView, setMobileView] = useState("tabs"); // 'tabs' or 'tool'
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const fromBundles = searchParams.get("fromBundles") === "true";
+  const solarPanelParam = searchParams.get("solarPanel") === "true";
+  const qParam = searchParams.get("q");
+  
+  // Set default tool based on URL params
+  const getInitialTool = () => {
+    if (solarPanelParam || fromBundles) {
+      return "solarPanel";
+    }
+    return "inverter";
+  };
+
+  const [activeTool, setActiveTool] = useState(getInitialTool()); // Default tool or from URL
+  const [mobileView, setMobileView] = useState(solarPanelParam || fromBundles ? "tool" : "tabs"); // 'tabs' or 'tool'
   const selectedTool = toolsData.find((tool) => tool.id === activeTool);
+
+  // Update activeTool when URL params change
+  useEffect(() => {
+    if (solarPanelParam || fromBundles) {
+      setActiveTool("solarPanel");
+      setMobileView("tool");
+    }
+  }, [solarPanelParam, fromBundles]);
 
   const handleMobileToolSelect = (toolId) => {
     setActiveTool(toolId);
