@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader, CheckCircle2, XCircle, AlertCircle, CreditCard } from 'lucide-react';
+import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader, CheckCircle2, XCircle, AlertCircle, CreditCard, Minus, Plus } from 'lucide-react';
 import axios from 'axios';
 import API, { BASE_URL } from '../../config/api.config';
 
@@ -78,6 +78,7 @@ const BuyNowFlow = () => {
         selectedProduct: null,
         selectedBundles: [], // Array of selected bundles [{id, bundle, price}, ...]
         selectedProducts: [], // Array of selected products [{id, product, price}, ...]
+        singleItemQuantity: 1, // Quantity for single item (fallback case)
         installerChoice: '', // 'troosolar', 'own'
         includeInsurance: false,
         address: '',
@@ -153,19 +154,21 @@ const BuyNowFlow = () => {
                             products.push({
                                 id: item.itemable_id,
                                 product: item.itemable,
-                                price: Number(item.unit_price || item.itemable.discount_price || item.itemable.price || 0)
+                                price: Number(item.unit_price || item.itemable.discount_price || item.itemable.price || 0),
+                                quantity: Number(item.quantity || 1)
                             });
                         } else if (item.itemable_type === 'App\\Models\\Bundle' && item.itemable) {
                             bundles.push({
                                 id: item.itemable_id,
                                 bundle: item.itemable,
-                                price: Number(item.unit_price || item.itemable.discount_price || item.itemable.total_price || 0)
+                                price: Number(item.unit_price || item.itemable.discount_price || item.itemable.total_price || 0),
+                                quantity: Number(item.quantity || 1)
                             });
                         }
                     });
                     
                     if (products.length > 0 || bundles.length > 0) {
-                        const totalPrice = [...products, ...bundles].reduce((sum, item) => sum + item.price, 0);
+                        const totalPrice = [...products, ...bundles].reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
                         setFormData(prev => ({
                             ...prev,
                             selectedProducts: products,
@@ -773,7 +776,8 @@ const BuyNowFlow = () => {
             ...prev,
             selectedBundleId: bundle.id,
             selectedBundle: bundle,
-            selectedProductPrice: price
+            selectedProductPrice: price, // Store unit price
+            singleItemQuantity: 1 // Reset quantity to 1 when selecting new bundle
         }));
         setStep(7); // Go to Order Summary (NEW STEP)
     };
@@ -793,13 +797,14 @@ const BuyNowFlow = () => {
                 updatedProducts = [...prev.selectedProducts, {
                     id: product.id,
                     product: product,
-                    price: price
+                    price: price,
+                    quantity: 1
                 }];
             }
             
-            // Calculate total price from all selected bundles and products
-            const bundlesTotal = prev.selectedBundles.reduce((sum, b) => sum + b.price, 0);
-            const productsTotal = updatedProducts.reduce((sum, p) => sum + p.price, 0);
+            // Calculate total price from all selected bundles and products (accounting for quantity)
+            const bundlesTotal = prev.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+            const productsTotal = updatedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
             const totalPrice = bundlesTotal + productsTotal;
             
             return {
@@ -812,6 +817,50 @@ const BuyNowFlow = () => {
             };
         });
         // Don't auto-navigate - let user select multiple items
+    };
+
+    // Update bundle quantity
+    const updateBundleQuantity = (bundleId, newQuantity) => {
+        if (newQuantity < 1) return; // Don't allow quantity less than 1
+        
+        setFormData(prev => {
+            const updatedBundles = prev.selectedBundles.map(b => 
+                b.id === bundleId ? { ...b, quantity: newQuantity } : b
+            );
+            
+            // Calculate total price from all selected bundles and products (accounting for quantity)
+            const bundlesTotal = updatedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+            const productsTotal = prev.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
+            const totalPrice = bundlesTotal + productsTotal;
+            
+            return {
+                ...prev,
+                selectedBundles: updatedBundles,
+                selectedProductPrice: totalPrice
+            };
+        });
+    };
+
+    // Update product quantity
+    const updateProductQuantity = (productId, newQuantity) => {
+        if (newQuantity < 1) return; // Don't allow quantity less than 1
+        
+        setFormData(prev => {
+            const updatedProducts = prev.selectedProducts.map(p => 
+                p.id === productId ? { ...p, quantity: newQuantity } : p
+            );
+            
+            // Calculate total price from all selected bundles and products (accounting for quantity)
+            const bundlesTotal = prev.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+            const productsTotal = updatedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
+            const totalPrice = bundlesTotal + productsTotal;
+            
+            return {
+                ...prev,
+                selectedProducts: updatedProducts,
+                selectedProductPrice: totalPrice
+            };
+        });
     };
 
     const handleCheckoutSubmit = async () => {
@@ -1665,7 +1714,7 @@ const BuyNowFlow = () => {
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <FileText size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Request Professional Audit</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Request Professional Audit (Paid)</h3>
                 </button>
             </div>
         </div>
@@ -1892,7 +1941,7 @@ const BuyNowFlow = () => {
                     </button>
 
                     <button
-                        onClick={() => setFormData({ ...formData, installerChoice: 'own' })}
+                        onClick={() => setFormData({ ...formData, installerChoice: 'own', includeInsurance: false })}
                         className={`p-6 rounded-xl border-2 text-left transition-all ${formData.installerChoice === 'own'
                             ? 'border-[#273e8e] bg-blue-50'
                             : 'border-gray-200 hover:border-blue-200'
@@ -1911,20 +1960,36 @@ const BuyNowFlow = () => {
             <div className="mb-8">
                 <h3 className="text-lg font-bold mb-4 text-gray-800">Additional Services</h3>
                 <div className="space-y-3">
-                    {/* Insurance Option (always show) */}
-                    <label className={`flex items-start p-4 rounded-xl border-2 cursor-pointer transition-all ${formData.includeInsurance ? 'border-[#273e8e] bg-blue-50' : 'border-gray-200'
-                        }`}>
+                    {/* Insurance Option - only available for TrooSolar installers */}
+                    <label className={`flex items-start p-4 rounded-xl border-2 transition-all ${
+                        formData.installerChoice === 'own' 
+                            ? 'border-gray-200 bg-gray-100 cursor-not-allowed opacity-60' 
+                            : formData.includeInsurance 
+                                ? 'border-[#273e8e] bg-blue-50 cursor-pointer' 
+                                : 'border-gray-200 cursor-pointer'
+                    }`}>
                         <input
                             type="checkbox"
                             className="mt-1 h-5 w-5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded"
                             checked={formData.includeInsurance}
+                            disabled={formData.installerChoice === 'own'}
                             onChange={(e) => setFormData({ ...formData, includeInsurance: e.target.checked })}
                         />
                         <div className="ml-3">
-                            <span className="font-bold text-gray-800 flex items-center">
-                                <Shield size={18} className="mr-2 text-[#273e8e]" /> Include Insurance
+                            <span className={`font-bold flex items-center ${
+                                formData.installerChoice === 'own' ? 'text-gray-500' : 'text-gray-800'
+                            }`}>
+                                <Shield size={18} className={`mr-2 ${
+                                    formData.installerChoice === 'own' ? 'text-gray-400' : 'text-[#273e8e]'
+                                }`} /> Include Insurance
                             </span>
-                            <p className="text-sm text-gray-500 mt-1">Protect your investment against damage and theft (0.5% of product price).</p>
+                            <p className={`text-sm mt-1 ${
+                                formData.installerChoice === 'own' ? 'text-gray-400' : 'text-gray-500'
+                            }`}>
+                                {formData.installerChoice === 'own' 
+                                    ? 'Insurance is only available with TrooSolar Certified Installer.' 
+                                    : 'Protect your investment against damage and theft (0.5% of product price).'}
+                            </p>
                         </div>
                     </label>
 
@@ -2140,11 +2205,13 @@ const BuyNowFlow = () => {
         }
 
         // Otherwise, show regular product order summary
-        // Calculate total from all selected items
-        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + b.price, 0);
-        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + p.price, 0);
+        // Calculate total from all selected items (accounting for quantity)
+        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
         const itemsSubtotal = bundlesTotal + productsTotal;
-        const basePrice = itemsSubtotal > 0 ? itemsSubtotal : formData.selectedProductPrice;
+        // For single items, multiply by quantity
+        const singleItemBasePrice = formData.selectedProductPrice * (formData.singleItemQuantity || 1);
+        const basePrice = itemsSubtotal > 0 ? itemsSubtotal : singleItemBasePrice;
 
         // Get product details (for backward compatibility)
         const productName = formData.selectedBundle 
@@ -2181,22 +2248,54 @@ const BuyNowFlow = () => {
                     {formData.selectedBundles.length > 0 && (
                         <div className="space-y-3">
                             <h3 className="font-semibold text-gray-700 mb-2">Selected Bundles ({formData.selectedBundles.length})</h3>
-                            {formData.selectedBundles.map((selectedBundle) => (
-                                <div key={selectedBundle.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
-                                    <div className="flex items-center">
-                                        <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                            <Sun size={20} className="text-gray-600" />
+                            {formData.selectedBundles.map((selectedBundle) => {
+                                const quantity = selectedBundle.quantity || 1;
+                                const unitPrice = selectedBundle.price || 0;
+                                const totalPrice = unitPrice * quantity;
+                                
+                                return (
+                                    <div key={selectedBundle.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
+                                        <div className="flex items-center">
+                                            <div className="bg-gray-100 p-2 rounded-lg mr-4">
+                                                <Sun size={20} className="text-gray-600" />
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-gray-800">
+                                                    {selectedBundle.bundle.title || selectedBundle.bundle.name || `Bundle #${selectedBundle.id}`}
+                                                </p>
+                                                <p className="text-sm text-gray-500">
+                                                    Solar System Bundle
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="font-bold text-gray-800">
-                                                {selectedBundle.bundle.title || selectedBundle.bundle.name || `Bundle #${selectedBundle.id}`}
-                                            </p>
-                                            <p className="text-sm text-gray-500">Solar System Bundle</p>
+                                        <div className="flex items-center gap-4">
+                                            {/* Quantity Controls */}
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => updateBundleQuantity(selectedBundle.id, Math.max(1, quantity - 1))}
+                                                    className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    disabled={quantity <= 1}
+                                                >
+                                                    <Minus size={16} />
+                                                </button>
+                                                <span className="w-8 text-center font-medium">{quantity}</span>
+                                                <button
+                                                    onClick={() => updateBundleQuantity(selectedBundle.id, quantity + 1)}
+                                                    className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors"
+                                                >
+                                                    <Plus size={16} />
+                                                </button>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="font-bold block">₦{Number(totalPrice).toLocaleString()}</span>
+                                                {quantity > 1 && (
+                                                    <span className="text-xs text-gray-500">₦{Number(unitPrice).toLocaleString()} each</span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                    <span className="font-bold">₦{Number(selectedBundle.price || 0).toLocaleString()}</span>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                     
@@ -2204,28 +2303,60 @@ const BuyNowFlow = () => {
                     {formData.selectedProducts.length > 0 && (
                         <div className="space-y-3">
                             <h3 className="font-semibold text-gray-700 mb-2">Selected Products ({formData.selectedProducts.length})</h3>
-                            {formData.selectedProducts.map((selectedProduct) => (
-                                <div key={selectedProduct.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
-                                    <div className="flex items-center">
-                                        <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                            <Battery size={20} className="text-gray-600" />
+                            {formData.selectedProducts.map((selectedProduct) => {
+                                const quantity = selectedProduct.quantity || 1;
+                                const unitPrice = selectedProduct.price || 0;
+                                const totalPrice = unitPrice * quantity;
+                                
+                                return (
+                                    <div key={selectedProduct.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
+                                        <div className="flex items-center">
+                                            <div className="bg-gray-100 p-2 rounded-lg mr-4">
+                                                <Battery size={20} className="text-gray-600" />
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-gray-800">
+                                                    {selectedProduct.product.title || selectedProduct.product.name || `Product #${selectedProduct.id}`}
+                                                </p>
+                                                <p className="text-sm text-gray-500">
+                                                    Individual Component
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="font-bold text-gray-800">
-                                                {selectedProduct.product.title || selectedProduct.product.name || `Product #${selectedProduct.id}`}
-                                            </p>
-                                            <p className="text-sm text-gray-500">Individual Component</p>
+                                        <div className="flex items-center gap-4">
+                                            {/* Quantity Controls */}
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => updateProductQuantity(selectedProduct.id, Math.max(1, quantity - 1))}
+                                                    className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    disabled={quantity <= 1}
+                                                >
+                                                    <Minus size={16} />
+                                                </button>
+                                                <span className="w-8 text-center font-medium">{quantity}</span>
+                                                <button
+                                                    onClick={() => updateProductQuantity(selectedProduct.id, quantity + 1)}
+                                                    className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors"
+                                                >
+                                                    <Plus size={16} />
+                                                </button>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="font-bold block">₦{Number(totalPrice).toLocaleString()}</span>
+                                                {quantity > 1 && (
+                                                    <span className="text-xs text-gray-500">₦{Number(unitPrice).toLocaleString()} each</span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                    <span className="font-bold">₦{Number(selectedProduct.price || 0).toLocaleString()}</span>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                     
                     {/* Fallback for single item (backward compatibility) */}
                     {formData.selectedBundles.length === 0 && formData.selectedProducts.length === 0 && (
-                        <div className="flex justify-between items-center">
+                        <div className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
                             <div className="flex items-center">
                                 <div className="bg-gray-100 p-2 rounded-lg mr-4">
                                     <Sun size={24} className="text-gray-600" />
@@ -2238,10 +2369,43 @@ const BuyNowFlow = () => {
                                             : formData.productCategory === 'inverter-battery'
                                                 ? 'Inverter and battery backup'
                                                 : 'Individual component'}
+                                        {(formData.singleItemQuantity || 1) > 1 && (
+                                            <span className="ml-2 font-semibold">× {formData.singleItemQuantity || 1}</span>
+                                        )}
                                     </p>
                                 </div>
                             </div>
-                            <span className="font-bold">₦{Number(basePrice || 0).toLocaleString()}</span>
+                            <div className="flex items-center gap-4">
+                                {/* Quantity Controls */}
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setFormData(prev => ({
+                                            ...prev,
+                                            singleItemQuantity: Math.max(1, (prev.singleItemQuantity || 1) - 1)
+                                        }))}
+                                        className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        disabled={(formData.singleItemQuantity || 1) <= 1}
+                                    >
+                                        <Minus size={16} />
+                                    </button>
+                                    <span className="w-8 text-center font-medium">{formData.singleItemQuantity || 1}</span>
+                                    <button
+                                        onClick={() => setFormData(prev => ({
+                                            ...prev,
+                                            singleItemQuantity: (prev.singleItemQuantity || 1) + 1
+                                        }))}
+                                        className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors"
+                                    >
+                                        <Plus size={16} />
+                                    </button>
+                                </div>
+                                <div className="text-right">
+                                    <span className="font-bold block">₦{Number((formData.selectedProductPrice || 0) * (formData.singleItemQuantity || 1)).toLocaleString()}</span>
+                                    {(formData.singleItemQuantity || 1) > 1 && (
+                                        <span className="text-xs text-gray-500">₦{Number(formData.selectedProductPrice || 0).toLocaleString()} each</span>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     )}
 
@@ -2255,11 +2419,17 @@ const BuyNowFlow = () => {
                         </div>
                     )}
 
-                    {(formData.productCategory === 'full-kit' || formData.productCategory === 'inverter-battery') && formData.selectedBundles.length === 0 && formData.selectedProducts.length === 0 && (
-                        <div className="text-sm text-gray-600 pl-14 space-y-1">
-                            <p><strong>Appliances:</strong> Standard household appliances</p>
-                            <p><strong>Backup Time:</strong> 8-12 hours (depending on usage)</p>
-                            <p><strong>Quantity:</strong> 1 system</p>
+                    {formData.selectedBundles.length === 0 && formData.selectedProducts.length === 0 && (
+                        <div className="text-sm text-gray-600 pl-14 space-y-1 mt-4">
+                            {(formData.productCategory === 'full-kit' || formData.productCategory === 'inverter-battery') && (
+                                <>
+                                    <p><strong>Appliances:</strong> Standard household appliances</p>
+                                    <p><strong>Backup Time:</strong> 8-12 hours (depending on usage)</p>
+                                </>
+                            )}
+                            <p><strong>Quantity:</strong> {formData.singleItemQuantity || 1} {formData.productCategory === 'full-kit' || formData.productCategory === 'inverter-battery' ? 'system' : 'item'}{(formData.singleItemQuantity || 1) > 1 ? 's' : ''}</p>
+                            <p><strong>Unit Price:</strong> ₦{Number(formData.selectedProductPrice || 0).toLocaleString()}</p>
+                            <p><strong>Total Price:</strong> ₦{Number((formData.selectedProductPrice || 0) * (formData.singleItemQuantity || 1)).toLocaleString()}</p>
                         </div>
                     )}
                 </div>
@@ -2382,11 +2552,11 @@ const BuyNowFlow = () => {
                         <span className="font-bold">₦{Number(invoiceDetails.product_price || formData.selectedProductPrice || 0).toLocaleString()}</span>
                     </div>
 
-                    {(formData.productCategory === 'full-kit' || formData.productCategory === 'inverter-battery') && (
+                    {formData.selectedBundles.length === 0 && formData.selectedProducts.length === 0 && (formData.productCategory === 'full-kit' || formData.productCategory === 'inverter-battery') && (
                         <div className="text-sm text-gray-600 pl-14 space-y-1">
                             <p><strong>Appliances:</strong> Standard household appliances</p>
                             <p><strong>Backup Time:</strong> 8-12 hours (depending on usage)</p>
-                            <p><strong>Quantity:</strong> 1 system</p>
+                            <p><strong>Quantity:</strong> {formData.singleItemQuantity || 1} system{(formData.singleItemQuantity || 1) > 1 ? 's' : ''}</p>
                         </div>
                     )}
                 </div>
@@ -2617,11 +2787,13 @@ const BuyNowFlow = () => {
         }
 
         // Otherwise, show invoice
-        // Calculate totals from selected items
-        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + b.price, 0);
-        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + p.price, 0);
+        // Calculate totals from selected items (accounting for quantity)
+        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
         const itemsSubtotal = bundlesTotal + productsTotal;
-        const basePrice = itemsSubtotal > 0 ? itemsSubtotal : (formData.selectedProductPrice || 0);
+        // For single items, multiply unit price by quantity (selectedProductPrice is the unit price)
+        const singleItemBasePrice = formData.selectedProductPrice * (formData.singleItemQuantity || 1);
+        const basePrice = itemsSubtotal > 0 ? itemsSubtotal : singleItemBasePrice;
         
         // Installation fee: ₦50,000 if TrooSolar installer is selected
         const installationFee = formData.installerChoice === 'troosolar' ? 50000 : 0;
@@ -2663,34 +2835,62 @@ const BuyNowFlow = () => {
                 {/* Selected Bundles */}
                 {formData.selectedBundles.length > 0 && (
                     <div className="space-y-2">
-                        {formData.selectedBundles.map((selectedBundle) => (
-                            <div key={selectedBundle.id} className="flex justify-between items-center">
-                                <div>
-                                    <p className="font-medium text-gray-800">
-                                        {selectedBundle.bundle?.title || selectedBundle.bundle?.name || `Bundle #${selectedBundle.id}`}
-                                    </p>
-                                    <p className="text-sm text-gray-500">Solar System Bundle</p>
+                        {formData.selectedBundles.map((selectedBundle) => {
+                            const quantity = selectedBundle.quantity || 1;
+                            const unitPrice = selectedBundle.price || 0;
+                            const totalPrice = unitPrice * quantity;
+                            
+                            return (
+                                <div key={selectedBundle.id} className="flex justify-between items-center">
+                                    <div>
+                                        <p className="font-medium text-gray-800">
+                                            {selectedBundle.bundle?.title || selectedBundle.bundle?.name || `Bundle #${selectedBundle.id}`}
+                                        </p>
+                                        <p className="text-sm text-gray-500">
+                                            Solar System Bundle
+                                            {quantity > 1 && <span className="ml-2">× {quantity}</span>}
+                                        </p>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="font-bold block">₦{Number(totalPrice).toLocaleString()}</span>
+                                        {quantity > 1 && (
+                                            <span className="text-xs text-gray-500">₦{Number(unitPrice).toLocaleString()} each</span>
+                                        )}
+                                    </div>
                                 </div>
-                                <span className="font-bold">₦{Number(selectedBundle.price || 0).toLocaleString()}</span>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
                 
                 {/* Selected Products */}
                 {formData.selectedProducts.length > 0 && (
                     <div className="space-y-2">
-                        {formData.selectedProducts.map((selectedProduct) => (
-                            <div key={selectedProduct.id} className="flex justify-between items-center">
-                                <div>
-                                    <p className="font-medium text-gray-800">
-                                        {selectedProduct.product?.title || selectedProduct.product?.name || `Product #${selectedProduct.id}`}
-                                    </p>
-                                    <p className="text-sm text-gray-500">Individual Component</p>
+                        {formData.selectedProducts.map((selectedProduct) => {
+                            const quantity = selectedProduct.quantity || 1;
+                            const unitPrice = selectedProduct.price || 0;
+                            const totalPrice = unitPrice * quantity;
+                            
+                            return (
+                                <div key={selectedProduct.id} className="flex justify-between items-center">
+                                    <div>
+                                        <p className="font-medium text-gray-800">
+                                            {selectedProduct.product?.title || selectedProduct.product?.name || `Product #${selectedProduct.id}`}
+                                        </p>
+                                        <p className="text-sm text-gray-500">
+                                            Individual Component
+                                            {quantity > 1 && <span className="ml-2">× {quantity}</span>}
+                                        </p>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="font-bold block">₦{Number(totalPrice).toLocaleString()}</span>
+                                        {quantity > 1 && (
+                                            <span className="text-xs text-gray-500">₦{Number(unitPrice).toLocaleString()} each</span>
+                                        )}
+                                    </div>
                                 </div>
-                                <span className="font-bold">₦{Number(selectedProduct.price || 0).toLocaleString()}</span>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
                 
@@ -2716,9 +2916,15 @@ const BuyNowFlow = () => {
                                     : formData.productCategory === 'inverter-battery'
                                         ? 'Inverter and battery backup'
                                         : 'Individual component'}
+                                {(formData.singleItemQuantity || 1) > 1 && <span className="ml-2">× {formData.singleItemQuantity || 1}</span>}
                             </p>
                         </div>
-                        <span className="font-bold">₦{Number(basePrice || 0).toLocaleString()}</span>
+                        <div className="text-right">
+                            <span className="font-bold block">₦{Number(basePrice || 0).toLocaleString()}</span>
+                            {(formData.singleItemQuantity || 1) > 1 && (
+                                <span className="text-xs text-gray-500">₦{Number(formData.selectedProductPrice).toLocaleString()} each</span>
+                            )}
+                        </div>
                     </div>
                 )}
                 

@@ -1358,7 +1358,7 @@ const BNPLFlow = () => {
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <FileText size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Request Professional Audit</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Request Professional Audit (Paid)</h3>
                 </button>
             </div>
         </div>
@@ -3923,38 +3923,149 @@ const BNPLFlow = () => {
     };
 
     const renderStep19 = () => (
-        <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-            <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Important Agreement</h2>
-            <div className="bg-yellow-50 border border-yellow-200 p-6 rounded-lg mb-6">
-                <AlertCircle className="text-yellow-600 mb-3" size={24} />
-                <p className="text-gray-700 leading-relaxed">
-                    <strong>Your signed Guarantors, along with undated signed cheques will be received on the day of installation of your system as installation won't proceed without receiving them.</strong>
-                </p>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+                {/* Header */}
+                <div className="flex items-center justify-between p-6 border-b border-gray-200 flex-shrink-0">
+                    <h2 className="text-2xl font-bold text-[#273e8e]">Important Agreement</h2>
+                    <button
+                        onClick={() => {
+                            // Don't allow closing without agreement
+                            if (!formData.agreedToTerms) {
+                                alert("Please read and accept the agreement to proceed.");
+                            }
+                        }}
+                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                        disabled={!formData.agreedToTerms}
+                    >
+                        <X size={24} />
+                    </button>
+                </div>
+
+                {/* Scrollable Content */}
+                <div className="flex-1 overflow-y-auto p-6">
+                    <div className="bg-yellow-50 border border-yellow-200 p-6 rounded-lg mb-6">
+                        <div className="flex items-start gap-3">
+                            <AlertCircle className="text-yellow-600 flex-shrink-0 mt-1" size={24} />
+                            <div>
+                                <p className="text-gray-700 leading-relaxed font-semibold mb-3">
+                                    Important Notice Regarding Guarantor Documents
+                                </p>
+                                <p className="text-gray-700 leading-relaxed mb-4">
+                                    Your signed Guarantors, along with undated signed cheques will be received on the day of installation of your system as installation won't proceed without receiving them.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Full Agreement Text */}
+                    <div className="space-y-4 text-gray-700 leading-relaxed">
+                        <div>
+                            <h3 className="font-bold text-gray-800 mb-2">1. Loan Agreement Terms</h3>
+                            <p className="text-sm">
+                                By proceeding with this Buy Now Pay Later (BNPL) application, you agree to the terms and conditions outlined in this agreement. This loan facility is provided to enable you to purchase solar energy systems and related equipment.
+                            </p>
+                        </div>
+
+                        <div>
+                            <h3 className="font-bold text-gray-800 mb-2">2. Guarantor Requirements</h3>
+                            <p className="text-sm">
+                                You are required to provide signed guarantor documents and undated signed cheques before the installation of your solar system can proceed. These documents must be submitted on the day of installation. Failure to provide these documents will result in the cancellation of your installation appointment.
+                            </p>
+                        </div>
+
+                        <div>
+                            <h3 className="font-bold text-gray-800 mb-2">3. Repayment Obligations</h3>
+                            <p className="text-sm">
+                                You agree to make timely repayments as per the repayment schedule provided. Late payments may incur additional charges and affect your credit standing. Defaulting on payments may result in legal action and recovery of the loan amount.
+                            </p>
+                        </div>
+
+                        <div>
+                            <h3 className="font-bold text-gray-800 mb-2">4. Installation Process</h3>
+                            <p className="text-sm">
+                                Installation will only proceed upon receipt of all required documents including signed guarantor forms and undated cheques. The installation date will be scheduled after all documentation is complete and verified.
+                            </p>
+                        </div>
+
+                        <div>
+                            <h3 className="font-bold text-gray-800 mb-2">5. System Ownership</h3>
+                            <p className="text-sm">
+                                The solar system remains the property of the lender until full payment is made. Upon completion of all repayments, ownership will be transferred to you.
+                            </p>
+                        </div>
+
+                        <div>
+                            <h3 className="font-bold text-gray-800 mb-2">6. Default and Consequences</h3>
+                            <p className="text-sm">
+                                In the event of default, the lender reserves the right to recover the outstanding amount through the provided cheques and guarantor obligations. Legal action may be taken to recover the debt.
+                            </p>
+                        </div>
+
+                        <div>
+                            <h3 className="font-bold text-gray-800 mb-2">7. Data and Privacy</h3>
+                            <p className="text-sm">
+                                Your personal and financial information will be used for credit assessment, loan processing, and account management. We are committed to protecting your data in accordance with applicable privacy laws.
+                            </p>
+                        </div>
+
+                        <div>
+                            <h3 className="font-bold text-gray-800 mb-2">8. Acknowledgment</h3>
+                            <p className="text-sm">
+                                By accepting this agreement, you acknowledge that you have read, understood, and agree to all terms and conditions stated herein. You confirm that all information provided is accurate and that you understand your obligations under this loan agreement.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Agreement Checkbox */}
+                    <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <label className="flex items-start cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={formData.agreedToTerms || false}
+                                onChange={(e) => setFormData({ ...formData, agreedToTerms: e.target.checked })}
+                                className="mt-1 h-5 w-5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded flex-shrink-0"
+                            />
+                            <span className="ml-3 text-gray-700 text-sm leading-relaxed">
+                                I understand and agree to all the terms and conditions stated above. I acknowledge that installation will not proceed without receiving the signed guarantor documents and undated cheques. I confirm that I have read and understood my obligations under this loan agreement.
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                {/* Footer with Buttons on One Line */}
+                <div className="flex items-center justify-end gap-4 p-6 border-t border-gray-200 flex-shrink-0">
+                    <button
+                        onClick={() => {
+                            if (!formData.agreedToTerms) {
+                                alert("Please read and accept the agreement to proceed.");
+                                return;
+                            }
+                            setStep(18); // Go back
+                        }}
+                        className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={() => {
+                            if (!formData.agreedToTerms) {
+                                alert("Please read and accept the agreement to proceed.");
+                                return;
+                            }
+                            setStep(20);
+                        }}
+                        disabled={!formData.agreedToTerms}
+                        className={`px-6 py-3 rounded-xl font-bold transition-colors ${
+                            formData.agreedToTerms
+                                ? 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
+                                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        }`}
+                    >
+                        I Agree and Continue
+                    </button>
+                </div>
             </div>
-            <div className="mb-6">
-                <label className="flex items-start cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={formData.agreedToTerms || false}
-                        onChange={(e) => setFormData({ ...formData, agreedToTerms: e.target.checked })}
-                        className="mt-1 h-5 w-5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded"
-                    />
-                    <span className="ml-3 text-gray-700">
-                        I understand and agree to the terms above. I acknowledge that installation will not proceed without receiving the signed guarantor documents and undated cheques.
-                    </span>
-                </label>
-            </div>
-            <button
-                onClick={() => setStep(20)}
-                disabled={!formData.agreedToTerms}
-                className={`w-full py-4 rounded-xl font-bold transition-colors ${
-                    formData.agreedToTerms
-                        ? 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
-                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
-            >
-                I Agree and Continue
-            </button>
         </div>
     );
 

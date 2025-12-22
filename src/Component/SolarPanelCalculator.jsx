@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Minus, Plus, Search } from "lucide-react";
+import { Minus, Plus, Search, X } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 
 const SolarPanelCalculator = () => {
@@ -61,6 +61,9 @@ const SolarPanelCalculator = () => {
     return applianceList.map((appliance) => ({ ...appliance, quantity: 2, hours: 1 }));
   });
   const [searchTerm, setSearchTerm] = useState("");
+  const [showAddAppliance, setShowAddAppliance] = useState(false);
+  const [newApplianceName, setNewApplianceName] = useState("");
+  const [newAppliancePower, setNewAppliancePower] = useState("");
 
   // Show/Hide results card after clicking "Calculate Savings"
   const [showCalc, setShowCalc] = useState(() => {
@@ -197,6 +200,26 @@ const SolarPanelCalculator = () => {
     setAppliances(updatedAppliances);
   };
 
+  // Add custom appliance
+  const handleAddCustomAppliance = () => {
+    if (!newApplianceName.trim() || !newAppliancePower || Number(newAppliancePower) <= 0) {
+      alert("Please enter a valid appliance name and wattage.");
+      return;
+    }
+
+    const newAppliance = {
+      name: newApplianceName.trim(),
+      power: Number(newAppliancePower),
+      quantity: 1,
+      hours: 1
+    };
+
+    setAppliances([...appliances, newAppliance]);
+    setNewApplianceName("");
+    setNewAppliancePower("");
+    setShowAddAppliance(false);
+  };
+
   // Proceed -> /solar-bundles?q=<peakLoadW>
   // Save calculator data before navigating
   const handleProceed = () => {
@@ -325,21 +348,80 @@ const SolarPanelCalculator = () => {
               })}
             </div>
 
+            {/* Add Custom Appliance Section */}
+            {!showAddAppliance ? (
+              <button
+                className="bg-white border-2 border-[#273e8e] text-[#273e8e] rounded-full px-6 text-sm w-full py-5 mt-4 flex items-center justify-center gap-2 hover:bg-[#273e8e] hover:text-white transition-colors"
+                onClick={() => setShowAddAppliance(true)}
+              >
+                <Plus size={18} />
+                Add Custom Appliance
+              </button>
+            ) : (
+              <div className="bg-white border-2 border-[#273e8e] rounded-xl p-4 mt-4 space-y-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-semibold text-gray-700">Add Custom Appliance</h3>
+                  <button
+                    onClick={() => {
+                      setShowAddAppliance(false);
+                      setNewApplianceName("");
+                      setNewAppliancePower("");
+                    }}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Appliance Name</label>
+                    <input
+                      type="text"
+                      value={newApplianceName}
+                      onChange={(e) => setNewApplianceName(e.target.value)}
+                      placeholder="e.g., Air Conditioner"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-[#273e8e] focus:ring-1 focus:ring-[#273e8e]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Wattage (W)</label>
+                    <input
+                      type="number"
+                      value={newAppliancePower}
+                      onChange={(e) => setNewAppliancePower(e.target.value)}
+                      placeholder="e.g., 1500"
+                      min="1"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-[#273e8e] focus:ring-1 focus:ring-[#273e8e]"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setShowAddAppliance(false);
+                        setNewApplianceName("");
+                        setNewAppliancePower("");
+                      }}
+                      className="flex-1 border-2 border-gray-300 text-gray-700 rounded-lg px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddCustomAppliance}
+                      className="flex-1 bg-[#273e8e] text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-[#1a2b6b] transition-colors"
+                    >
+                      Add Appliance
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <button
               className="bg-[#273e8e] text-white rounded-full px-6 text-sm w-full py-5 mt-4"
               onClick={() => setShowCalc(true)}
             >
               Calculate Savings
             </button>
-            
-            {showCalc && (
-              <button
-                className="bg-[#273e8e] text-white rounded-full px-6 text-sm w-full py-5 mt-4"
-                onClick={handleProceed}
-              >
-                Proceed
-              </button>
-            )}
 
             {/* === DYNAMIC CALCULATIONS (desktop) === */}
             {showCalc && (
@@ -434,6 +516,16 @@ const SolarPanelCalculator = () => {
                   />
                 </div>
               </div>
+            )}
+
+            {/* Proceed Button - Below Calculations */}
+            {showCalc && (
+              <button
+                className="bg-[#273e8e] text-white rounded-full px-6 text-sm w-full py-5 mt-4"
+                onClick={handleProceed}
+              >
+                Proceed
+              </button>
             )}
           </div>
 

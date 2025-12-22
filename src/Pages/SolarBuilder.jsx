@@ -1,11 +1,35 @@
 import React, { useMemo, useState } from "react";
 import { Minus, Plus, Search } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import SideBar from "../Component/SideBar";
 import TopNavbar from "../Component/TopNavbar";
 
 const SolarBuilder = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const bundleId = searchParams.get("bundleId");
+  const editMode = searchParams.get("editMode");
+  const fromBundles = searchParams.get("fromBundles");
+  const recommend = searchParams.get("recommend");
+
+  // Handle go back navigation
+  const handleGoBack = () => {
+    if (bundleId) {
+      // If coming from a bundle detail page, go back to that bundle
+      navigate(`/productBundle/details/${bundleId}`);
+    } else if (fromBundles || recommend) {
+      // If coming from bundles or recommendations, go back to solar bundles
+      navigate("/solar-bundles");
+    } else {
+      // Otherwise, use browser history or go to home
+      if (window.history.length > 1) {
+        navigate(-1);
+      } else {
+        navigate("/");
+      }
+    }
+  };
 
   // Seed appliances (tweak powers as needed)
   const applianceList = [
@@ -212,9 +236,12 @@ const SolarBuilder = () => {
               businesses, or off-grid setups.
             </p>
 
-            <a href="#" onClick={(e) => e.preventDefault()} className="text-[#273e8e] text-sm inline-block mt-3">
+            <button
+              onClick={handleGoBack}
+              className="text-[#273e8e] text-sm inline-block mt-3 hover:underline cursor-pointer"
+            >
               Go back
-            </a>
+            </button>
 
             <div className="grid grid-cols-12 gap-6 mt-4">
               {/* Left column: table + add + calculations + proceed */}

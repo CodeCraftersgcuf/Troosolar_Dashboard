@@ -34,15 +34,8 @@ const Loading = ({
         <img 
           src={assets.loadingGif} 
           alt="Loading" 
-          className="w-64 h-64 sm:w-80 sm:h-80 object-contain"
+          className="w-24 h-24 sm:w-32 sm:h-32 object-contain"
         />
-        {progress !== null && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-4xl sm:text-5xl font-bold text-white drop-shadow-lg">
-              {displayProgress}%
-            </span>
-          </div>
-        )}
       </div>
       {message && (
         <p className="text-gray-600 text-sm sm:text-base mt-4 text-center">
