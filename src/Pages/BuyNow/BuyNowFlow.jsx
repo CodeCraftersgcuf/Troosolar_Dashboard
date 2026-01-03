@@ -188,6 +188,68 @@ const BuyNowFlow = () => {
         }
     };
 
+    // Handle bundleId and editBundle parameters
+    React.useEffect(() => {
+        const bundleId = searchParams.get('bundleId');
+        const editBundle = searchParams.get('editBundle');
+        const stepParam = searchParams.get('step');
+        
+        if (bundleId && editBundle === 'true') {
+            // Load bundle and its products for editing
+            const loadBundleForEditing = async () => {
+                try {
+                    const token = localStorage.getItem('access_token');
+                    const response = await axios.get(API.BUNDLE_BY_ID(bundleId), {
+                        headers: {
+                            Accept: 'application/json',
+                            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                        },
+                    });
+                    
+                    const bundleData = response.data?.data ?? response.data;
+                    if (bundleData) {
+                        // Extract products from bundle
+                        const bundleItems = bundleData.bundleItems ?? bundleData.bundle_items ?? [];
+                        const products = bundleItems
+                            .filter(item => item?.product)
+                            .map(item => ({
+                                id: item.product.id,
+                                product: item.product,
+                                price: Number(item.product.discount_price || item.product.price || 0),
+                                quantity: Number(item.quantity || 1)
+                            }));
+                        
+                        if (products.length > 0) {
+                            const totalPrice = products.reduce((sum, p) => sum + (p.price * p.quantity), 0);
+                            setFormData(prev => ({
+                                ...prev,
+                                selectedProducts: products,
+                                selectedBundleId: Number(bundleId),
+                                selectedBundle: bundleData,
+                                selectedProductPrice: totalPrice
+                            }));
+                        }
+                        
+                        // Navigate to step if provided, otherwise go to category selection
+                        if (stepParam) {
+                            setStep(Number(stepParam));
+                        } else {
+                            setStep(2); // Category selection
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load bundle for editing:', error);
+                    alert('Failed to load bundle details. Please try again.');
+                }
+            };
+            
+            loadBundleForEditing();
+        } else if (stepParam) {
+            // Just navigate to the specified step if provided
+            setStep(Number(stepParam));
+        }
+    }, [searchParams]);
+
     // Fetch categories and audit types on mount
     React.useEffect(() => {
         const fetchData = async () => {

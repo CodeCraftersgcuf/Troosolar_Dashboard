@@ -238,8 +238,12 @@ const ProductBundle = () => {
   };
 
   const handleEditBundle = () => {
-    // Navigate to solar builder with bundle ID so customers can edit the products in the bundle
-    navigate(`/solar-builder?bundleId=${id}&editMode=true`);
+    // Navigate to BuyNow flow category selection to edit products in the bundle
+    // This allows users to select/edit products (not appliances) to add to the bundle
+    const returnUrl = cartToken
+      ? `/buy-now?token=${cartToken}&bundleId=${id}&step=2&editBundle=true`
+      : `/buy-now?bundleId=${id}&step=2&editBundle=true`;
+    navigate(returnUrl);
   };
 
   if (loading) {
