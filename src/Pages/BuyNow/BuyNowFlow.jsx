@@ -1613,7 +1613,7 @@ const BuyNowFlow = () => {
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
                 <h2 className="text-3xl font-bold text-center mb-4 text-[#273e8e]">
-                    Build Your Solar System
+                Build My System
                 </h2>
                 <p className="text-center text-gray-600 mb-2">
                     Select multiple products to create your custom bundle
@@ -1762,7 +1762,7 @@ const BuyNowFlow = () => {
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <Zap size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose my solar system</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose My Solar System</h3>
                 </button>
                 <button onClick={() => handleOptionSelect('build-system')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
@@ -1839,7 +1839,7 @@ const BuyNowFlow = () => {
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
                 <h2 className="text-3xl font-bold text-center mb-4 text-[#273e8e]">
-                    Choose Your Solar System
+                Choose My Solar Bundle
                 </h2>
                 <p className="text-center text-gray-600 mb-8">
                     Select from our pre-configured solar bundles

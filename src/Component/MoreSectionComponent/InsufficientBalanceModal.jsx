@@ -37,7 +37,7 @@ const InsufficientBalanceModal = ({ isOpen, onClose }) => {
             <h4 className="font-semibold text-blue-900 mb-2">How to earn referral rewards:</h4>
             <ul className="text-sm text-blue-800 space-y-1">
               <li>• Share your referral code with friends</li>
-              <li>• Earn 30% bonus when they make purchases</li>
+              <li>• Earn 5% bonus when they make purchases</li>
               <li>• Build up your referral balance over time</li>
             </ul>
           </div>

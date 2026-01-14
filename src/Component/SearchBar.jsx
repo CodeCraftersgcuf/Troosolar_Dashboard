@@ -27,6 +27,19 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
   // value = "all" | "<categoryId>"
   const [selectedValue, setSelectedValue] = useState("all");
   const [query, setQuery] = useState("");
+  const [selectedSize, setSelectedSize] = useState("all");
+
+  // Size options from 1.2kW to 10kW
+  const sizeOptions = useMemo(() => {
+    const sizes = [];
+    for (let i = 1.2; i <= 10; i += 0.5) {
+      sizes.push({
+        label: `${i}kW`,
+        value: i.toString(),
+      });
+    }
+    return [{ label: "All Sizes", value: "all" }, ...sizes];
+  }, []);
 
   const selectedLabel =
     dropdownOptions.find((o) => o.value === selectedValue)?.label || "All";
@@ -42,11 +55,22 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Extract size from query (e.g., "1.2kW" or "1.2 kw")
+  const extractSizeFromQuery = (q) => {
+    const sizeMatch = q.match(/(\d+\.?\d*)\s*kw/i);
+    if (sizeMatch) {
+      return parseFloat(sizeMatch[1]);
+    }
+    return null;
+  };
+
   // Filter logic (debounced)
   useEffect(() => {
     const delay = setTimeout(() => {
       let results = [...products]; // Start with all products
-      const isFilteringActive = selectedValue !== "all" || query.trim() !== "";
+      const querySize = extractSizeFromQuery(query);
+      const sizeToFilter = selectedSize !== "all" ? parseFloat(selectedSize) : querySize;
+      const isFilteringActive = selectedValue !== "all" || query.trim() !== "" || selectedSize !== "all";
 
       // Category filtering
       if (selectedValue !== "all") {
@@ -57,8 +81,34 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
         });
       }
 
-      // Search filtering
-      if (query.trim()) {
+      // Size filtering (for bundles)
+      if (sizeToFilter) {
+        results = results.filter((item) => {
+          // Check if it's a bundle (has bundle properties)
+          const bundle = item.bundle || item;
+          
+          // Try to extract size from various bundle properties
+          const totalLoad = parseFloat(bundle.total_load || bundle.totalLoad || 0);
+          const inverterRating = parseFloat(bundle.inver_rating || bundle.inverterRating || bundle.inverter_rating || 0);
+          const totalOutput = parseFloat(bundle.total_output || bundle.totalOutput || 0);
+          
+          // Convert to kW if needed (assuming values might be in W)
+          const loadkW = totalLoad > 1000 ? totalLoad / 1000 : totalLoad;
+          const inverterkW = inverterRating > 1000 ? inverterRating / 1000 : inverterRating;
+          const outputkW = totalOutput > 1000 ? totalOutput / 1000 : totalOutput;
+          
+          // Check if any of these values match the selected size (within ±0.3kW range)
+          const tolerance = 0.3;
+          const matchesLoad = loadkW > 0 && Math.abs(loadkW - sizeToFilter) <= tolerance;
+          const matchesInverter = inverterkW > 0 && Math.abs(inverterkW - sizeToFilter) <= tolerance;
+          const matchesOutput = outputkW > 0 && Math.abs(outputkW - sizeToFilter) <= tolerance;
+          
+          return matchesLoad || matchesInverter || matchesOutput;
+        });
+      }
+
+      // Search filtering (excluding size if already filtered by size)
+      if (query.trim() && !querySize) {
         const q = query.trim().toLowerCase();
         results = results.filter((item) => {
           // Check the heading field (which is the mapped title)
@@ -78,7 +128,7 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
 
     return () => clearTimeout(delay);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, selectedValue, products]); // Removed setFilteredResults and onFilteringChange to prevent infinite loops
+  }, [query, selectedValue, selectedSize, products]); // Removed setFilteredResults and onFilteringChange to prevent infinite loops
 
   return (
     <div className="flex items-center bg-white rounded-lg shadow-sm border border-gray-200 w-[100%] relative">
@@ -98,9 +148,9 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
         </button>
 
         {isDropdownOpen && (
-          <div className="absolute left-0 top-full mt-1 max-h-[400px] z-50 w-[280px] bg-white rounded-md shadow-lg border border-gray-200 overflow-y-auto">
-            <div className="px-4 py-2 relative">
-              <p className="text-center text-gray-500">Select Category</p>
+          <div className="absolute left-0 top-full mt-1 max-h-[500px] z-50 w-[320px] bg-white rounded-md shadow-lg border border-gray-200 overflow-y-auto">
+            <div className="px-4 py-2 relative border-b border-gray-200">
+              <p className="text-center text-gray-500 font-medium">Select Category</p>
               <X
                 size={20}
                 onClick={() => setIsDropdownOpen(false)}
@@ -108,12 +158,12 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
               />
             </div>
 
+            {/* Category Options */}
             {dropdownOptions.map((option) => (
               <button
                 key={option.value}
                 onClick={() => {
                   setSelectedValue(option.value);
-                  setIsDropdownOpen(false);
                 }}
                 className={`flex items-center justify-between w-full px-4 py-2 text-sm hover:bg-gray-100 ${
                   selectedValue === option.value
@@ -129,6 +179,35 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
                 </span>
               </button>
             ))}
+
+            {/* Size Filter Section */}
+            <div className="border-t border-gray-200 mt-2">
+              <div className="px-4 py-2 bg-gray-50">
+                <p className="text-center text-gray-500 font-medium">Select Size</p>
+              </div>
+              <div className="max-h-[200px] overflow-y-auto">
+                {sizeOptions.map((size) => (
+                  <button
+                    key={size.value}
+                    onClick={() => {
+                      setSelectedSize(size.value);
+                    }}
+                    className={`flex items-center justify-between w-full px-4 py-2 text-sm hover:bg-gray-100 ${
+                      selectedSize === size.value
+                        ? "bg-blue-50 font-semibold"
+                        : "text-gray-700"
+                    }`}
+                  >
+                    <span>{size.label}</span>
+                    <span className="h-4 w-4 rounded-full border border-[#273e8e] flex items-center justify-center">
+                      {selectedSize === size.value && (
+                        <span className="h-2 w-2 bg-[#273e8e] rounded-full" />
+                      )}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -143,14 +222,15 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search for products..."
+          placeholder="Choose Solar Bundle"
           className="w-full px-2 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none"
         />
-        {(query || selectedValue !== "all") && (
+        {(query || selectedValue !== "all" || selectedSize !== "all") && (
           <button
             onClick={() => {
               setQuery("");
               setSelectedValue("all");
+              setSelectedSize("all");
               // This will trigger the useEffect and clear filters
             }}
             className="ml-2 text-gray-400 hover:text-gray-600 transition-colors"

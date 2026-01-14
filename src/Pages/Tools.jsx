@@ -12,7 +12,7 @@ import { ChevronLeft } from "lucide-react";
 const toolsData = [
   {
     id: "inverter",
-    label: "Inverter Load Calculator",
+    label: "Load Calculator",
     icon: assets.solarInverted,
     component: <InvertedLoadCalculator />,
   },
@@ -24,7 +24,7 @@ const toolsData = [
   },
   {
     id: "solarSaving",
-    label: "Solar Saving Calculator",
+    label: "Cost Savings Calculator",
     icon: assets.solarInverted,
     component: <SolarSavingCalculator />,
   },

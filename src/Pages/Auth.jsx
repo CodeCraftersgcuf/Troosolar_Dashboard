@@ -317,7 +317,8 @@ const Auth = () => {
         />
 
         <div className="bg-[#273e8e] absolute top-[31vh] w-full rounded-t-4xl shadow-md p-6 text-center mb-6">
-          <img src={assets.smLogo} alt="Logo" className="mx-auto mb-2 w-28" />
+          <img src={assets.fullLogoMobile} alt="Logo" className="mx-auto mb-3 w-[200px]" />
+          
           <h1 className="text-2xl font-bold text-white">
             {isLogin ? "Login" : "Create an account"}
           </h1>

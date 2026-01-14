@@ -131,6 +131,7 @@ const SideBar = () => {
         </div>
 
         <img src={assets.sidebar} alt="" />
+        <img src={assets.sidebar} alt="" />
       </div>
 
       {/* Mobile Bottom Navigation */}

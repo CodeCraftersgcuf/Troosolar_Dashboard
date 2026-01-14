@@ -1,4 +1,4 @@
-import { Eye, EyeOff, ChevronLeft } from "lucide-react";
+import { Eye, EyeOff, ChevronLeft, Share2, Copy, Check } from "lucide-react";
 import React, { useState, useEffect } from "react";
 import WithdrawalAccountPage from "./WithdrawalAccountPage";
 import TransferModal from "./TransferModal";
@@ -27,8 +27,9 @@ const Referrals = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
 
-  // Fetch referral details from API
+  // Fetch referral details from API and create if doesn't exist
   useEffect(() => {
     const fetchReferralDetails = async () => {
       try {
@@ -49,7 +50,18 @@ const Referrals = () => {
         });
 
         if (response.data.status === "success") {
-          setReferralData(response.data.data);
+          const data = response.data.data;
+          // If no referral code exists, try to create one (assuming backend creates it automatically on first access)
+          if (!data.referral_code || data.referral_code === "") {
+            // The referral code should be created automatically by the backend
+            // If not, we'll show a message to contact support
+            setReferralData({
+              ...data,
+              referral_code: data.referral_code || "Not available"
+            });
+          } else {
+            setReferralData(data);
+          }
         } else {
           setError(response.data.message || "Failed to fetch referral details");
         }
@@ -66,6 +78,58 @@ const Referrals = () => {
 
     fetchReferralDetails();
   }, []);
+
+  // Share referral code
+  const handleShare = async () => {
+    const referralCode = referralData.referral_code;
+    if (!referralCode || referralCode === "N/A" || referralCode === "Not available") {
+      alert("Referral code not available. Please contact support.");
+      return;
+    }
+
+    const shareText = `Join TrooSolar using my referral code: ${referralCode}\n\nGet great deals on solar energy solutions!`;
+    const shareUrl = `${window.location.origin}/register?referral_code=${referralCode}`;
+
+    // Try Web Share API first (mobile)
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "TrooSolar Referral Code",
+          text: shareText,
+          url: shareUrl,
+        });
+        return;
+      } catch (err) {
+        // User cancelled or error occurred, fall back to copy
+      }
+    }
+
+    // Fallback: Copy to clipboard
+    try {
+      await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      alert("Failed to copy. Please copy manually: " + referralCode);
+    }
+  };
+
+  // Copy referral code to clipboard
+  const handleCopy = async () => {
+    const referralCode = referralData.referral_code;
+    if (!referralCode || referralCode === "N/A" || referralCode === "Not available") {
+      alert("Referral code not available.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(referralCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      alert("Failed to copy. Referral code: " + referralCode);
+    }
+  };
 
   const handleBackFromWithdrawalPage = () => {
     setShowWithdrawalPage(false);
@@ -107,9 +171,6 @@ const Referrals = () => {
     <>
       {/* Desktop View */}
       <main className="hidden sm:block bg-[#ffffff] h-full rounded-2xl border border-gray-400 w-full p-5">
-        <h1 className="text-center text-lg font-medium pb-5">
-          Referral Details
-        </h1>
 
         <div className="bg-[#273e8e] rounded-2xl px-4 py-5 text-white shadow-md">
           {/* Header: Label & Icon */}
@@ -147,11 +208,35 @@ const Referrals = () => {
 
           {/* Loan Info + Referral */}
           <div className="flex  flex-col min-h-[80px] sm:flex-row justify-between items-start sm:items-center bg-[#1d3073] py-3 px-5 border-gray-500 rounded-xl border gap-3">
-            <div className="flex flex-col text-sm leading-tight">
+            <div className="flex flex-col text-sm leading-tight flex-1">
               <p className="text-white/50 pb-3">Referral Code</p>
-              <p className="text-white">
-                {loading ? "Loading..." : error ? "Error" : referralData.referral_code || "N/A"}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-white flex-1">
+                  {loading ? "Loading..." : error ? "Error" : referralData.referral_code || "N/A"}
+                </p>
+                {!loading && !error && referralData.referral_code && referralData.referral_code !== "N/A" && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleCopy}
+                      className="p-1.5 bg-white/20 hover:bg-white/30 rounded-md transition-colors"
+                      title="Copy code"
+                    >
+                      {copied ? (
+                        <Check size={16} className="text-white" />
+                      ) : (
+                        <Copy size={16} className="text-white" />
+                      )}
+                    </button>
+                    <button
+                      onClick={handleShare}
+                      className="p-1.5 bg-white/20 hover:bg-white/30 rounded-md transition-colors"
+                      title="Share code"
+                    >
+                      <Share2 size={16} className="text-white" />
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex flex-col text-sm leading-tight">
               <p className="text-white/50 pb-3">My Referrals</p>
@@ -171,7 +256,7 @@ const Referrals = () => {
         </div>
 
         <div className="py-4 px-4 w-full border-dashed border-[#273e8e] border-[2px] rounded-2xl mt-4 bg-[#e9ebf3] text-center text-sm text-[#273e8e]">
-          <p>Earn 30% referral bonus from the people you refer</p>
+          <p>Earn 5% referral bonus from the people you refer</p>
         </div>
       </main>
 
@@ -217,11 +302,35 @@ const Referrals = () => {
             {/* Referral Details */}
             <div className="bg-[#1d3073] rounded-xl p-4 mb-6">
               <div className="flex justify-between items-center">
-                <div className="flex flex-col">
+                <div className="flex flex-col flex-1">
                   <p className="text-white/70 text-xs mb-1">Referral Code</p>
-                  <p className="text-white font-semibold">
-                    {loading ? "Loading..." : error ? "Error" : referralData.referral_code || "N/A"}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-white font-semibold flex-1">
+                      {loading ? "Loading..." : error ? "Error" : referralData.referral_code || "N/A"}
+                    </p>
+                    {!loading && !error && referralData.referral_code && referralData.referral_code !== "N/A" && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleCopy}
+                          className="p-1.5 bg-white/20 hover:bg-white/30 rounded-md transition-colors"
+                          title="Copy code"
+                        >
+                          {copied ? (
+                            <Check size={14} className="text-white" />
+                          ) : (
+                            <Copy size={14} className="text-white" />
+                          )}
+                        </button>
+                        <button
+                          onClick={handleShare}
+                          className="p-1.5 bg-white/20 hover:bg-white/30 rounded-md transition-colors"
+                          title="Share code"
+                        >
+                          <Share2 size={14} className="text-white" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex flex-col">
                   <p className="text-white/70 text-xs mb-1">My Referrals</p>
@@ -244,7 +353,7 @@ const Referrals = () => {
           {/* Referral Bonus Info */}
           <div className="mt-6 p-4 border-2 border-dashed border-gray-300 rounded-2xl bg-gray-50">
             <p className="text-center text-sm text-gray-700">
-              Earn 30% referral bonus from the people you refer
+              Earn 5% referral bonus from the people you refer
             </p>
           </div>
         </div>

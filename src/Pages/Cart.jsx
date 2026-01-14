@@ -638,7 +638,7 @@ const Cart = () => {
         },
         onclose: () => setProcessingPayment(false),
         customizations: {
-          title: "TrooSolar Payment",
+          title: "Troosolar Payment",
           description: `Order ID: ${orderData?.order_number || orderId}`,
           logo: "https://yourdomain.com/logo.png",
         },

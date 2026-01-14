@@ -6,7 +6,7 @@ const SmallBoxes = () => {
   const boxItems = [
     {
       id: 1,
-      title: "Buy Now",
+      title: "Shop Solar Bundles",
       color: "#0000ff",
       icon: assets.vec1,
       link: "/buy-now",
@@ -20,14 +20,14 @@ const SmallBoxes = () => {
     },
     {
       id: 3,
-      title: "Shop",
+      title: "Solar Shop",
       color: "#800080",
       icon: assets.vec3,
       link: "/shop",
     },
     {
       id: 4,
-      title: "Saving Calculator",
+      title: "Load & Savings Calculator",
       color: "#008000",
       icon: assets.vec4,
       link: "/tools",

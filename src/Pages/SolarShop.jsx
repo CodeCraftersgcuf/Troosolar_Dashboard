@@ -192,7 +192,7 @@ const SolarShop = () => {
                             <button onClick={() => navigate('/')} className="mr-4 text-gray-500 hover:text-[#273e8e]">
                                 <ArrowLeft size={24} />
                             </button>
-                            <div className="font-bold text-2xl text-[#273e8e]">TrooSolar Shop</div>
+                            <div className="font-bold text-2xl text-[#273e8e]">Troosolar Shop</div>
                         </div>
                         <div className="flex items-center space-x-4">
                             <Link to="/cart" className="relative p-2 text-gray-600 hover:text-[#273e8e]">

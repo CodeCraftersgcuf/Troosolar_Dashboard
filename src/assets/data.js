@@ -17,6 +17,7 @@ import loginImage from "../assets/loginImage.jpg";
 import logo from "../assets/new-logo.png";
 import newLogo from "../assets/new-logo.png";
 import fullLogo from "../assets/FUll Logo-01.png";
+import fullLogoMobile from "../assets/FUll Logo-02.png";
 import twitter from "../assets/twitter.png";
 import whatsApp from "../assets/whatsApp.png";
 import store from "../assets/store.png";
@@ -85,7 +86,7 @@ export const assets = {
   product, star1, star2, uploadArea, LoanBox, creditNeedle, house1, house2, house3, house4,
   battery, solar, bulb, inverter, mttp, solarfan, surge, connector, light, kwc, support,
   insta, smLogo, sale, vec1, vec2, vec3, vec4, greenTick, b1, b2, line, stars, solarProject,
-  loginImage, logout, logo, fullLogo, store, loans, userGear, window, userImage,
+  loginImage, logout, logo, fullLogo, fullLogoMobile, store, loans, userGear, window, userImage,
   shopping, GearSix, sidebar, twitter, whatsApp, yt, loginImageForSm, telegram,
   dashboard, usermgt, creditMgt, Loanmgt, loansDisbursement, Transactions,
   balance, ShopMgt, referral, analytics, settings, UserGear1, cart, rePayIcon, solarInverted, solar1,
@@ -98,10 +99,10 @@ export const assets = {
 export const Sidebar_links = [
   { name: "Home", link: "/", icon: assets.dashboard, sublinks: [] },
   { name: "Solar Store", link: "/homePage", icon: assets.ShopMgt, sublinks: [] },
-  { name: "Buy Solar Bundle", link: "/solar-bundles", icon: assets.Loanmgt, sublinks: [] },
+  { name: "Shop Solar Bundles", link: "/solar-bundles", icon: assets.Loanmgt, sublinks: [] },
   { name: "Buy Now, Pay Later", link: "/bnpl", icon: assets.creditMgt, sublinks: [] },
   { name: "BNPL Loans", link: "/bnpl-loans", icon: assets.Loanmgt, sublinks: [] },
-  { name: "Tools", link: "/tools", icon: assets.settings, sublinks: [] },
+  { name: "Solar Calculators", link: "/tools", icon: assets.settings, sublinks: [] },
   { name: "Cart", link: "/cart", icon: assets.cart, sublinks: [] },
   { name: "More", link: "/more", icon: assets.userGear, sublinks: [] },
 ];

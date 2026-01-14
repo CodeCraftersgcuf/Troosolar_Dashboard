@@ -11,6 +11,8 @@ import HrLine from "../Component/MobileSectionResponsive/HrLine";
 import { ShoppingCart, Loader2 } from "lucide-react";
 import API from "../config/api.config";
 import { assets } from "../assets/data";
+import SizeDropDown from "../Component/SizeDropDown";
+import PriceDropDown from "../Component/PriceDropDown";
 
 // ₦ formatter
 const formatNGN = (n) => {
@@ -98,10 +100,22 @@ const HomePage = () => {
   const [prodError, setProdError] = useState("");
   const [isFiltering, setIsFiltering] = useState(false);
   const [searchBarKey, setSearchBarKey] = useState(0); // Key to force SearchBar re-render
+  const [selectedSize, setSelectedSize] = useState(null);
+  const [priceRange, setPriceRange] = useState({ min: null, max: null });
 
   // Memoize the filtering change callback to prevent infinite loops
   const handleFilteringChange = useCallback((isActive) => {
     setIsFiltering(isActive);
+  }, []);
+
+  // Handle size filter
+  const handleSizeFilter = useCallback((size) => {
+    setSelectedSize(size);
+  }, []);
+
+  // Handle price filter
+  const handlePriceFilter = useCallback((min, max) => {
+    setPriceRange({ min, max });
   }, []);
 
   // Fetch categories
@@ -176,24 +190,56 @@ const HomePage = () => {
     return map;
   }, [categories]);
 
+  // Apply size and price filters
+  const filteredBySizeAndPrice = useMemo(() => {
+    let products = isFiltering ? filteredResults : apiProducts || [];
+    
+    // Apply size filter (for bundles/products with size information)
+    if (selectedSize !== null) {
+      products = products.filter((item) => {
+        // Check if it's a bundle or product with size properties
+        const bundle = item.bundle || item;
+        const totalLoad = parseFloat(bundle.total_load || bundle.totalLoad || 0);
+        const inverterRating = parseFloat(bundle.inver_rating || bundle.inverterRating || bundle.inverter_rating || 0);
+        const totalOutput = parseFloat(bundle.total_output || bundle.totalOutput || 0);
+        
+        // Convert to kW if needed
+        const loadkW = totalLoad > 1000 ? totalLoad / 1000 : totalLoad;
+        const inverterkW = inverterRating > 1000 ? inverterRating / 1000 : inverterRating;
+        const outputkW = totalOutput > 1000 ? totalOutput / 1000 : totalOutput;
+        
+        // Check if any of these values match the selected size (within ±0.3kW range)
+        const tolerance = 0.3;
+        const matchesLoad = loadkW > 0 && Math.abs(loadkW - selectedSize) <= tolerance;
+        const matchesInverter = inverterkW > 0 && Math.abs(inverterkW - selectedSize) <= tolerance;
+        const matchesOutput = outputkW > 0 && Math.abs(outputkW - selectedSize) <= tolerance;
+        
+        return matchesLoad || matchesInverter || matchesOutput;
+      });
+    }
+    
+    // Apply price filter
+    if (priceRange.min !== null && priceRange.max !== null) {
+      products = products.filter((item) => {
+        // Extract numeric price from formatted string (e.g., "₦1,500,000" -> 1500000)
+        const priceStr = item.price || item.oldPrice || "0";
+        const priceNum = parseFloat(priceStr.replace(/[₦,\s]/g, "")) || 0;
+        return priceNum >= priceRange.min && priceNum <= priceRange.max;
+      });
+    }
+    
+    return products;
+  }, [filteredResults, apiProducts, isFiltering, selectedSize, priceRange]);
+
   // Enrich cards with category name
   const gridProducts = useMemo(() => {
-    // Use filteredResults if filtering is active, otherwise use apiProducts
-    const sourceProducts = isFiltering ? filteredResults : apiProducts || [];
-
-    console.log("Grid Products Source:", {
-      filteredResultsLength: filteredResults.length,
-      apiProductsLength: apiProducts.length,
-      sourceProductsLength: sourceProducts.length,
-      firstProduct: sourceProducts[0],
-      isFiltering: isFiltering
-    });
+    const sourceProducts = filteredBySizeAndPrice;
 
     return sourceProducts.map((p) => ({
       ...p,
       categoryName: catMap[p.categoryId] || "Inverter",
     }));
-  }, [filteredResults, apiProducts, catMap, isFiltering]);
+  }, [filteredBySizeAndPrice, catMap]);
 
   const baseUrl = "https://troosolar.hmstech.org/";
 
@@ -234,6 +280,12 @@ const HomePage = () => {
           </div>
 
           <div className="px-6 py-6 w-full overflow-x-hidden">
+            {/* Filters */}
+            <div className="flex justify-start items-center gap-4 mb-4">
+              <SizeDropDown onFilter={handleSizeFilter} />
+              <PriceDropDown onFilter={handlePriceFilter} />
+            </div>
+
             <h1 className="text-xl text-gray-800 mb-4 font-bold">
               All Products
             </h1>
@@ -301,6 +353,8 @@ const HomePage = () => {
                       setSearchBarKey(prev => prev + 1);
                       setIsFiltering(false);
                       setFilteredResults(apiProducts);
+                      setSelectedSize(null);
+                      setPriceRange({ min: null, max: null });
                     }}
                     className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-[#273e8e] hover:bg-[#1e327a] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#273e8e]"
                   >
@@ -369,6 +423,12 @@ const HomePage = () => {
 
           {/* Products */}
           <div className="px-5 py-6 w-full">
+            {/* Filters */}
+            <div className="flex justify-start items-center gap-2 mb-4">
+              <SizeDropDown onFilter={handleSizeFilter} />
+              <PriceDropDown onFilter={handlePriceFilter} />
+            </div>
+
             <h1 className="text-[16px] font-semibold text-gray-800 mb-3">
               <HrLine text={"All Products"} />
             </h1>
@@ -436,6 +496,8 @@ const HomePage = () => {
                       setSearchBarKey(prev => prev + 1);
                       setIsFiltering(false);
                       setFilteredResults(apiProducts);
+                      setSelectedSize(null);
+                      setPriceRange({ min: null, max: null });
                     }}
                     className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-[#273e8e] hover:bg-[#1e327a] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#273e8e]"
                   >

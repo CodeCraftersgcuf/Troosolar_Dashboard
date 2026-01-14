@@ -9,7 +9,7 @@ const LandingPage = () => {
         {/* Header */}
         <div className="text-center mb-16 animate-fade-in-down">
           <h1 className="text-5xl md:text-7xl font-bold mb-6 tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-blue-200">
-            TrooSolar
+            Troosolar
           </h1>
           <p className="text-xl md:text-2xl text-blue-100 font-light max-w-2xl mx-auto">
             Powering your future with sustainable energy solutions. Choose your path to energy independence.
@@ -70,7 +70,7 @@ const LandingPage = () => {
 
         {/* Footer Note */}
         <div className="text-center mt-16 text-blue-200/60 text-sm">
-          © {new Date().getFullYear()} TrooSolar. All rights reserved.
+          © {new Date().getFullYear()} Troosolar. All rights reserved.
         </div>
       </div>
     </div>
