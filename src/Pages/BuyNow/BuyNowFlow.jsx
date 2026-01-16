@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader, CheckCircle2, XCircle, AlertCircle, CreditCard, Minus, Plus } from 'lucide-react';
+import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader, CheckCircle2, XCircle, AlertCircle, CreditCard, Minus, Plus, X, Info } from 'lucide-react';
 import axios from 'axios';
 import API, { BASE_URL } from '../../config/api.config';
 
@@ -34,6 +34,33 @@ const ensureFlutterwave = () =>
         s.onerror = () => reject(new Error("Failed to load Flutterwave script"));
         document.body.appendChild(s);
     });
+
+// Helper to get bundle image (moved to component level for modal access)
+const getBundleImage = (bundle) => {
+    if (!bundle) return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+    
+    // Extract base URL from API config (remove /api)
+    const API_BASE = BASE_URL || 'http://127.0.0.1:8000/api';
+    const API_ORIGIN = API_BASE.replace(/\/api\/?$/, '') || 'http://127.0.0.1:8000';
+    
+    if (bundle.featured_image) {
+        const path = bundle.featured_image;
+        // Already absolute URL
+        if (/^https?:\/\//i.test(path)) return path;
+        // Path starts with / (e.g., "/storage/bundles/xyz.jpg")
+        if (path.startsWith('/')) return `${API_ORIGIN}${path}`;
+        // Path without leading slash
+        const cleaned = path.replace(/^public\//, '');
+        return `${API_ORIGIN}/storage/${cleaned}`;
+    }
+    // Return a data URI SVG placeholder
+    return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+};
+
+// Helper to format price (moved to component level for modal access)
+const formatPrice = (price) => {
+    return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
+};
 
 const BuyNowFlow = () => {
     const navigate = useNavigate();
@@ -98,6 +125,7 @@ const BuyNowFlow = () => {
     // Bundles for selection
     const [bundles, setBundles] = useState([]);
     const [bundlesLoading, setBundlesLoading] = useState(false);
+    const [selectedBundleDetails, setSelectedBundleDetails] = useState(null); // For "Learn More" modal
 
     // Categories and products for individual components
     const [categories, setCategories] = useState([]);
@@ -1426,9 +1454,6 @@ const BuyNowFlow = () => {
     };
 
     const renderStep2_5 = () => {
-        const formatPrice = (price) => {
-            return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
-        };
 
         const getProductImage = (product) => {
             if (product.featured_image_url) {
@@ -1582,9 +1607,6 @@ const BuyNowFlow = () => {
     };
 
     const renderStep3_75 = () => {
-        const formatPrice = (price) => {
-            return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
-        };
 
         const getProductImage = (product) => {
             if (product.featured_image_url) {
@@ -1815,10 +1837,6 @@ const BuyNowFlow = () => {
     // );
 
     const renderStep3_5 = () => {
-        // Helper to format price
-        const formatPrice = (price) => {
-            return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
-        };
 
         // Helper to get bundle image
         const getBundleImage = (bundle) => {
@@ -1875,11 +1893,12 @@ const BuyNowFlow = () => {
                                 : 0;
                             const isSelected = formData.selectedBundleId === bundle.id;
 
+                            const bundleItems = bundle.bundleItems ?? bundle.bundle_items ?? [];
+                            
                             return (
-                                <button
+                                <div
                                     key={bundle.id}
-                                    onClick={() => handleBundleSelect(bundle)}
-                                    className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 text-left ${
+                                    className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 ${
                                         isSelected
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]'
                                             : 'border-gray-100 hover:border-[#273e8e]'
@@ -1914,7 +1933,7 @@ const BuyNowFlow = () => {
                                     {bundle.bundle_type && (
                                         <p className="text-sm text-gray-500 mb-3">{bundle.bundle_type}</p>
                                     )}
-                                    <div className="flex items-baseline gap-2">
+                                    <div className="flex items-baseline gap-2 mb-4">
                                         <span className="text-2xl font-bold text-[#273e8e]">
                                             {formatPrice(price)}
                                         </span>
@@ -1924,7 +1943,31 @@ const BuyNowFlow = () => {
                                             </span>
                                         )}
                                     </div>
-                                </button>
+                                    
+                                    {/* Learn More Button */}
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedBundleDetails(bundle);
+                                        }}
+                                        className="w-full mb-2 py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <Info size={16} />
+                                        Learn More
+                                    </button>
+                                    
+                                    {/* Select Button */}
+                                    <button
+                                        onClick={() => handleBundleSelect(bundle)}
+                                        className={`w-full py-2 rounded-lg font-semibold transition-colors ${
+                                            isSelected
+                                                ? 'bg-red-600 text-white hover:bg-red-700'
+                                                : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
+                                        }`}
+                                    >
+                                        {isSelected ? 'Remove from Selection' : 'Select Bundle'}
+                                    </button>
+                                </div>
                             );
                         })}
                     </div>
@@ -3319,6 +3362,139 @@ const BuyNowFlow = () => {
                     {step === 6 && renderStep6()}
                 </div>
             </div>
+
+            {/* Bundle Details Modal */}
+            {selectedBundleDetails && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+                            <h2 className="text-2xl font-bold text-gray-800">Bundle Details</h2>
+                            <button
+                                onClick={() => setSelectedBundleDetails(null)}
+                                className="text-gray-500 hover:text-gray-700 transition-colors"
+                            >
+                                <X size={24} />
+                            </button>
+                        </div>
+                        
+                        <div className="p-6">
+                            {/* Bundle Image */}
+                            <div className="mb-6">
+                                <img
+                                    src={getBundleImage(selectedBundleDetails)}
+                                    alt={selectedBundleDetails.title || 'Bundle'}
+                                    className="w-full h-64 object-cover rounded-lg"
+                                    onError={(e) => {
+                                        e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                    }}
+                                />
+                            </div>
+
+                            {/* Bundle Title and Price */}
+                            <div className="mb-6">
+                                <h3 className="text-2xl font-bold text-gray-800 mb-2">
+                                    {selectedBundleDetails.title || `Bundle #${selectedBundleDetails.id}`}
+                                </h3>
+                                {selectedBundleDetails.bundle_type && (
+                                    <p className="text-gray-500 mb-3">{selectedBundleDetails.bundle_type}</p>
+                                )}
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-3xl font-bold text-[#273e8e]">
+                                        {formatPrice(Number(selectedBundleDetails.discount_price || selectedBundleDetails.total_price || 0))}
+                                    </span>
+                                    {selectedBundleDetails.discount_price && selectedBundleDetails.total_price && selectedBundleDetails.discount_price < selectedBundleDetails.total_price && (
+                                        <span className="text-gray-400 line-through text-lg">
+                                            {formatPrice(Number(selectedBundleDetails.total_price))}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Bundle Specifications */}
+                            {(selectedBundleDetails.total_load || selectedBundleDetails.inver_rating || selectedBundleDetails.total_output) && (
+                                <div className="mb-6 bg-gray-50 rounded-lg p-4">
+                                    <h4 className="font-semibold text-gray-800 mb-3">Specifications</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        {selectedBundleDetails.total_load && (
+                                            <div>
+                                                <p className="text-sm text-gray-500">Total Load</p>
+                                                <p className="font-semibold text-gray-800">{selectedBundleDetails.total_load}W</p>
+                                            </div>
+                                        )}
+                                        {selectedBundleDetails.inver_rating && (
+                                            <div>
+                                                <p className="text-sm text-gray-500">Inverter Rating</p>
+                                                <p className="font-semibold text-gray-800">{selectedBundleDetails.inver_rating}W</p>
+                                            </div>
+                                        )}
+                                        {selectedBundleDetails.total_output && (
+                                            <div>
+                                                <p className="text-sm text-gray-500">Total Output</p>
+                                                <p className="font-semibold text-gray-800">{selectedBundleDetails.total_output}W</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Backup Info */}
+                            {selectedBundleDetails.backup_info && (
+                                <div className="mb-6">
+                                    <h4 className="font-semibold text-gray-800 mb-2">Backup Time</h4>
+                                    <p className="text-gray-600">{selectedBundleDetails.backup_info}</p>
+                                </div>
+                            )}
+
+                            {/* Items Included */}
+                            {((selectedBundleDetails.bundleItems || selectedBundleDetails.bundle_items || []).length > 0) && (
+                                <div className="mb-6">
+                                    <h4 className="font-semibold text-gray-800 mb-3">Items Included</h4>
+                                    <div className="space-y-2">
+                                        {(selectedBundleDetails.bundleItems || selectedBundleDetails.bundle_items || []).map((item, idx) => {
+                                            const product = item.product || item;
+                                            return (
+                                                <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                                    {product.featured_image && (
+                                                        <img
+                                                            src={toAbsolute(product.featured_image)}
+                                                            alt={product.title || product.name}
+                                                            className="w-12 h-12 object-cover rounded"
+                                                        />
+                                                    )}
+                                                    <div className="flex-1">
+                                                        <p className="font-medium text-gray-800">
+                                                            {product.title || product.name || `Product #${product.id}`}
+                                                        </p>
+                                                        {item.quantity && item.quantity > 1 && (
+                                                            <p className="text-sm text-gray-500">Quantity: {item.quantity}</p>
+                                                        )}
+                                                    </div>
+                                                    {product.price && (
+                                                        <p className="font-semibold text-[#273e8e]">
+                                                            {formatPrice(Number(product.price))}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Select Button */}
+                            <button
+                                onClick={() => {
+                                    handleBundleSelect(selectedBundleDetails);
+                                    setSelectedBundleDetails(null);
+                                }}
+                                className="w-full py-3 bg-[#273e8e] text-white rounded-lg font-semibold hover:bg-[#1a2b6b] transition-colors"
+                            >
+                                Select This Bundle
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

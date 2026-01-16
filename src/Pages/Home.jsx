@@ -467,8 +467,7 @@ const Home = () => {
                 !prodError &&
                 featuredItems.length > 0 ? (
                 featuredItems.map((item) => (
-                  <Link
-                    to={item.link}
+                  <div
                     key={`${item.type}-${item.id}`}
                     className="flex-shrink-0 w-[243px]"
                   >
@@ -485,20 +484,22 @@ const Home = () => {
                         bundleTitle={item.bundleTitle}
                       />
                     ) : (
-                      <Product
-                        id={item.id}
-                        image={item.image}
-                        heading={item.heading}
-                        price={item.price}
-                        oldPrice={item.oldPrice}
-                        discount={item.discount}
-                        ratingAvg={item.ratingAvg}
-                        ratingCount={item.ratingCount}
-                        categoryName={item.categoryName}
-                        isHotDeal={item.isHotDeal}
-                      />
+                      <Link to={item.link}>
+                        <Product
+                          id={item.id}
+                          image={item.image}
+                          heading={item.heading}
+                          price={item.price}
+                          oldPrice={item.oldPrice}
+                          discount={item.discount}
+                          ratingAvg={item.ratingAvg}
+                          ratingCount={item.ratingCount}
+                          categoryName={item.categoryName}
+                          isHotDeal={item.isHotDeal}
+                        />
+                      </Link>
                     )}
-                  </Link>
+                  </div>
                 ))
               ) : !bundlesLoading && 
                 !prodLoading && 
@@ -543,8 +544,7 @@ const Home = () => {
                   featuredItems.length > 0 ? (
                 <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2 items-stretch">
                   {featuredItems.map((item) => (
-                    <Link
-                      to={item.link}
+                    <div
                       key={`${item.type}-${item.id}`}
                       className="w-full max-[380px]:w-[160px] min-sm:w-[190px] h-full flex" // keep card height consistent
                     >
@@ -561,20 +561,22 @@ const Home = () => {
                           bundleTitle={item.bundleTitle}
                         />
                       ) : (
-                        <Product
-                          id={item.id}
-                          image={item.image}
-                          heading={item.heading}
-                          price={item.price}
-                          oldPrice={item.oldPrice}
-                          discount={item.discount}
-                          ratingAvg={item.ratingAvg}
-                          ratingCount={item.ratingCount}
-                          categoryName={item.categoryName}
-                          isHotDeal={item.isHotDeal}
-                        />
+                        <Link to={item.link} className="w-full h-full">
+                          <Product
+                            id={item.id}
+                            image={item.image}
+                            heading={item.heading}
+                            price={item.price}
+                            oldPrice={item.oldPrice}
+                            discount={item.discount}
+                            ratingAvg={item.ratingAvg}
+                            ratingCount={item.ratingCount}
+                            categoryName={item.categoryName}
+                            isHotDeal={item.isHotDeal}
+                          />
+                        </Link>
                       )}
-                    </Link>
+                    </div>
                   ))}
                 </div>
               ) : !prodLoading && 
