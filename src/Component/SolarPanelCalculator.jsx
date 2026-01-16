@@ -9,19 +9,30 @@ const SolarPanelCalculator = () => {
   const fromBundles = searchParams.get("fromBundles") === "true";
   const qParam = searchParams.get("q");
   
-  // Sample appliance data matching the photo
+  // Appliance data matching the Excel spreadsheet
   const applianceList = [
+    { name: "Television", power: 120 },
     { name: "Ceiling Fan", power: 70 },
-    { name: "Laptop", power: 70 },
-    { name: "LED Bulbs", power: 70 },
-    
-    { name: "Fridge", power: 70 },
-    { name: "Washing Machine", power: 70 },
-    { name: "Rech Fan", power: 70 },
-    { name: "OX Fan", power: 70 },
-    { name: '65" TV', power: 70 },
-    { name: "CCTV Camera", power: 70 },
-    { name: "Desktop", power: 70 },
+    { name: "Chest Freezer", power: 20 },
+    { name: "Desktop Computer", power: 200 },
+    { name: "Extractor Fan", power: 12 },
+    { name: "Fluorescent Lamp", power: 45 },
+    { name: "Freezer", power: 220 },
+    { name: "Fridge", power: 200 },
+    { name: "Inverter Air Conditioner", power: 767 },
+    { name: "Water Dispenser", power: 1300 },
+    { name: "Printer", power: 120 },
+    { name: "Laptop Computer", power: 70 },
+    { name: "LED Light Bulb", power: 3 },
+    { name: "Smart Inverter Microwave", power: 1000 },
+    { name: "Fan", power: 70 },
+    { name: "Projector", power: 250 },
+    { name: "Refrigerator", power: 200 },
+    { name: "Sandwich Maker", power: 1000 },
+    { name: "Scanner", power: 150 },
+    { name: "DSTV Box", power: 30 },
+    { name: "Pumping Machine", power: 767 },
+    { name: "Smart Washing Machine", power: 700 },
   ];
 
   const labelStyle = "text-gray-600 text-[16px]";
@@ -53,12 +64,43 @@ const SolarPanelCalculator = () => {
   const savedData = getSavedData();
 
   // State for appliances with quantity
-  // NOTE: default hours = 1 so calculations aren't zeroed out
+  // Initial values matching the Excel spreadsheet
+  const getInitialApplianceData = (name) => {
+    const dataMap = {
+      "Television": { quantity: 1, hours: 2 },
+      "Ceiling Fan": { quantity: 1, hours: 6 },
+      "Chest Freezer": { quantity: 0, hours: 24 },
+      "Desktop Computer": { quantity: 0, hours: 4 },
+      "Extractor Fan": { quantity: 1, hours: 1 },
+      "Fluorescent Lamp": { quantity: 1, hours: 8 },
+      "Freezer": { quantity: 1, hours: 6 },
+      "Fridge": { quantity: 1, hours: 6 },
+      "Inverter Air Conditioner": { quantity: 0, hours: 6 },
+      "Water Dispenser": { quantity: 1, hours: 1 },
+      "Printer": { quantity: 1, hours: 1 },
+      "Laptop Computer": { quantity: 1, hours: 12 },
+      "LED Light Bulb": { quantity: 9, hours: 12 },
+      "Smart Inverter Microwave": { quantity: 0, hours: 1 },
+      "Fan": { quantity: 1, hours: 10 },
+      "Projector": { quantity: 1, hours: 1 },
+      "Refrigerator": { quantity: 1, hours: 3 },
+      "Sandwich Maker": { quantity: 1, hours: 1 },
+      "Scanner": { quantity: 0, hours: 1 },
+      "DSTV Box": { quantity: 1, hours: 12 },
+      "Pumping Machine": { quantity: 0, hours: 1 },
+      "Smart Washing Machine": { quantity: 0, hours: 2 },
+    };
+    return dataMap[name] || { quantity: 0, hours: 0 };
+  };
+
   const [appliances, setAppliances] = useState(() => {
     if (savedData?.appliances) {
       return savedData.appliances;
     }
-    return applianceList.map((appliance) => ({ ...appliance, quantity: 2, hours: 1 }));
+    return applianceList.map((appliance) => {
+      const initialData = getInitialApplianceData(appliance.name);
+      return { ...appliance, quantity: initialData.quantity, hours: initialData.hours };
+    });
   });
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddAppliance, setShowAddAppliance] = useState(false);

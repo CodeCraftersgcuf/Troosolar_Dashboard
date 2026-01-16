@@ -31,28 +31,14 @@ const SolarSavingCalculator = () => {
     duration: false
   });
 
-  // Generator size options
+  // Generator size options matching the Excel spreadsheet
   const generatorSizes = [
-    { value: '1kva', label: '1 KVA' },
-    { value: '2kva', label: '2 KVA' },
-    { value: '3kva', label: '3 KVA' },
-    { value: '5kva', label: '5 KVA' },
-    { value: '7.5kva', label: '7.5 KVA' },
-    { value: '10kva', label: '10 KVA' },
-    { value: '15kva', label: '15 KVA' },
-    { value: '20kva', label: '20 KVA' },
-    { value: '25kva', label: '25 KVA' },
-    { value: '30kva', label: '30 KVA' },
-    { value: '40kva', label: '40 KVA' },
-    { value: '50kva', label: '50 KVA' },
-    { value: '60kva', label: '60 KVA' },
-    { value: '75kva', label: '75 KVA' },
-    { value: '100kva', label: '100 KVA' },
-    { value: '125kva', label: '125 KVA' },
-    { value: '150kva', label: '150 KVA' },
-    { value: '200kva', label: '200 KVA' },
-    { value: '250kva', label: '250 KVA' },
-    { value: '300kva', label: '300 KVA' }
+    { value: '1.5kva', label: '1.5 KVA' },
+    { value: '3.6kva', label: '3.6 KVA' },
+    { value: '6.5kva', label: '6.5 KVA' },
+    { value: '8.5kva', label: '8.5 KVA' },
+    { value: '11kva', label: '11 KVA' },
+    { value: '12kva-diesel', label: '12 KVA - Diesel' }
   ];
 
   // Handle input changes
@@ -99,67 +85,131 @@ const SolarSavingCalculator = () => {
     }
 
     // Convert string values to numbers
-    const hours = parseFloat(hoursPerDay) || 0;
+    const hours = parseFloat(hoursPerDay) || 2.0; // Default 2 hours as per spreadsheet
     const maintenance = parseFloat(maintenanceCost) || 0;
     const grid = parseFloat(gridSpend) || 0;
     const budget = parseFloat(solarBudget) || 0;
-    const months = parseInt(duration) || 0;
+    const months = parseInt(duration) || 60; // Default to 60 months (5 years) as per spreadsheet
 
-    // Generator fuel consumption rates (liters per hour for different sizes)
-    const fuelConsumptionRates = {
-      '1kva': 0.5,
-      '2kva': 0.8,
-      '3kva': 1.2,
-      '5kva': 2.0,
-      '7.5kva': 3.0,
-      '10kva': 4.0,
-      '15kva': 6.0,
-      '20kva': 8.0,
-      '25kva': 10.0,
-      '30kva': 12.0,
-      '40kva': 16.0,
-      '50kva': 20.0,
-      '60kva': 24.0,
-      '75kva': 30.0,
-      '100kva': 40.0,
-      '125kva': 50.0,
-      '150kva': 60.0,
-      '200kva': 80.0,
-      '250kva': 100.0,
-      '300kva': 120.0
+    // Generator data from Excel spreadsheet
+    const generatorData = {
+      '1.5kva': {
+        fuelConsumption: 0.65, // liters per hour
+        fuelPrice: 865, // Naira per liter (petrol)
+        monthlyServiceCost: 20000,
+        monthlyPHCNBill: 2500,
+        generatorCapEx: 130000,
+        solarCapEx: 1300000,
+        solarYearlyOpEx: 20000
+      },
+      '3.6kva': {
+        fuelConsumption: 1.50,
+        fuelPrice: 865,
+        monthlyServiceCost: 30000,
+        monthlyPHCNBill: 3500,
+        generatorCapEx: 500000,
+        solarCapEx: 2600000,
+        solarYearlyOpEx: 30000
+      },
+      '6.5kva': {
+        fuelConsumption: 3.00,
+        fuelPrice: 865,
+        monthlyServiceCost: 40000,
+        monthlyPHCNBill: 5000,
+        generatorCapEx: 700000,
+        solarCapEx: 4500000,
+        solarYearlyOpEx: 50000
+      },
+      '8.5kva': {
+        fuelConsumption: 4.75,
+        fuelPrice: 865,
+        monthlyServiceCost: 50000,
+        monthlyPHCNBill: 12500,
+        generatorCapEx: 1000000,
+        solarCapEx: 7500000,
+        solarYearlyOpEx: 65000
+      },
+      '11kva': {
+        fuelConsumption: 6.25,
+        fuelPrice: 865,
+        monthlyServiceCost: 50000,
+        monthlyPHCNBill: 15000,
+        generatorCapEx: 1100000,
+        solarCapEx: 11000000,
+        solarYearlyOpEx: 90000
+      },
+      '12kva-diesel': {
+        fuelConsumption: 2.90,
+        fuelPrice: 1750, // Diesel price
+        monthlyServiceCost: 60000,
+        monthlyPHCNBill: 15000,
+        generatorCapEx: 1850000,
+        solarCapEx: 11000000,
+        solarYearlyOpEx: 90000
+      }
     };
 
-    // Current fuel price (Naira per liter) - you can make this dynamic
-    const fuelPricePerLiter = 700;
+    // Get generator data for selected size
+    const genData = generatorData[generatorSize] || generatorData['1.5kva'];
     
-    // Get fuel consumption rate for the selected generator size
-    const fuelRate = fuelConsumptionRates[generatorSize] || 0;
+    // Use provided values or defaults from spreadsheet
+    const fuelRate = genData.fuelConsumption;
+    const fuelPricePerLiter = genData.fuelPrice;
+    const monthlyService = maintenance || genData.monthlyServiceCost;
+    const monthlyPHCN = grid || genData.monthlyPHCNBill;
+    const generatorCapEx = genData.generatorCapEx;
+    const solarCapEx = budget || genData.solarCapEx;
+    const solarYearlyOpEx = genData.solarYearlyOpEx;
     
-    // Calculate monthly generator costs
-    const monthlyFuelCost = (hours * 30 * fuelRate * fuelPricePerLiter);
-    const totalMonthlyGenCost = monthlyFuelCost + maintenance + grid;
+    // Calculate daily fuel cost
+    const dailyFuelCost = hours * fuelRate * fuelPricePerLiter;
     
-    // Calculate total generator spend over the duration
-    const totalGenSpend = totalMonthlyGenCost * months;
+    // Calculate monthly fuel cost
+    const monthlyFuelCost = dailyFuelCost * 30;
     
-    // Calculate solar spend (monthly payment based on budget and duration)
-    const monthlySolarPayment = budget / months;
-    const totalSolarSpend = budget;
+    // Calculate total monthly generator operational cost
+    const totalMonthlyGenOpExCost = monthlyFuelCost + monthlyService;
     
-    // Calculate savings
-    const totalSavings = totalGenSpend - totalSolarSpend;
+    // Calculate total monthly energy bill (Generator + PHCN)
+    const totalMonthlyEnergyBill = totalMonthlyGenOpExCost + monthlyPHCN;
     
-    // Calculate break-even period (when solar payments equal generator savings)
-    const monthlySavings = totalMonthlyGenCost - monthlySolarPayment;
-    const breakEvenPeriod = monthlySavings > 0 ? Math.ceil(monthlySolarPayment / monthlySavings) : 0;
+    // Calculate total energy cost over the period (in months)
+    const totalEnergyBillOverPeriod = totalMonthlyEnergyBill * months;
+    
+    // Calculate total generator cost (CapEx + OpEx over period)
+    const totalGenSpend = generatorCapEx + totalEnergyBillOverPeriod;
+    
+    // Calculate solar costs
+    const solar5YearOpEx = solarYearlyOpEx * 5; // 5 years as per spreadsheet
+    const totalSolarSpend = solarCapEx + solar5YearOpEx;
+    
+    // Calculate savings based on selected duration
+    // For comparison with spreadsheet (5 years), we'll calculate both
+    const totalEnergyBill5Years = totalMonthlyEnergyBill * 60; // 60 months = 5 years
+    const totalGenSpend5Years = generatorCapEx + totalEnergyBill5Years;
+    
+    // Calculate for selected duration
+    const totalGenSpendForPeriod = generatorCapEx + totalEnergyBillOverPeriod;
+    
+    // Calculate savings - use 5-year comparison as per spreadsheet
+    const totalSavings = totalGenSpend5Years - totalSolarSpend;
+    
+    // Calculate break-even period (when solar savings equal solar investment)
+    const monthlySavings = totalMonthlyEnergyBill - (solarYearlyOpEx / 12);
+    const breakEvenPeriod = monthlySavings > 0 ? Math.ceil(solarCapEx / monthlySavings) : 0;
 
     // Update results
+    const years = months / 12;
+    const displayDuration = years >= 1 
+      ? `${years} Year${years > 1 ? 's' : ''}` 
+      : `${months} month${months > 1 ? 's' : ''}`;
+    
     setResults({
       totalSavings: Math.max(0, totalSavings),
-      genSpend: totalGenSpend,
+      genSpend: totalGenSpend5Years, // Show 5-year generator cost for comparison
       solarSpend: totalSolarSpend,
       breakEvenPeriod: breakEvenPeriod,
-      duration: `${months} month${months > 1 ? 's' : ''}`
+      duration: displayDuration
     });
   };
 
@@ -229,7 +279,9 @@ const SolarSavingCalculator = () => {
                     </label>
                     <input
                       type="number"
-                      placeholder="Type answer"
+                      placeholder="2.0"
+                      step="0.5"
+                      min="0"
                       className={`w-full border rounded-lg px-4 py-4 bg-white outline-none ${
                         fieldErrors.hoursPerDay 
                           ? 'border-red-500 ring-2 ring-red-200' 
@@ -329,6 +381,9 @@ const SolarSavingCalculator = () => {
                   <option value="11">11 months</option>
                   <option value="12">1 Year</option>
                   <option value="24">2 Years</option>
+                  <option value="36">3 Years</option>
+                  <option value="48">4 Years</option>
+                  <option value="60">5 Years</option>
                 </select>
                 <ChevronDown
                   className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none"
@@ -338,7 +393,7 @@ const SolarSavingCalculator = () => {
 
               <div className="bg-yellow-100 border-dashed border-2 border-yellow-400 py-2 px-3 font-medium rounded-xl shadow">
                 <p className="text-sm py-2 text-gray-600 mb-1">
-                  By going solar with Troosolar, you save
+                  By going solar with Troosolar, you save (over 5 years)
                 </p>
                 <h2 className="text-3xl font-bold py-2 text-center text-white rounded-xl bg-[#E8A91D] mb-4">
                   {formatCurrency(results.totalSavings)}
@@ -354,7 +409,7 @@ const SolarSavingCalculator = () => {
                   <hr className="text-gray-300" />
                   <li className="flex justify-between">
                     <span className="text-[15px] font-light">
-                      Gen spend over {results.duration}
+                      Gen spend over 5 years
                     </span>
                     <span className="font-semibold text-[#E8A91D]">
                       {formatCurrency(results.genSpend)}
@@ -364,7 +419,7 @@ const SolarSavingCalculator = () => {
 
                   <li className="flex justify-between">
                     <span className="text-[15px] font-light">
-                      Solar spend over {results.duration}
+                      Solar spend over 5 years
                     </span>
                     <span className="font-semibold text-[#E8A91D]">
                       {formatCurrency(results.solarSpend)}
@@ -441,7 +496,9 @@ const SolarSavingCalculator = () => {
                 </label>
                 <input
                   type="number"
-                  placeholder="Type answer"
+                  placeholder="2.0"
+                  step="0.5"
+                  min="0"
                   className={`w-full bg-white border rounded-lg px-3 py-3 text-sm outline-none ${
                     fieldErrors.hoursPerDay 
                       ? 'border-red-500 ring-2 ring-red-200' 
@@ -529,6 +586,9 @@ const SolarSavingCalculator = () => {
                     <option value="11">11 months</option>
                     <option value="12">1 Year</option>
                     <option value="24">2 Years</option>
+                    <option value="36">3 Years</option>
+                    <option value="48">4 Years</option>
+                    <option value="60">5 Years</option>
                   </select>
                   <ChevronDown
                     className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none"
@@ -543,7 +603,7 @@ const SolarSavingCalculator = () => {
           <div className="mb-6">
             <div className="bg-yellow-50 border border-yellow-300 border-dotted  rounded-lg p-5 shadow-md">
               <p className="text-xs text-black font-semibold mb-3">
-                By going solar with Troosolar, you save
+                By going solar with Troosolar, you save (over 5 years)
               </p>
               <div className="bg-[#E8A91D] text-white rounded-lg px-6 py-2 mb-4 items-center justify-center flex">
                 <span className="text-3xl font-bold">{formatCurrency(results.totalSavings)}</span>
@@ -556,13 +616,13 @@ const SolarSavingCalculator = () => {
                 </div>
                 <div className="flex justify-between border-b-1 border-gray-300 pb-2">
                   <span className="text-gray-600">
-                    Gen spend over {results.duration}
+                    Gen spend over 5 years
                   </span>
                   <span className="font-medium text-[#E8A91D]">{formatCurrency(results.genSpend)}</span>
                 </div>
                 <div className="flex justify-between border-b-1 border-gray-300 pb-2">
                   <span className="text-gray-600">
-                    Solar spend over {results.duration}
+                    Solar spend over 5 years
                   </span>
                   <span className="font-medium text-[#E8A91D]">{formatCurrency(results.solarSpend)}</span>
                 </div>
