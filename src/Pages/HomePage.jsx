@@ -8,9 +8,8 @@ import { Link } from "react-router-dom";
 import { ContextApi } from "../Context/AppContext";
 import TopNavbar from "../Component/TopNavbar";
 import HrLine from "../Component/MobileSectionResponsive/HrLine";
-import { ShoppingCart, Loader2 } from "lucide-react";
+import { ShoppingCart, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import API from "../config/api.config";
-import { assets } from "../assets/data";
 import SizeDropDown from "../Component/SizeDropDown";
 import PriceDropDown from "../Component/PriceDropDown";
 
@@ -26,14 +25,16 @@ const formatNGN = (n) => {
   }
 };
 
+// Fallback image URL
+const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/e212b55b-057a-4a39-8d80-d241169cdac0.png";
+
 // Map API product -> card props the Product component expects
 const mapApiProductToCard = (p) => {
   const image =
     p?.featured_image_url ||
     p?.featured_image ||
     p?.images?.[0]?.image ||
-    assets?.placeholderProduct ||
-    "/placeholder-product.png";
+    FALLBACK_IMAGE;
 
   const heading = p?.title || p?.name || `Product #${p?.id ?? ""}`;
 
@@ -96,12 +97,17 @@ const HomePage = () => {
   const [catError, setCatError] = useState("");
 
   const [apiProducts, setApiProducts] = useState([]);
+  const [rawProducts, setRawProducts] = useState([]); // Store raw API products for filtering
   const [prodLoading, setProdLoading] = useState(false);
   const [prodError, setProdError] = useState("");
   const [isFiltering, setIsFiltering] = useState(false);
   const [searchBarKey, setSearchBarKey] = useState(0); // Key to force SearchBar re-render
   const [selectedSize, setSelectedSize] = useState(null);
   const [priceRange, setPriceRange] = useState({ min: null, max: null });
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(12); // 12 items per page
 
   // Memoize the filtering change callback to prevent infinite loops
   const handleFilteringChange = useCallback((isActive) => {
@@ -111,11 +117,16 @@ const HomePage = () => {
   // Handle size filter
   const handleSizeFilter = useCallback((size) => {
     setSelectedSize(size);
+    setCurrentPage(1); // Reset to first page when filter changes
   }, []);
 
   // Handle price filter
   const handlePriceFilter = useCallback((min, max) => {
-    setPriceRange({ min, max });
+    setPriceRange({ 
+      min: min !== null && min !== undefined ? min : null, 
+      max: max !== null && max !== undefined ? max : null 
+    });
+    setCurrentPage(1); // Reset to first page when filter changes
   }, []);
 
   // Fetch categories
@@ -161,9 +172,11 @@ const HomePage = () => {
         const list = Array.isArray(data?.data) ? data.data : [];
         const mappedProducts = list.map(mapApiProductToCard);
         setApiProducts(mappedProducts);
+        setRawProducts(list); // Store raw products for filtering
         // Initialize filtered results with all products
         setFilteredResults(mappedProducts);
         setIsFiltering(false); // Reset filtering state
+        setCurrentPage(1); // Reset to first page when products load
         // keep raw list in context if you use it elsewhere
         registerProducts?.(list);
       } catch (err) {
@@ -190,46 +203,132 @@ const HomePage = () => {
     return map;
   }, [categories]);
 
-  // Apply size and price filters
-  const filteredBySizeAndPrice = useMemo(() => {
-    let products = isFiltering ? filteredResults : apiProducts || [];
+  // Helper function to extract size from product title (e.g., "455W" -> 0.455kW)
+  const extractSizeFromTitle = useCallback((title) => {
+    if (!title) return null;
     
-    // Apply size filter (for bundles/products with size information)
-    if (selectedSize !== null) {
-      products = products.filter((item) => {
-        // Check if it's a bundle or product with size properties
-        const bundle = item.bundle || item;
-        const totalLoad = parseFloat(bundle.total_load || bundle.totalLoad || 0);
-        const inverterRating = parseFloat(bundle.inver_rating || bundle.inverterRating || bundle.inverter_rating || 0);
-        const totalOutput = parseFloat(bundle.total_output || bundle.totalOutput || 0);
-        
-        // Convert to kW if needed
-        const loadkW = totalLoad > 1000 ? totalLoad / 1000 : totalLoad;
-        const inverterkW = inverterRating > 1000 ? inverterRating / 1000 : inverterRating;
-        const outputkW = totalOutput > 1000 ? totalOutput / 1000 : totalOutput;
-        
-        // Check if any of these values match the selected size (within ±0.3kW range)
-        const tolerance = 0.3;
-        const matchesLoad = loadkW > 0 && Math.abs(loadkW - selectedSize) <= tolerance;
-        const matchesInverter = inverterkW > 0 && Math.abs(inverterkW - selectedSize) <= tolerance;
-        const matchesOutput = outputkW > 0 && Math.abs(outputkW - selectedSize) <= tolerance;
-        
-        return matchesLoad || matchesInverter || matchesOutput;
-      });
+    // Match patterns like "455W", "530W", "1.2kW", "2.5kW", "1.2kVA", etc.
+    // Try to match kW or kVA first (more specific)
+    let match = title.match(/(\d+\.?\d*)\s*(?:kW|kVA)/i);
+    if (match) {
+      return parseFloat(match[1]);
     }
     
-    // Apply price filter
+    // Then try to match W or VA (convert to kW)
+    match = title.match(/(\d+\.?\d*)\s*(?:W|VA)/i);
+    if (match) {
+      const value = parseFloat(match[1]);
+      // Convert W/VA to kW if value is >= 100 (assume it's in watts/VA)
+      if (value >= 100) {
+        return value / 1000; // Convert watts/VA to kW
+      }
+      // For values < 100, assume they're already in kW
+      return value;
+    }
+    
+    // Try to match standalone numbers that might represent kW (e.g., "1.2", "2.5")
+    // This is less reliable, so we'll be more conservative
+    match = title.match(/\b(\d+\.?\d*)\b/);
+    if (match) {
+      const value = parseFloat(match[1]);
+      // Only consider values between 0.5 and 20 as potential kW values
+      if (value >= 0.5 && value <= 20) {
+        return value;
+      }
+    }
+    
+    return null;
+  }, []);
+
+  // Apply size and price filters
+  const filteredBySizeAndPrice = useMemo(() => {
+    // Start with the base product list (either from search or all products)
+    let products = isFiltering ? filteredResults : apiProducts || [];
+    let rawProductsList = rawProducts || [];
+    
+    // Create a map of product ID to raw product for filtering
+    const rawProductMap = {};
+    rawProductsList.forEach(raw => {
+      if (raw?.id) {
+        rawProductMap[raw.id] = raw;
+      }
+    });
+    
+    // Create a map of mapped product ID to mapped product for quick lookup
+    const mappedProductMap = {};
+    products.forEach(p => {
+      if (p?.id) {
+        mappedProductMap[p.id] = p;
+      }
+    });
+    
+    // Apply size filter - extract size from product titles
+    if (selectedSize !== null && selectedSize !== undefined) {
+      const filteredProductIds = new Set();
+      
+      // Check each raw product for size match
+      rawProductsList.forEach(raw => {
+        if (!raw?.id) return;
+        
+        const title = raw?.title || raw?.name || "";
+        const productSize = extractSizeFromTitle(title);
+        
+        let matches = false;
+        
+        if (productSize !== null) {
+          // Match product size with selected size (within ±0.3kW tolerance)
+          const tolerance = 0.3;
+          matches = Math.abs(productSize - selectedSize) <= tolerance;
+        } else {
+          // If no size found in title, check for bundle properties (for backward compatibility)
+          const mappedProduct = mappedProductMap[raw.id];
+          if (mappedProduct) {
+            const bundle = mappedProduct.bundle || mappedProduct;
+            const totalLoad = parseFloat(bundle.total_load || bundle.totalLoad || 0);
+            const inverterRating = parseFloat(bundle.inver_rating || bundle.inverterRating || bundle.inverter_rating || 0);
+            const totalOutput = parseFloat(bundle.total_output || bundle.totalOutput || 0);
+            
+            // Convert to kW if needed
+            const loadkW = totalLoad > 1000 ? totalLoad / 1000 : totalLoad;
+            const inverterkW = inverterRating > 1000 ? inverterRating / 1000 : inverterRating;
+            const outputkW = totalOutput > 1000 ? totalOutput / 1000 : totalOutput;
+            
+            // Check if any of these values match the selected size (within ±0.3kW range)
+            const tolerance = 0.3;
+            const matchesLoad = loadkW > 0 && Math.abs(loadkW - selectedSize) <= tolerance;
+            const matchesInverter = inverterkW > 0 && Math.abs(inverterkW - selectedSize) <= tolerance;
+            const matchesOutput = outputkW > 0 && Math.abs(outputkW - selectedSize) <= tolerance;
+            
+            matches = matchesLoad || matchesInverter || matchesOutput;
+          }
+        }
+        
+        if (matches) {
+          filteredProductIds.add(raw.id);
+        }
+      });
+      
+      // Filter products to only include those that match the size
+      products = products.filter(item => filteredProductIds.has(item.id));
+    }
+    
+    // Apply price filter - use raw price values from API
     if (priceRange.min !== null && priceRange.max !== null) {
       products = products.filter((item) => {
-        // Extract numeric price from formatted string (e.g., "₦1,500,000" -> 1500000)
-        const priceStr = item.price || item.oldPrice || "0";
-        const priceNum = parseFloat(priceStr.replace(/[₦,\s]/g, "")) || 0;
-        return priceNum >= priceRange.min && priceNum <= priceRange.max;
+        const rawProduct = rawProductMap[item.id];
+        if (!rawProduct) return false;
+        
+        // Use discount_price if available and valid, otherwise use price
+        const discountPrice = rawProduct.discount_price != null ? Number(rawProduct.discount_price) : null;
+        const regularPrice = rawProduct.price != null ? Number(rawProduct.price) : 0;
+        const actualPrice = discountPrice !== null && discountPrice > 0 ? discountPrice : regularPrice;
+        
+        return actualPrice >= priceRange.min && actualPrice <= priceRange.max;
       });
     }
     
     return products;
-  }, [filteredResults, apiProducts, isFiltering, selectedSize, priceRange]);
+  }, [filteredResults, apiProducts, rawProducts, isFiltering, selectedSize, priceRange, extractSizeFromTitle]);
 
   // Enrich cards with category name
   const gridProducts = useMemo(() => {
@@ -240,6 +339,25 @@ const HomePage = () => {
       categoryName: catMap[p.categoryId] || "Inverter",
     }));
   }, [filteredBySizeAndPrice, catMap]);
+
+  // Pagination calculations
+  const totalItems = gridProducts.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedProducts = gridProducts.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedSize, priceRange, isFiltering]);
+
+  // Handle page change
+  const handlePageChange = useCallback((page) => {
+    setCurrentPage(page);
+    // Scroll to top when page changes
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const baseUrl = "https://troosolar.hmstech.org/";
 
@@ -284,6 +402,19 @@ const HomePage = () => {
             <div className="flex justify-start items-center gap-4 mb-4">
               <SizeDropDown onFilter={handleSizeFilter} />
               <PriceDropDown onFilter={handlePriceFilter} />
+              {/* Show active filters count */}
+              {(selectedSize !== null || (priceRange.min !== null && priceRange.max !== null)) && (
+                <button
+                  onClick={() => {
+                    setSelectedSize(null);
+                    setPriceRange({ min: null, max: null });
+                    setCurrentPage(1);
+                  }}
+                  className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Clear Filters
+                </button>
+              )}
             </div>
 
             <h1 className="text-xl text-gray-800 mb-4 font-bold">
@@ -313,28 +444,89 @@ const HomePage = () => {
                 ))}
               </div>
             ) : gridProducts.length > 0 ? (
-              <div className="grid xl:grid-cols-4 lg:grid-cols-4 md:grid-cols-2 grid-cols-1 gap-4">
-                {gridProducts.map((item) => (
-                  <Link
-                    key={item.id}
-                    to={`/homePage/product/${item.id}`}
-                    className="w-full"
-                  >
-                    <Product
-                      id={item.id}
-                      image={item.image}
-                      heading={item.heading}
-                      price={item.price}
-                      oldPrice={item.oldPrice}
-                      discount={item.discount}
-                      ratingAvg={item.ratingAvg}
-                      ratingCount={item.ratingCount}
-                      categoryName={item.categoryName}
-                      isHotDeal={item.isHotDeal}
-                    />
-                  </Link>
-                ))}
-              </div>
+              <>
+                <div className="grid xl:grid-cols-4 lg:grid-cols-4 md:grid-cols-2 grid-cols-1 gap-4">
+                  {paginatedProducts.map((item) => (
+                    <Link
+                      key={item.id}
+                      to={`/homePage/product/${item.id}`}
+                      className="w-full"
+                    >
+                      <Product
+                        id={item.id}
+                        image={item.image}
+                        heading={item.heading}
+                        price={item.price}
+                        oldPrice={item.oldPrice}
+                        discount={item.discount}
+                        ratingAvg={item.ratingAvg}
+                        ratingCount={item.ratingCount}
+                        categoryName={item.categoryName}
+                        isHotDeal={item.isHotDeal}
+                      />
+                    </Link>
+                  ))}
+                </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex justify-center items-center gap-2 mt-8">
+                    <button
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+
+                    <div className="flex gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => handlePageChange(pageNum)}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              currentPage === pageNum
+                                ? "bg-[#273e8e] text-white"
+                                : "border border-gray-300 hover:bg-gray-50 text-gray-700"
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                      className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                      aria-label="Next page"
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                  </div>
+                )}
+
+                {/* Results Info */}
+                {totalItems > 0 && (
+                  <div className="text-center text-sm text-gray-500 mt-4">
+                    Showing {startIndex + 1} - {Math.min(endIndex, totalItems)} of {totalItems} products
+                  </div>
+                )}
+              </>
             ) : isFiltering ? (
               <div className="text-center py-12">
                 <div className="max-w-md mx-auto">
@@ -355,6 +547,7 @@ const HomePage = () => {
                       setFilteredResults(apiProducts);
                       setSelectedSize(null);
                       setPriceRange({ min: null, max: null });
+                      setCurrentPage(1);
                     }}
                     className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-[#273e8e] hover:bg-[#1e327a] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#273e8e]"
                   >
@@ -424,9 +617,22 @@ const HomePage = () => {
           {/* Products */}
           <div className="px-5 py-6 w-full">
             {/* Filters */}
-            <div className="flex justify-start items-center gap-2 mb-4">
+            <div className="flex justify-start items-center gap-2 mb-4 flex-wrap">
               <SizeDropDown onFilter={handleSizeFilter} />
               <PriceDropDown onFilter={handlePriceFilter} />
+              {/* Show active filters count */}
+              {(selectedSize !== null || (priceRange.min !== null && priceRange.max !== null)) && (
+                <button
+                  onClick={() => {
+                    setSelectedSize(null);
+                    setPriceRange({ min: null, max: null });
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-2 text-xs text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Clear Filters
+                </button>
+              )}
             </div>
 
             <h1 className="text-[16px] font-semibold text-gray-800 mb-3">
@@ -456,28 +662,89 @@ const HomePage = () => {
                 ))}
               </div>
             ) : gridProducts.length > 0 ? (
-              <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2">
-                {gridProducts.map((item) => (
-                  <Link
-                    key={item.id}
-                    to={`/homePage/product/${item.id}`}
-                    className="w-full  max-[380px]:w-[160px] min-sm:w-[190px]  "
-                  >
-                    <Product
-                      id={item.id}
-                      image={item.image}
-                      heading={item.heading}
-                      price={item.price}
-                      oldPrice={item.oldPrice}
-                      discount={item.discount}
-                      ratingAvg={item.ratingAvg}
-                      ratingCount={item.ratingCount}
-                      categoryName={item.categoryName}
-                      isHotDeal={item.isHotDeal}
-                    />
-                  </Link>
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2">
+                  {paginatedProducts.map((item) => (
+                    <Link
+                      key={item.id}
+                      to={`/homePage/product/${item.id}`}
+                      className="w-full  max-[380px]:w-[160px] min-sm:w-[190px]  "
+                    >
+                      <Product
+                        id={item.id}
+                        image={item.image}
+                        heading={item.heading}
+                        price={item.price}
+                        oldPrice={item.oldPrice}
+                        discount={item.discount}
+                        ratingAvg={item.ratingAvg}
+                        ratingCount={item.ratingCount}
+                        categoryName={item.categoryName}
+                        isHotDeal={item.isHotDeal}
+                      />
+                    </Link>
+                  ))}
+                </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex justify-center items-center gap-2 mt-6">
+                    <button
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+
+                    <div className="flex gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => handlePageChange(pageNum)}
+                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              currentPage === pageNum
+                                ? "bg-[#273e8e] text-white"
+                                : "border border-gray-300 hover:bg-gray-50 text-gray-700"
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                      className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                      aria-label="Next page"
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                  </div>
+                )}
+
+                {/* Results Info */}
+                {totalItems > 0 && (
+                  <div className="text-center text-sm text-gray-500 mt-3">
+                    Showing {startIndex + 1} - {Math.min(endIndex, totalItems)} of {totalItems} products
+                  </div>
+                )}
+              </>
             ) : isFiltering ? (
               <div className="text-center py-8">
                 <div className="max-w-sm mx-auto px-4">
@@ -498,6 +765,7 @@ const HomePage = () => {
                       setFilteredResults(apiProducts);
                       setSelectedSize(null);
                       setPriceRange({ min: null, max: null });
+                      setCurrentPage(1);
                     }}
                     className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-[#273e8e] hover:bg-[#1e327a] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#273e8e]"
                   >

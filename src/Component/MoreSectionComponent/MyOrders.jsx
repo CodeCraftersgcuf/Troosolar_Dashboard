@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { PiShoppingCartSimple } from "react-icons/pi";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import API, { BASE_URL } from "../../config/api.config";
 // import OrderDetails from "../OrderComponents/OrderDetails";
 import OrderSummary from "../OrderComponents/OrderSummary";
@@ -43,6 +44,7 @@ const MyOrders = () => {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [searchParams] = useSearchParams();
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -53,6 +55,9 @@ const MyOrders = () => {
   const token =
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
   const ORDERS_URL = API.ORDERS || `${BASE_URL}/orders`;
+  
+  // Get orderId from URL params
+  const orderIdFromUrl = searchParams.get("orderId");
 
   useEffect(() => {
     let mounted = true;
@@ -73,7 +78,20 @@ const MyOrders = () => {
           },
         });
         const list = Array.isArray(data?.orders) ? data.orders : [];
-        if (mounted) setOrders(list);
+        if (mounted) {
+          setOrders(list);
+          
+          // Auto-select order if orderId is provided in URL
+          if (orderIdFromUrl && list.length > 0) {
+            const orderToSelect = list.find(
+              (o) => String(o.id) === String(orderIdFromUrl) || 
+                     String(o.order_id) === String(orderIdFromUrl)
+            );
+            if (orderToSelect) {
+              setSelectedOrder(orderToSelect);
+            }
+          }
+        }
       } catch (e) {
         if (mounted) {
           setErr(
@@ -89,7 +107,7 @@ const MyOrders = () => {
       mounted = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [orderIdFromUrl]);
 
   // Filter orders based on current tab
   const filtered = useMemo(() => {

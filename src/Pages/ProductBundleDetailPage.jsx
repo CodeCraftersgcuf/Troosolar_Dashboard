@@ -12,6 +12,9 @@ import Loading from "../Component/Loading";
 // Turn BASE_URL (http://localhost:8000/api) into origin (http://localhost:8000)
 const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, "");
 
+// Fallback image URL
+const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/e212b55b-057a-4a39-8d80-d241169cdac0.png";
+
 // currency helpers
 const toNumber = (v) =>
   typeof v === "number"
@@ -59,27 +62,72 @@ const mapBundleDetail = (b) => {
 
   const relItems = b.bundleItems ?? b.bundle_items ?? [];
   const relServices = b.customServices ?? b.custom_services ?? [];
+  const relMaterials = b.materials ?? b.bundle_materials ?? [];
 
   const itemsIncluded = [
+    // Products from bundle_items
     ...relItems
       .map((bi) => {
         const p = bi?.product;
         if (!p) return null;
+        const productImage = p?.featured_image || p?.featured_image_url;
         return {
-          icon: p?.featured_image
-            ? toAbsolute(p.featured_image)
-            : assets?.inverter,
+          icon: productImage
+            ? toAbsolute(productImage)
+            : FALLBACK_IMAGE,
           title: p?.title || p?.name || `Product #${p?.id ?? ""}`,
           price: toNumber(p?.price),
         };
       })
       .filter(Boolean),
+    // Materials from materials array
+    ...relMaterials.map((m) => {
+      // Handle both direct material objects and nested material.material structure
+      const material = m?.material || m;
+      const materialImage = material?.featured_image || 
+                           material?.featured_image_url || 
+                           material?.image ||
+                           null;
+      const materialPrice = toNumber(material?.selling_rate || material?.rate || material?.price || 0);
+      // If price is 0, show 1000 as per previous requirement
+      const displayPrice = materialPrice === 0 ? 1000 : materialPrice;
+      
+      return {
+        icon: materialImage
+          ? toAbsolute(materialImage)
+          : FALLBACK_IMAGE,
+        title: material?.name || `Material #${material?.id ?? ""}`,
+        price: displayPrice,
+        quantity: m?.quantity || 1,
+        unit: material?.unit || "",
+      };
+    }),
+    // Custom services
     ...relServices.map((s) => ({
-      icon: assets?.serviceIcon || assets?.light,
+      icon: FALLBACK_IMAGE,
       title: s?.title || "Custom service",
       price: toNumber(s?.service_amount),
     })),
   ];
+
+  // Extract appliances from API response
+  // Check multiple possible field names: appliances, load_calculator_appliances, appliances_from_load_calculator
+  const appliancesData = b.appliances ?? 
+                        b.load_calculator_appliances ?? 
+                        b.appliances_from_load_calculator ?? 
+                        b.loadCalculatorAppliances ??
+                        b.load_calculator?.appliances ??
+                        b.calculator_appliances ??
+                        [];
+
+  // Map appliances to the expected format
+  const appliances = Array.isArray(appliancesData) && appliancesData.length > 0
+    ? appliancesData.map((app) => ({
+        name: app?.name || app?.appliance_name || app?.title || app?.appliance?.name || "Unknown Appliance",
+        power: app?.power || app?.wattage || app?.watts || app?.power_watts || app?.appliance?.power || 0,
+        image: app?.image || app?.icon || app?.appliance?.image || FALLBACK_IMAGE,
+      }))
+    : [];
 
   const totalLoad = b.total_load ?? "";
   const inverterRating = b.inver_rating ?? "";
@@ -98,11 +146,12 @@ const mapBundleDetail = (b) => {
     inverterRating,
     totalOutput,
     itemsIncluded,
+    appliances, // Add appliances to the returned object
   };
 };
 
-// Appliances from load calculator
-const loadCalculatorAppliances = [
+// Default appliances (fallback if API doesn't provide)
+const defaultAppliances = [
   { name: "Ceiling Fan", power: 70 },
   { name: "Laptop", power: 70 },
   { name: "LED Bulbs", power: 70 },
@@ -127,6 +176,40 @@ const ProductBundle = () => {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
+  // Try to get appliances from localStorage or URL params (if coming from load calculator)
+  const getAppliancesFromStorage = (bundleId) => {
+    try {
+      // Try bundle-specific key first
+      const bundleKey = `bundle_${bundleId}_appliances`;
+      const bundleStored = localStorage.getItem(bundleKey);
+      if (bundleStored) {
+        const parsed = JSON.parse(bundleStored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      
+      // Try general load calculator appliances
+      const stored = localStorage.getItem('loadCalculatorAppliances');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      
+      // Try from URL query parameters
+      const appliancesParam = searchParams.get('appliances');
+      if (appliancesParam) {
+        try {
+          const decoded = JSON.parse(decodeURIComponent(appliancesParam));
+          if (Array.isArray(decoded) && decoded.length > 0) return decoded;
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+    return null;
+  };
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -134,15 +217,44 @@ const ProductBundle = () => {
       setErr("");
       try {
         const token = localStorage.getItem("access_token");
-        const { data } = await axios.get(API.BUNDLE_BY_ID(id), {
-          headers: {
-            Accept: "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-        });
-        const obj = extractObject(data);
-        const mapped = mapBundleDetail(obj);
-        if (mounted) setProductData(mapped);
+        // Try bundle details endpoint first (has more info including appliances)
+        let bundleData = null;
+        try {
+          const { data: detailsData } = await axios.get(API.BUNDLE_DETAILS(id), {
+            headers: {
+              Accept: "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          });
+          bundleData = extractObject(detailsData);
+        } catch (detailsError) {
+          // Fallback to basic bundle endpoint if details endpoint fails
+          console.warn("Bundle details endpoint failed, using basic endpoint:", detailsError);
+          const { data } = await axios.get(API.BUNDLE_BY_ID(id), {
+            headers: {
+              Accept: "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          });
+          bundleData = extractObject(data);
+        }
+        
+        const mapped = mapBundleDetail(bundleData);
+        
+        // If no appliances from API, try to get from localStorage or URL params
+        if (mounted) {
+          if (!mapped.appliances || mapped.appliances.length === 0) {
+            const storedAppliances = getAppliancesFromStorage(id);
+            if (storedAppliances && storedAppliances.length > 0) {
+              mapped.appliances = storedAppliances.map((app) => ({
+                name: app?.name || app?.appliance_name || app?.title || app?.appliance?.name || "Unknown Appliance",
+                power: app?.power || app?.wattage || app?.watts || app?.power_watts || app?.appliance?.power || 0,
+                image: app?.image || app?.icon || app?.appliance?.image || FALLBACK_IMAGE,
+              }));
+            }
+          }
+          setProductData(mapped);
+        }
       } catch (e) {
         if (mounted) {
           setErr(
@@ -381,22 +493,33 @@ const ProductBundle = () => {
                         >
                           <div className="flex items-center gap-3">
                             <div className="bg-[#B0B7D0] rounded-md w-[60px] h-[60px] flex items-center justify-center overflow-hidden">
-                              {item.icon ? (
-                                <img
-                                  src={item.icon}
-                                  alt={item.title}
-                                  className="max-w-[60%] max-h-[60%] object-contain"
-                                />
-                              ) : (
-                                <span className="text-xs text-white">IMG</span>
-                              )}
+                              <img
+                                src={item.icon || FALLBACK_IMAGE}
+                                alt={item.title}
+                                className="max-w-[60%] max-h-[60%] object-contain"
+                                onError={(e) => {
+                                  if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                    e.target.src = FALLBACK_IMAGE;
+                                  }
+                                }}
+                              />
                             </div>
                             <div>
                               <div className="text-[#273E8E] text-base font-semibold">
                                 {item.title}
+                                {item.quantity && item.quantity > 1 && (
+                                  <span className="text-xs text-gray-500 ml-1">
+                                    (x{item.quantity})
+                                  </span>
+                                )}
                               </div>
                               <div className="text-sm text-[#273E8E]">
                                 {formatNGN(item.price)}
+                                {item.unit && (
+                                  <span className="text-xs text-gray-500 ml-1">
+                                    / {item.unit}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -411,34 +534,50 @@ const ProductBundle = () => {
                     </div>
                   </div>
 
-                  {/* Appliances from Load Calculator */}
-                  <div className="p-4">
-                    <h3 className="text-lg font-medium mb-3">
-                      Appliances from Load Calculator
-                    </h3>
-                    <div className="space-y-2">
-                      {loadCalculatorAppliances.map((appliance, index) => (
-                        <div
-                          key={index}
-                          className="flex justify-between items-center bg-gray-100 h-[80px] px-3 py-2 rounded-md"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="bg-[#B0B7D0] rounded-md w-[60px] h-[60px] flex items-center justify-center overflow-hidden">
-                              <span className="text-xs text-white">APP</span>
-                            </div>
-                            <div>
-                              <div className="text-[#273E8E] text-base font-semibold">
-                                {appliance.name}
+                  {/* Appliances from Load Calculator - Only show if appliances exist */}
+                  {productData?.appliances && productData.appliances.length > 0 && (
+                    <div className="p-4">
+                      <h3 className="text-lg font-medium mb-3">
+                        Appliances from Load Calculator
+                      </h3>
+                      <div className="space-y-2">
+                        {productData.appliances.map((appliance, index) => {
+                          const applianceImage = appliance.image 
+                            ? (appliance.image.startsWith('http') ? appliance.image : toAbsolute(appliance.image))
+                            : FALLBACK_IMAGE;
+                          return (
+                            <div
+                              key={index}
+                              className="flex justify-between items-center bg-gray-100 h-[80px] px-3 py-2 rounded-md"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="bg-[#B0B7D0] rounded-md w-[60px] h-[60px] flex items-center justify-center overflow-hidden">
+                                  <img
+                                    src={applianceImage}
+                                    alt={appliance.name}
+                                    className="max-w-[60%] max-h-[60%] object-contain"
+                                    onError={(e) => {
+                                      if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                        e.target.src = FALLBACK_IMAGE;
+                                      }
+                                    }}
+                                  />
+                                </div>
+                                <div>
+                                  <div className="text-[#273E8E] text-base font-semibold">
+                                    {appliance.name}
+                                  </div>
+                                  <div className="text-sm text-[#273E8E]">
+                                    {appliance.power}W
+                                  </div>
+                                </div>
                               </div>
-                              <div className="text-sm text-[#273E8E]">
-                                {appliance.power}W
-                              </div>
                             </div>
-                          </div>
-                        </div>
-                      ))}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Actions */}
@@ -472,26 +611,26 @@ const ProductBundle = () => {
                   <div className="grid grid-cols-2 h-[110px] rounded-2xl overflow-hidden">
                     <div className="bg-[#273E8E] text-white px-4 py-2 flex flex-col justify-between">
                       <div className="text-sm text-left">Total Load</div>
-                      <div className="text-3xl bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center h-[60%] mt-1">
-                        {productData.totalLoad || "—"}
-                        <span className="text-xs ml-1 mt-2">Watts</span>
+                      <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center h-[60%] mt-1 px-1">
+                        <span className="truncate">{productData.totalLoad || "—"}</span>
+                        <span className="text-xs ml-1 mt-2 whitespace-nowrap">Watts</span>
                       </div>
                     </div>
 
                     <div className="bg-[#273E8E] text-white px-4 py-2 flex flex-col justify-between">
                       <div className="text-sm text-left">Inverter Rating</div>
-                      <div className="text-3xl bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center h-[60%] mt-1">
-                        {productData.inver_rating || "—"}
-                        <span className="text-xs ml-1 mt-2">VA</span>
+                      <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center h-[60%] mt-1 px-1">
+                        <span className="truncate">{productData.inverterRating || "—"}</span>
+                        <span className="text-xs ml-1 mt-2 whitespace-nowrap">VA</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="bg-[#273E8E] text-white px-4 py-3 h-[110px] rounded-2xl flex justify-between items-center">
                     <div className="text-lg font-bold">Total Output</div>
-                    <div className="text-3xl bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center w-[50%] h-[60%] mt-1">
-                      {productData.totalOutput || "—"}
-                      <span className="text-xs ml-1 mt-2">Watts</span>
+                    <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center w-[50%] h-[60%] mt-1 px-1">
+                      <span className="truncate">{productData.totalOutput || "—"}</span>
+                      <span className="text-xs ml-1 mt-2 whitespace-nowrap">Watts</span>
                     </div>
                   </div>
 
@@ -512,18 +651,20 @@ const ProductBundle = () => {
 
                     <hr className="my-4 border-gray-200" />
 
-                    {/* What the bundle is powering */}
-                    <div className="mb-4">
-                      <h4 className="text-sm font-semibold text-gray-800 mb-2">What this bundle powers:</h4>
-                      <div className="space-y-1 max-h-[120px] overflow-y-auto">
-                        {loadCalculatorAppliances.map((appliance, idx) => (
-                          <div key={idx} className="text-xs text-gray-600 flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 bg-[#273E8E] rounded-full"></span>
-                            <span>{appliance.name} ({appliance.power}W)</span>
-                          </div>
-                        ))}
+                    {/* What the bundle is powering - Only show if appliances exist */}
+                    {productData?.appliances && productData.appliances.length > 0 && (
+                      <div className="mb-4">
+                        <h4 className="text-sm font-semibold text-gray-800 mb-2">What this bundle powers:</h4>
+                        <div className="space-y-1 max-h-[120px] overflow-y-auto">
+                          {productData.appliances.map((appliance, idx) => (
+                            <div key={idx} className="text-xs text-gray-600 flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 bg-[#273E8E] rounded-full"></span>
+                              <span>{appliance.name} ({appliance.power}W)</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <hr className="my-4 border-gray-200" />
 
@@ -640,24 +781,33 @@ const ProductBundle = () => {
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-[44px] h-[44px] rounded-md bg-[#C9D0E6] flex items-center justify-center overflow-hidden">
-                            {item.icon ? (
-                              <img
-                                src={item.icon}
-                                alt={item.title}
-                                className="max-w-[70%] max-h-[70%] object-contain"
-                              />
-                            ) : (
-                              <span className="text-[10px] text-white">
-                                IMG
-                              </span>
-                            )}
+                            <img
+                              src={item.icon || FALLBACK_IMAGE}
+                              alt={item.title}
+                              className="max-w-[70%] max-h-[70%] object-contain"
+                              onError={(e) => {
+                                if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                  e.target.src = FALLBACK_IMAGE;
+                                }
+                              }}
+                            />
                           </div>
                           <div className=" text-[10px] lg:text-[13px] text-[#273E8E]">
                             <div className="font-medium leading-4">
                               {item.title}
+                              {item.quantity && item.quantity > 1 && (
+                                <span className="text-[9px] text-gray-500 ml-1">
+                                  (x{item.quantity})
+                                </span>
+                              )}
                             </div>
                             <div className="font-semibold mt-[2px]">
                               {formatNGN(item.price)}
+                              {item.unit && (
+                                <span className="text-[9px] text-gray-500 ml-1">
+                                  / {item.unit}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -671,35 +821,51 @@ const ProductBundle = () => {
                   </div>
                 </div>
 
-                {/* Appliances from Load Calculator - Mobile */}
-                <div className="mt-3">
-                  <p className="text-[12px] lg:text-[14px] font-medium mb-2">
-                    Appliances from Load Calculator
-                  </p>
+                {/* Appliances from Load Calculator - Mobile - Only show if appliances exist */}
+                {productData?.appliances && productData.appliances.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-[12px] lg:text-[14px] font-medium mb-2">
+                      Appliances from Load Calculator
+                    </p>
 
-                  <div className="space-y-2">
-                    {loadCalculatorAppliances.map((appliance, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between bg-[#E8EDF8] rounded-[12px] px-3 py-3"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-[44px] h-[44px] rounded-md bg-[#C9D0E6] flex items-center justify-center overflow-hidden">
-                            <span className="text-[10px] text-white">APP</span>
-                          </div>
-                          <div className="text-[10px] lg:text-[13px] text-[#273E8E]">
-                            <div className="font-medium leading-4">
-                              {appliance.name}
+                    <div className="space-y-2">
+                      {productData.appliances.map((appliance, idx) => {
+                        const applianceImage = appliance.image 
+                          ? (appliance.image.startsWith('http') ? appliance.image : toAbsolute(appliance.image))
+                          : FALLBACK_IMAGE;
+                        return (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between bg-[#E8EDF8] rounded-[12px] px-3 py-3"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-[44px] h-[44px] rounded-md bg-[#C9D0E6] flex items-center justify-center overflow-hidden">
+                                <img
+                                  src={applianceImage}
+                                  alt={appliance.name}
+                                  className="max-w-[70%] max-h-[70%] object-contain"
+                                  onError={(e) => {
+                                    if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                      e.target.src = FALLBACK_IMAGE;
+                                    }
+                                  }}
+                                />
+                              </div>
+                              <div className="text-[10px] lg:text-[13px] text-[#273E8E]">
+                                <div className="font-medium leading-4">
+                                  {appliance.name}
+                                </div>
+                                <div className="font-semibold mt-[2px]">
+                                  {appliance.power}W
+                                </div>
+                              </div>
                             </div>
-                            <div className="font-semibold mt-[2px]">
-                              {appliance.power}W
-                            </div>
                           </div>
-                        </div>
-                      </div>
-                    ))}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Actions */}
                 <div className="mt-4 flex flex-col gap-3">

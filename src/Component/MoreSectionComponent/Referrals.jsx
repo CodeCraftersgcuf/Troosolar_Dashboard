@@ -87,14 +87,14 @@ const Referrals = () => {
       return;
     }
 
-    const shareText = `Join TrooSolar using my referral code: ${referralCode}\n\nGet great deals on solar energy solutions!`;
+    const shareText = `Join Troosolar using my referral code: ${referralCode}\n\nGet great deals on solar energy solutions!`;
     const shareUrl = `${window.location.origin}/register?referral_code=${referralCode}`;
 
     // Try Web Share API first (mobile)
     if (navigator.share) {
       try {
         await navigator.share({
-          title: "TrooSolar Referral Code",
+          title: "Troosolar Referral Code",
           text: shareText,
           url: shareUrl,
         });

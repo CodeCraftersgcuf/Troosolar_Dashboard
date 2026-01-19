@@ -64,9 +64,20 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
     return null;
   };
 
-  // Filter logic (debounced)
+  // Filter logic (debounced for search, immediate for dropdown selections)
   useEffect(() => {
-    const delay = setTimeout(() => {
+    // Use shorter delay for dropdown selections, longer for search input
+    const delay = query.trim() ? 300 : 0; // Immediate for category/size, debounced for search
+    
+    const timeoutId = setTimeout(() => {
+      if (!products || products.length === 0) {
+        setFilteredResults([]);
+        if (onFilteringChange) {
+          onFilteringChange(false);
+        }
+        return;
+      }
+
       let results = [...products]; // Start with all products
       const querySize = extractSizeFromQuery(query);
       const sizeToFilter = selectedSize !== "all" ? parseFloat(selectedSize) : querySize;
@@ -77,12 +88,14 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
         const catId = Number(selectedValue);
         results = results.filter((item) => {
           // For mapped products from HomePage (they have categoryId)
-          return Number(item.categoryId) === catId;
+          const itemCategoryId = Number(item.categoryId);
+          const matches = !isNaN(itemCategoryId) && itemCategoryId === catId;
+          return matches;
         });
       }
 
       // Size filtering (for bundles)
-      if (sizeToFilter) {
+      if (sizeToFilter && !isNaN(sizeToFilter)) {
         results = results.filter((item) => {
           // Check if it's a bundle (has bundle properties)
           const bundle = item.bundle || item;
@@ -112,7 +125,7 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
         const q = query.trim().toLowerCase();
         results = results.filter((item) => {
           // Check the heading field (which is the mapped title)
-          const title = item.heading || "";
+          const title = item.heading || item.title || item.name || "";
           return String(title).toLowerCase().includes(q);
         });
       }
@@ -124,9 +137,9 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
       if (onFilteringChange) {
         onFilteringChange(isFilteringActive);
       }
-    }, 300);
+    }, delay);
 
-    return () => clearTimeout(delay);
+    return () => clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, selectedValue, selectedSize, products]); // Removed setFilteredResults and onFilteringChange to prevent infinite loops
 
@@ -162,8 +175,12 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
             {dropdownOptions.map((option) => (
               <button
                 key={option.value}
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                   setSelectedValue(option.value);
+                  // Optionally close dropdown after selection
+                  // setIsDropdownOpen(false);
                 }}
                 className={`flex items-center justify-between w-full px-4 py-2 text-sm hover:bg-gray-100 ${
                   selectedValue === option.value
@@ -189,8 +206,12 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
                 {sizeOptions.map((size) => (
                   <button
                     key={size.value}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       setSelectedSize(size.value);
+                      // Optionally close dropdown after selection
+                      // setIsDropdownOpen(false);
                     }}
                     className={`flex items-center justify-between w-full px-4 py-2 text-sm hover:bg-gray-100 ${
                       selectedSize === size.value

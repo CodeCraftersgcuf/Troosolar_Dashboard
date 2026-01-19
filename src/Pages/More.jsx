@@ -141,6 +141,8 @@ const More = () => {
     const section = searchParams.get("section");
     if (section === "notifications") {
       setActiveSection("maintenance");
+    } else if (section === "myOrders") {
+      setActiveSection("myOrders");
     }
   }, [searchParams]);
   const displayName = useMemo(() => getDisplayName(user) || "User", [user]);

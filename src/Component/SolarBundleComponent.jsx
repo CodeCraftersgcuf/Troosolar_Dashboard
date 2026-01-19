@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 const SolarBundleComponent = ({
   id,
@@ -16,24 +16,45 @@ const SolarBundleComponent = ({
 }) => {
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
+  const [useFallback, setUseFallback] = useState(false);
+  const navigate = useNavigate();
 
-  // Assuming image is the relative path, prepend the base URL
-  // const imageUrl = `https://troosolar.hmstech.org/${image}`;
+  // Fallback image URL
+  const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/e212b55b-057a-4a39-8d80-d241169cdac0.png";
 
-  const imageUrl = image;
+  // Use fallback if original image failed, otherwise use the provided image
+  const imageUrl = useFallback ? FALLBACK_IMAGE : (image || FALLBACK_IMAGE);
 
   const handleImageLoad = () => {
     setImageLoading(false);
   };
 
   const handleImageError = () => {
-    setImageLoading(false);
-    setImageError(true);
+    if (!useFallback) {
+      // Try fallback image first
+      setUseFallback(true);
+      setImageLoading(true);
+    } else {
+      // Both original and fallback failed
+      setImageLoading(false);
+      setImageError(true);
+    }
   };
+
+  const handleCardClick = (e) => {
+    // Only navigate if the click is not on a button or link
+    if (!e.target.closest('a') && !e.target.closest('button')) {
+      if (id) {
+        navigate(`/productBundle/details/${id}`);
+      }
+    }
+  };
+
   return (
     <div
-      className="w-full h-full sm:w-[243px] bg-white rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col min-h-[320px] sm:min-h-0"
+      className="w-full h-full bg-white rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col min-h-[320px] sm:min-h-0 cursor-pointer hover:shadow-md transition-shadow"
       style={{ border: `2px solid ${borderColor || '#273e8e'}` }}
+      onClick={handleCardClick}
     >
       {/* Image: Fixed height container to prevent layout shift - matches Product component */}
       <div className="relative rounded-2xl mb-2 overflow-hidden bg-gray-100 h-[140px] sm:h-[180px] flex items-center justify-center">
@@ -122,7 +143,7 @@ const SolarBundleComponent = ({
       <hr className="border-gray-300 mt-2 mb-3" />
 
       {/* Actions: Buttons similar to Product component */}
-      <div className="grid grid-cols-2 gap-3 mt-auto">
+      <div className="grid grid-cols-2 gap-3 mt-auto" onClick={(e) => e.stopPropagation()}>
         <Link
           to={`/productBundle/details/${id}`}
           className="h-10 border border-[#000000] text-[12px] max-sm:text-[8px] rounded-full max-sm:rounded-2xl text-[#181919] max-sm:h-7 flex items-center justify-center hover:bg-gray-50 transition-colors"

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Upload, CreditCard, Camera, Clock, Download, AlertCircle, Calendar, Loader, CheckCircle2, XCircle, X, Minus, Plus, Info } from 'lucide-react';
+import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Upload, CreditCard, Camera, Clock, Download, AlertCircle, Calendar, Loader, CheckCircle2, XCircle, X, Minus, Plus, Info, ChevronDown } from 'lucide-react';
 import LoanCalculator from '../../Component/LoanCalculator';
 import axios from 'axios';
 import API, { BASE_URL } from '../../config/api.config';
@@ -24,15 +24,23 @@ const toAbsolute = (path) => {
     return `${API_ORIGIN}/storage/${cleaned}`;
 };
 
+// Fallback image URL
+const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/e212b55b-057a-4a39-8d80-d241169cdac0.png";
+
 // Helper to get bundle image (moved to component level for modal access)
 const getBundleImage = (bundle) => {
-    if (!bundle) return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+    if (!bundle) return FALLBACK_IMAGE;
     
     if (bundle.featured_image) {
         return toAbsolute(bundle.featured_image);
     }
-    // Return a data URI SVG placeholder
-    return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+    // Return fallback image
+    return FALLBACK_IMAGE;
+};
+
+// Helper to format price (moved to component level for modal access)
+const formatPrice = (price) => {
+    return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
 };
 
 // Flutterwave integration
@@ -218,6 +226,9 @@ const BNPLFlow = () => {
     const [bundles, setBundles] = useState([]);
     const [bundlesLoading, setBundlesLoading] = useState(false);
     const [selectedBundleDetails, setSelectedBundleDetails] = useState(null); // For "Learn More" modal
+    const [selectedSystemSize, setSelectedSystemSize] = useState("all"); // System size filter
+    const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false);
+    const sizeDropdownRef = useRef(null);
 
     // Map predefined category groups to API category IDs
     const getCategoryIdsForGroup = (groupType) => {
@@ -268,6 +279,61 @@ const BNPLFlow = () => {
 
         return categoryIds[groupType] || [];
     };
+
+    // System size options (1.2kW to 10kW)
+    const sizeOptions = useMemo(() => {
+        const sizes = [];
+        for (let i = 1.2; i <= 10; i += 0.5) {
+            sizes.push({
+                label: `${i}kW`,
+                value: i.toString(),
+            });
+        }
+        return [{ label: "All Sizes", value: "all" }, ...sizes];
+    }, []);
+
+    // Helper function to extract numeric value from inverter rating (e.g., "1.2 kVA" -> 1.2)
+    const extractSystemSize = (bundle) => {
+        const rating = bundle.inver_rating || bundle.inverter_rating || bundle.inverterRating || '';
+        if (!rating) return null;
+        
+        // Extract numeric value (handles formats like "1.2 kVA", "1.2kVA", "1.2 kva", etc.)
+        const match = String(rating).match(/(\d+\.?\d*)/);
+        if (match) {
+            return parseFloat(match[1]);
+        }
+        return null;
+    };
+
+    // Filter bundles based on selected system size
+    const filteredBundles = useMemo(() => {
+        if (selectedSystemSize === "all") {
+            return bundles;
+        }
+        
+        const targetSize = parseFloat(selectedSystemSize);
+        if (isNaN(targetSize)) return bundles;
+        
+        return bundles.filter((bundle) => {
+            const bundleSize = extractSystemSize(bundle);
+            if (bundleSize === null) return false;
+            
+            // Match within ±0.3kW tolerance
+            const tolerance = 0.3;
+            return Math.abs(bundleSize - targetSize) <= tolerance;
+        });
+    }, [bundles, selectedSystemSize]);
+
+    // Close size dropdown if clicked outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (sizeDropdownRef.current && !sizeDropdownRef.current.contains(event.target)) {
+                setIsSizeDropdownOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
     // --- Effects ---
     
@@ -1045,8 +1111,8 @@ const BNPLFlow = () => {
             if (product.images && product.images[0] && product.images[0].image) {
                 return toAbsolute(product.images[0].image);
             }
-            // Return a data URI SVG placeholder instead of a file path to prevent infinite loops
-            return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+            // Return fallback image
+            return FALLBACK_IMAGE;
         };
 
         return (
@@ -1105,11 +1171,17 @@ const BNPLFlow = () => {
                             return (
                                 <div
                                     key={product.id}
-                                    className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 ${
+                                    className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 cursor-pointer ${
                                         isSelected 
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
+                                    onClick={() => {
+                                        // Navigate to product details page
+                                        if (product.id) {
+                                            navigate(`/homePage/product/${product.id}`);
+                                        }
+                                    }}
                                 >
                                     <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100 relative">
                                         <img
@@ -1117,9 +1189,9 @@ const BNPLFlow = () => {
                                             alt={product.title || product.name}
                                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                             onError={(e) => {
-                                                // Prevent infinite loop - only set placeholder if not already set
-                                                if (e.target.src && !e.target.src.includes('placeholder-product.png') && !e.target.src.includes('data:image')) {
-                                                    e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                                // Prevent infinite loop - only set fallback if not already set
+                                                if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                                    e.target.src = FALLBACK_IMAGE;
                                                 }
                                             }}
                                         />
@@ -1150,7 +1222,11 @@ const BNPLFlow = () => {
                                         )}
                                     </div>
                                     <button
-                                        onClick={() => handleProductSelect(product)}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleProductSelect(product);
+                                        }}
                                         className={`w-full py-2 rounded-lg font-semibold transition-colors mt-2 ${
                                             isSelected
                                                 ? 'bg-red-600 text-white hover:bg-red-700'
@@ -1197,7 +1273,7 @@ const BNPLFlow = () => {
             if (product.images && product.images[0] && product.images[0].image) {
                 return toAbsolute(product.images[0].image);
             }
-            return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+            return FALLBACK_IMAGE;
         };
 
         return (
@@ -1259,11 +1335,17 @@ const BNPLFlow = () => {
                             return (
                                 <div
                                     key={product.id}
-                                    className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 ${
+                                    className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 cursor-pointer ${
                                         isSelected 
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
+                                    onClick={() => {
+                                        // Navigate to product details page
+                                        if (product.id) {
+                                            navigate(`/homePage/product/${product.id}`);
+                                        }
+                                    }}
                                 >
                                     <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100 relative">
                                         <img
@@ -1271,8 +1353,9 @@ const BNPLFlow = () => {
                                             alt={product.title || product.name}
                                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                             onError={(e) => {
-                                                if (e.target.src && !e.target.src.includes('placeholder-product.png') && !e.target.src.includes('data:image')) {
-                                                    e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                                // Prevent infinite loop - only set fallback if not already set
+                                                if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                                    e.target.src = FALLBACK_IMAGE;
                                                 }
                                             }}
                                         />
@@ -1303,7 +1386,11 @@ const BNPLFlow = () => {
                                         )}
                                     </div>
                                     <button
-                                        onClick={() => handleProductSelect(product)}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleProductSelect(product);
+                                        }}
                                         className={`w-full py-2 rounded-lg font-semibold transition-colors mt-2 ${
                                             isSelected
                                                 ? 'bg-red-600 text-white hover:bg-red-700'
@@ -1356,7 +1443,7 @@ const BNPLFlow = () => {
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <Zap size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose My Solar System</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose My Solar Bundle</h3>
                 </button>
                 <button onClick={() => handleOptionSelect('build-system')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
@@ -1381,6 +1468,8 @@ const BNPLFlow = () => {
             return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
         };
 
+        const selectedSizeLabel = sizeOptions.find((o) => o.value === selectedSystemSize)?.label || "All Sizes";
+
         return (
             <div className="animate-fade-in">
                 <button 
@@ -1401,6 +1490,48 @@ const BNPLFlow = () => {
                     Select from our pre-configured solar bundles
                 </p>
 
+                {/* System Size Filter */}
+                {!bundlesLoading && bundles.length > 0 && (
+                    <div className="mb-6 flex justify-center">
+                        <div className="relative" ref={sizeDropdownRef}>
+                            <button
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setIsSizeDropdownOpen(!isSizeDropdownOpen);
+                                }}
+                                className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+                            >
+                                <span>System Size: {selectedSizeLabel}</span>
+                                <ChevronDown size={16} className={`transition-transform ${isSizeDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            
+                            {isSizeDropdownOpen && (
+                                <div className="absolute left-0 top-full mt-1 max-h-[300px] z-50 w-[200px] bg-white rounded-md shadow-lg border border-gray-200 overflow-y-auto">
+                                    <div className="py-1">
+                                        {sizeOptions.map((option) => (
+                                            <div
+                                                key={option.value}
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    setSelectedSystemSize(option.value);
+                                                    setIsSizeDropdownOpen(false);
+                                                }}
+                                                className={`px-4 py-2 text-sm cursor-pointer hover:bg-gray-100 ${
+                                                    selectedSystemSize === option.value ? 'bg-[#273e8e]/10 text-[#273e8e] font-medium' : 'text-gray-700'
+                                                }`}
+                                            >
+                                                {option.label}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {bundlesLoading ? (
                     <div className="text-center py-16">
                         <div className="flex flex-col items-center justify-center">
@@ -1409,12 +1540,24 @@ const BNPLFlow = () => {
                             <p className="mt-2 text-sm text-gray-500">Please wait while we fetch available solar bundles</p>
                         </div>
                     </div>
-                ) : bundles.length === 0 ? (
+                ) : filteredBundles.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-2xl border border-gray-200">
-                        <p className="text-gray-600">No bundles available at the moment.</p>
+                        <p className="text-gray-600 mb-4">
+                            {selectedSystemSize !== "all" 
+                                ? `No bundles found for ${selectedSizeLabel}.` 
+                                : "No bundles available at the moment."}
+                        </p>
+                        {selectedSystemSize !== "all" && (
+                            <button
+                                onClick={() => setSelectedSystemSize("all")}
+                                className="mt-2 text-[#273e8e] hover:underline font-semibold text-sm"
+                            >
+                                Clear filter
+                            </button>
+                        )}
                         <button
                             onClick={() => setStep(3)}
-                            className="mt-4 text-[#273e8e] hover:underline"
+                            className="mt-4 block mx-auto text-[#273e8e] hover:underline"
                         >
                             Go back
                         </button>
@@ -1422,7 +1565,7 @@ const BNPLFlow = () => {
                 ) : (
                     <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                        {bundles.map((bundle) => {
+                        {filteredBundles.map((bundle) => {
                             const price = Number(bundle.discount_price || bundle.total_price || 0);
                             const oldPrice = bundle.discount_price && bundle.total_price && bundle.discount_price < bundle.total_price 
                                 ? Number(bundle.total_price) 
@@ -1450,9 +1593,9 @@ const BNPLFlow = () => {
                                                 alt={bundle.title || bundle.name}
                                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                                 onError={(e) => {
-                                                    // Prevent infinite loop - only set placeholder if not already set
-                                                    if (e.target.src && !e.target.src.includes('placeholder-product.png') && !e.target.src.includes('data:image')) {
-                                                        e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                                    // Prevent infinite loop - only set fallback if not already set
+                                                    if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                                        e.target.src = FALLBACK_IMAGE;
                                                     }
                                                 }}
                                             />
@@ -1489,9 +1632,36 @@ const BNPLFlow = () => {
                                     
                                     {/* Learn More Button */}
                                     <button
-                                        onClick={(e) => {
+                                        onClick={async (e) => {
                                             e.stopPropagation();
-                                            setSelectedBundleDetails(bundle);
+                                            // Fetch full bundle details with fees
+                                            try {
+                                                setBundlesLoading(true);
+                                                const token = localStorage.getItem('access_token');
+                                                const response = await axios.get(API.BUNDLE_DETAILS(bundle.id), {
+                                                    headers: {
+                                                        Accept: 'application/json',
+                                                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                                                    },
+                                                });
+                                                
+                                                const bundleDetails = response.data?.data ?? response.data;
+                                                if (bundleDetails) {
+                                                    setSelectedBundleDetails(bundleDetails);
+                                                    setStep(3.6); // Navigate to bundle details page
+                                                } else {
+                                                    // Fallback to basic bundle data if details endpoint fails
+                                                    setSelectedBundleDetails(bundle);
+                                                    setStep(3.6);
+                                                }
+                                            } catch (error) {
+                                                console.error("Failed to fetch bundle details:", error);
+                                                // Fallback to basic bundle data
+                                                setSelectedBundleDetails(bundle);
+                                                setStep(3.6);
+                                            } finally {
+                                                setBundlesLoading(false);
+                                            }
                                         }}
                                         className="w-full mb-2 py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
                                     >
@@ -1528,6 +1698,424 @@ const BNPLFlow = () => {
                     )}
                     </>
                 )}
+            </div>
+        );
+    };
+
+    // Bundle Details Page (Full Page View - Step 3.6)
+    const renderStep3_6 = () => {
+        if (!selectedBundleDetails) {
+            return (
+                <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center">
+                    <Loader className="animate-spin mx-auto text-[#273e8e]" size={40} />
+                    <p className="text-gray-600 mt-4">Loading bundle details...</p>
+                </div>
+            );
+        }
+
+        const bundle = selectedBundleDetails;
+        const totalPrice = Number(bundle.discount_price || bundle.total_price || 0);
+        const oldPrice = bundle.discount_price && bundle.total_price && bundle.discount_price < bundle.total_price
+            ? Number(bundle.total_price)
+            : null;
+        const discount = oldPrice && totalPrice < oldPrice
+            ? Math.round(((oldPrice - totalPrice) / oldPrice) * 100)
+            : 0;
+
+        // Get items included
+        const itemsIncluded = bundle.materials || bundle.bundleItems || bundle.bundle_items || [];
+        
+        // Get assets for fallback images
+        const getItemIcon = (item) => {
+            const product = item.product || item;
+            const material = item.material || item;
+            
+            // Try product image first
+            if (product?.featured_image) return toAbsolute(product.featured_image);
+            if (product?.featured_image_url) return toAbsolute(product.featured_image_url);
+            
+            // Try material image
+            if (material?.featured_image) return toAbsolute(material.featured_image);
+            if (material?.featured_image_url) return toAbsolute(material.featured_image_url);
+            if (material?.image) return toAbsolute(material.image);
+            
+            // Return fallback image
+            return FALLBACK_IMAGE;
+        };
+
+        return (
+            <div className="animate-fade-in bg-[#F5F7FF] min-h-screen p-3 sm:p-5">
+                <div className="bg-[#F6F8FF] min-h-screen rounded-lg p-3 sm:p-6">
+                    {/* Back Button */}
+                    <button 
+                        onClick={() => {
+                            setSelectedBundleDetails(null);
+                            setStep(3.5);
+                        }} 
+                        className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]"
+                    >
+                        <ArrowLeft size={16} className="mr-2" /> Back to Bundles
+                    </button>
+
+                    {/* Desktop Layout */}
+                    <div className="hidden sm:flex justify-between items-start gap-4">
+                        {/* Left Column - Main Content */}
+                        <div className="min-w-[66%]">
+                            <div className="bg-white w-full border border-[#800080] rounded-lg mt-3">
+                                {/* Image */}
+                                <div className="relative h-[350px] bg-[#F3F3F3] m-2 rounded-lg flex justify-center items-center overflow-hidden">
+                                    <img
+                                        src={getBundleImage(bundle)}
+                                        alt={bundle.title || bundle.name || 'Bundle'}
+                                        className="max-h-[80%] object-contain"
+                                        onError={(e) => {
+                                            // Prevent infinite loop - only set fallback if not already set
+                                            if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                                e.target.src = FALLBACK_IMAGE;
+                                            }
+                                        }}
+                                    />
+                                </div>
+
+                                {/* Content */}
+                                <div className="p-4">
+                                    <h2 className="text-xl font-semibold">
+                                        {bundle.title || bundle.name || `Bundle #${bundle.id}`}
+                                    </h2>
+                                    {bundle.bundle_type && (
+                                        <p className="text-sm text-gray-500 pt-1">
+                                            {bundle.bundle_type}
+                                        </p>
+                                    )}
+                                    {bundle.backup_info && (
+                                        <p className="text-sm text-gray-500 pt-1">
+                                            {bundle.backup_info}
+                                        </p>
+                                    )}
+
+                                    <hr className="my-3 text-gray-300" />
+
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex flex-col items-start">
+                                            <p className="text-xl font-bold text-[#273E8E]">
+                                                {formatPrice(totalPrice)}
+                                            </p>
+                                            <div className="flex gap-2 mt-1">
+                                                {oldPrice && (
+                                                    <span className="text-sm text-gray-500 line-through">
+                                                        {formatPrice(oldPrice)}
+                                                    </span>
+                                                )}
+                                                {discount > 0 && (
+                                                    <span className="text-xs px-2 py-[2px] bg-[#FFA500]/20 text-[#FFA500] rounded-full">
+                                                        -{discount}%
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <hr className="my-2 text-gray-300" />
+
+                                {/* What's in the bundle */}
+                                <div className="p-4">
+                                    <h3 className="text-lg font-medium mb-3">
+                                        What is inside the bundle ?
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {itemsIncluded.length > 0 ? itemsIncluded.map((item, index) => {
+                                            const product = item.product || item;
+                                            const itemName = product?.name || product?.title || item?.name || `Item #${index + 1}`;
+                                            const rawPrice = Number(product?.price || item?.selling_rate || item?.rate || 0);
+                                            const itemPrice = rawPrice === 0 ? 1000 : rawPrice;
+                                            const itemQuantity = item.quantity || 1;
+                                            
+                                            return (
+                                                <div
+                                                    key={index}
+                                                    className="flex justify-between items-center bg-gray-100 h-[80px] px-3 py-2 rounded-md"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="bg-[#B0B7D0] rounded-md w-[60px] h-[60px] flex items-center justify-center overflow-hidden">
+                                                            <img
+                                                                src={getItemIcon(item)}
+                                                                alt={itemName}
+                                                                className="max-w-[60%] max-h-[60%] object-contain"
+                                                                onError={(e) => {
+                                                                    // Prevent infinite loop - only set fallback if not already set
+                                                                    if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                                                        e.target.src = FALLBACK_IMAGE;
+                                                                    }
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-[#273E8E] text-base font-semibold">
+                                                                {itemName}
+                                                                {itemQuantity > 1 && <span className="text-gray-500 ml-2">(× {itemQuantity})</span>}
+                                                            </div>
+                                                            <div className="text-sm text-[#273E8E]">
+                                                                {formatPrice(itemPrice)}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }) : (
+                                            <div className="text-gray-500 bg-white border rounded-xl p-4">
+                                                No items attached to this bundle.
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Fees Information */}
+                                {bundle.fees && (
+                                    <div className="p-4 border-t border-gray-200">
+                                        <h3 className="text-lg font-medium mb-3">Additional Fees</h3>
+                                        <div className="space-y-2 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                            {bundle.fees.installation_fee && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Installation Fee</span>
+                                                    <span className="font-semibold text-gray-800">{formatPrice(Number(bundle.fees.installation_fee))}</span>
+                                                </div>
+                                            )}
+                                            {bundle.fees.delivery_fee && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Delivery Fee</span>
+                                                    <span className="font-semibold text-gray-800">{formatPrice(Number(bundle.fees.delivery_fee))}</span>
+                                                </div>
+                                            )}
+                                            {bundle.fees.inspection_fee && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Inspection Fee</span>
+                                                    <span className="font-semibold text-gray-800">{formatPrice(Number(bundle.fees.inspection_fee))}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex flex-col gap-3 mt-6 px-2">
+                                <button
+                                    onClick={() => {
+                                        handleBundleSelect(bundle);
+                                        setSelectedBundleDetails(null);
+                                    }}
+                                    className="w-full text-sm bg-[#273E8E] text-white py-4 rounded-full hover:bg-[#1a2b6b] transition-colors"
+                                >
+                                    Select This Bundle
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Right Column - Stats */}
+                        <div className="w-[34%]">
+                            <div className="flex flex-col gap-3 rounded-2xl">
+                                <div className="grid grid-cols-2 h-[110px] rounded-2xl overflow-hidden">
+                                    <div className="bg-[#273E8E] text-white px-4 py-2 flex flex-col justify-between">
+                                        <div className="text-sm text-left">Total Load</div>
+                                        <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center h-[60%] mt-1 px-1">
+                                            <span className="truncate">{bundle.total_load || "—"}</span>
+                                            <span className="text-xs ml-1 mt-2 whitespace-nowrap">Watts</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-[#273E8E] text-white px-4 py-2 flex flex-col justify-between">
+                                        <div className="text-sm text-left">Inverter Rating</div>
+                                        <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center h-[60%] mt-1 px-1">
+                                            <span className="truncate">{bundle.inver_rating || "—"}</span>
+                                            <span className="text-xs ml-1 mt-2 whitespace-nowrap">VA</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-[#273E8E] text-white px-4 py-3 h-[110px] rounded-2xl flex justify-between items-center">
+                                    <div className="text-lg font-bold">Total Output</div>
+                                    <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center w-[50%] h-[60%] mt-1 px-1">
+                                        <span className="truncate">{bundle.total_output || "—"}</span>
+                                        <span className="text-xs ml-1 mt-2 whitespace-nowrap">Watts</span>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white border rounded-2xl p-4">
+                                    <h3 className="text-base font-semibold text-gray-800 mb-4">Order Summary</h3>
+                                    
+                                    <div className="space-y-3 mb-4">
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-gray-600">Items</span>
+                                            <span className="font-medium">{itemsIncluded.length}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-gray-600">Bundle Price</span>
+                                            <span className="font-medium">{formatPrice(totalPrice)}</span>
+                                        </div>
+                                    </div>
+
+                                    <hr className="my-4 border-gray-200" />
+
+                                    {bundle.backup_info && (
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-gray-800 mb-2">Backup Time</h4>
+                                            <p className="text-xs text-gray-600">
+                                                {bundle.backup_info}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Mobile Layout */}
+                    <div className="sm:hidden">
+                        <div className="mx-3 mb-4 rounded-[18px] border border-[#800080] bg-white p-3">
+                            {/* Image */}
+                            <div className="relative h-[190px] rounded-[14px] bg-[#F3F3F3] flex items-center justify-center overflow-hidden">
+                                <img
+                                    src={getBundleImage(bundle)}
+                                    alt={bundle.title || bundle.name || 'Bundle'}
+                                    className="max-h-[80%] object-contain"
+                                    onError={(e) => {
+                                        e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                    }}
+                                />
+                            </div>
+
+                            {/* Title + Price */}
+                            <div className="pt-3">
+                                <h2 className="text-[12px] lg:text-[16px] font-semibold text-[#0F172A]">
+                                    {bundle.title || bundle.name || `Bundle #${bundle.id}`}
+                                </h2>
+                                {bundle.bundle_type && (
+                                    <p className="text-[12px] text-gray-500 mt-[2px]">
+                                        {bundle.bundle_type}
+                                    </p>
+                                )}
+                                {bundle.backup_info && (
+                                    <p className="text-[12px] text-gray-500 mt-[2px]">
+                                        {bundle.backup_info}
+                                    </p>
+                                )}
+
+                                <div className="mt-2 flex items-start justify-between">
+                                    <div>
+                                        <div className="text-[12px] lg:text-[18px] font-bold text-[#273E8E] leading-5">
+                                            {formatPrice(totalPrice)}
+                                        </div>
+                                        <div className="mt-1 flex items-center gap-2">
+                                            {oldPrice && (
+                                                <span className="text-[10px] lg:text-[12px] text-gray-400 line-through">
+                                                    {formatPrice(oldPrice)}
+                                                </span>
+                                            )}
+                                            {discount > 0 && (
+                                                <span className="px-2 py-[2px] rounded-full text-[11px] text-orange-600 bg-orange-100">
+                                                    -{discount}%
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* What's inside */}
+                            <div className="mt-3">
+                                <p className="text-[12px] lg:text-[14px] font-medium mb-2">
+                                    What is inside the bundle ?
+                                </p>
+                                <div className="space-y-2">
+                                    {itemsIncluded.length > 0 ? itemsIncluded.map((item, idx) => {
+                                        const product = item.product || item;
+                                        const itemName = product?.name || product?.title || item?.name || `Item #${idx + 1}`;
+                                        const rawPrice = Number(product?.price || item?.selling_rate || item?.rate || 0);
+                                        const itemPrice = rawPrice === 0 ? 1000 : rawPrice;
+                                        const itemQuantity = item.quantity || 1;
+                                        
+                                        return (
+                                            <div
+                                                key={idx}
+                                                className="flex items-center justify-between bg-[#E8EDF8] rounded-[12px] px-3 py-3"
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-[44px] h-[44px] rounded-md bg-[#C9D0E6] flex items-center justify-center overflow-hidden">
+                                                        <img
+                                                            src={getItemIcon(item)}
+                                                            alt={itemName}
+                                                            className="max-w-[70%] max-h-[70%] object-contain"
+                                                            onError={(e) => {
+                                                                // Prevent infinite loop - only set fallback if not already set
+                                                                if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                                                    e.target.src = FALLBACK_IMAGE;
+                                                                }
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="text-[10px] lg:text-[13px] text-[#273E8E]">
+                                                        <div className="font-medium leading-4">
+                                                            {itemName}
+                                                            {itemQuantity > 1 && <span className="text-gray-500 ml-1">(× {itemQuantity})</span>}
+                                                        </div>
+                                                        <div className="font-semibold mt-[2px]">
+                                                            {formatPrice(itemPrice)}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    }) : (
+                                        <div className="text-gray-500 bg-white border rounded-xl p-4 text-xs lg:text-sm">
+                                            No items attached to this bundle.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Fees - Mobile */}
+                            {bundle.fees && (
+                                <div className="mt-3">
+                                    <p className="text-[12px] lg:text-[14px] font-medium mb-2">Additional Fees</p>
+                                    <div className="space-y-2 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                        {bundle.fees.installation_fee && (
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-gray-600">Installation Fee</span>
+                                                <span className="font-semibold">{formatPrice(Number(bundle.fees.installation_fee))}</span>
+                                            </div>
+                                        )}
+                                        {bundle.fees.delivery_fee && (
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-gray-600">Delivery Fee</span>
+                                                <span className="font-semibold">{formatPrice(Number(bundle.fees.delivery_fee))}</span>
+                                            </div>
+                                        )}
+                                        {bundle.fees.inspection_fee && (
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-gray-600">Inspection Fee</span>
+                                                <span className="font-semibold">{formatPrice(Number(bundle.fees.inspection_fee))}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Actions - Mobile */}
+                            <div className="mt-4">
+                                <button
+                                    onClick={() => {
+                                        handleBundleSelect(bundle);
+                                        setSelectedBundleDetails(null);
+                                    }}
+                                    className="w-full h-11 rounded-full bg-[#273E8E] text-white text-[11px] lg:text-[14px] hover:bg-[#1a2b6b] transition-colors"
+                                >
+                                    Select This Bundle
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     };
@@ -1818,7 +2406,7 @@ const BNPLFlow = () => {
                         }}
                         className="w-full border-2 border-gray-300 text-gray-700 px-8 py-3 rounded-xl font-bold hover:bg-gray-50 transition-colors"
                     >
-                        Check Approval Status
+                        Commmercial Audit Request
                     </button>
                 </div>
             </div>
@@ -4282,6 +4870,9 @@ const BNPLFlow = () => {
             total: formData.selectedProductPrice + 50000 + 50000 + 25000 + 10000 + (formData.selectedProductPrice * 0.005)
         };
 
+        // Use product_price from API if available, otherwise use formData
+        const basePrice = invoice?.product_price || formData.selectedProductPrice || 0;
+
         return (
         <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary & Invoice</h2>
@@ -4292,67 +4883,125 @@ const BNPLFlow = () => {
                     <h3 className="font-bold text-gray-800 mb-3">Invoice Details</h3>
                 </div>
                 
-                {/* Solar Inverter */}
-                <div className="flex justify-between items-center">
-                    <div>
-                        <p className="font-medium text-gray-800">Solar Inverter</p>
-                        <p className="text-sm text-gray-500">Quantity: 1</p>
+                {/* Product Breakdown from API (if available) */}
+                {invoice?.product_breakdown ? (
+                    <>
+                        {invoice.product_breakdown.solar_inverter && (
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <p className="font-medium text-gray-800">Solar Inverter</p>
+                                    {invoice.product_breakdown.solar_inverter.quantity > 0 && (
+                                        <p className="text-sm text-gray-500">Quantity: {invoice.product_breakdown.solar_inverter.quantity}</p>
+                                    )}
+                                </div>
+                                <span className="font-bold">₦{Number(invoice.product_breakdown.solar_inverter.price || 0).toLocaleString()}</span>
+                            </div>
+                        )}
+                        {invoice.product_breakdown.solar_panels && (
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <p className="font-medium text-gray-800">Solar Panels</p>
+                                    {invoice.product_breakdown.solar_panels.quantity > 0 && (
+                                        <p className="text-sm text-gray-500">Quantity: {invoice.product_breakdown.solar_panels.quantity}</p>
+                                    )}
+                                </div>
+                                <span className="font-bold">₦{Number(invoice.product_breakdown.solar_panels.price || 0).toLocaleString()}</span>
+                            </div>
+                        )}
+                        {invoice.product_breakdown.batteries && (
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <p className="font-medium text-gray-800">Batteries</p>
+                                    {invoice.product_breakdown.batteries.quantity > 0 && (
+                                        <p className="text-sm text-gray-500">Quantity: {invoice.product_breakdown.batteries.quantity}</p>
+                                    )}
+                                </div>
+                                <span className="font-bold">₦{Number(invoice.product_breakdown.batteries.price || 0).toLocaleString()}</span>
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        {/* Fallback: Use percentages if product_breakdown not available */}
+                        {/* Solar Inverter */}
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <p className="font-medium text-gray-800">Solar Inverter</p>
+                                <p className="text-sm text-gray-500">Quantity: 1</p>
+                            </div>
+                            <span className="font-bold">₦{Number(basePrice * 0.4).toLocaleString()}</span>
                         </div>
-                    <span className="font-bold">₦{Number((invoice.product_price || 0) * 0.4).toLocaleString()}</span>
-                </div>
-                
-                {/* Solar Panels */}
-                <div className="flex justify-between items-center">
-                        <div>
-                        <p className="font-medium text-gray-800">Solar Panels</p>
-                        <p className="text-sm text-gray-500">Quantity: 1</p>
+                        
+                        {/* Solar Panels */}
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <p className="font-medium text-gray-800">Solar Panels</p>
+                                <p className="text-sm text-gray-500">Quantity: 1</p>
+                            </div>
+                            <span className="font-bold">₦{Number(basePrice * 0.35).toLocaleString()}</span>
                         </div>
-                    <span className="font-bold">₦{Number((invoice.product_price || 0) * 0.35).toLocaleString()}</span>
-                    </div>
-                
-                {/* Batteries */}
-                <div className="flex justify-between items-center">
-                    <div>
-                        <p className="font-medium text-gray-800">Batteries</p>
-                        <p className="text-sm text-gray-500">Quantity: 1</p>
-                    </div>
-                    <span className="font-bold">₦{Number((invoice.product_price || 0) * 0.25).toLocaleString()}</span>
-                </div>
+                        
+                        {/* Batteries */}
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <p className="font-medium text-gray-800">Batteries</p>
+                                <p className="text-sm text-gray-500">Quantity: 1</p>
+                            </div>
+                            <span className="font-bold">₦{Number(basePrice * 0.25).toLocaleString()}</span>
+                        </div>
+                    </>
+                )}
 
+                {/* Items Subtotal */}
+                <div className="border-t pt-3 mt-3">
+                    <div className="flex justify-between items-center">
+                        <span className="font-semibold text-gray-700">Items Subtotal:</span>
+                        <span className="font-bold">₦{Number(basePrice || 0).toLocaleString()}</span>
+                    </div>
+                </div>
+                
                 {/* Material Cost */}
                 <div className="flex justify-between items-center text-sm text-gray-600">
                     <span>Material Cost (Cables, Breakers, Surge Protectors, Trunking, and Pipes)</span>
-                    <span>₦{Number(invoice.material_cost || 0).toLocaleString()}</span>
+                    <span>₦{Number(invoice?.material_cost || 0).toLocaleString()}</span>
                 </div>
                 
                 {/* Installation Fee */}
                 <div className="flex justify-between items-center text-sm text-gray-600">
                     <span>Installation Fees</span>
-                    <span>₦{Number(invoice.installation_fee || 0).toLocaleString()}</span>
+                    <span>₦{Number(invoice?.installation_fee || 0).toLocaleString()}</span>
                 </div>
                 
                 {/* Delivery/Logistics */}
                 <div className="flex justify-between items-center text-sm text-gray-600">
                     <span>Delivery/Logistics Fees</span>
-                    <span>₦{Number(invoice.delivery_fee || 0).toLocaleString()}</span>
+                    <span>₦{Number(invoice?.delivery_fee || 0).toLocaleString()}</span>
                 </div>
                 
                 {/* Inspection Fee */}
                 <div className="flex justify-between items-center text-sm text-gray-600">
                     <span>Inspection Fees</span>
-                    <span>₦{Number(invoice.inspection_fee || 0).toLocaleString()}</span>
+                    <span>₦{Number(invoice?.inspection_fee || 0).toLocaleString()}</span>
                 </div>
                 
                 {/* Insurance Fee */}
                 <div className="flex justify-between items-center text-sm text-gray-600">
                     <span>Insurance Fee</span>
-                    <span>₦{Number(invoice.insurance_fee || 0).toLocaleString()}</span>
+                    <span>₦{Number(invoice?.insurance_fee || 0).toLocaleString()}</span>
                 </div>
+
+                {/* Add-ons Total */}
+                {invoice?.add_ons_total && invoice.add_ons_total > 0 && (
+                    <div className="flex justify-between items-center text-sm text-gray-600">
+                        <span>Additional Services</span>
+                        <span>₦{Number(invoice.add_ons_total || 0).toLocaleString()}</span>
+                    </div>
+                )}
 
                 <div className="border-t pt-4 mt-4">
                     <div className="flex justify-between items-center text-xl font-bold">
                         <span>Total</span>
-                        <span className="text-[#273e8e]">₦{Number(invoice.total || 0).toLocaleString()}</span>
+                        <span className="text-[#273e8e]">₦{Number(invoice?.total || 0).toLocaleString()}</span>
                     </div>
                 </div>
             </div>
@@ -4426,7 +5075,7 @@ const BNPLFlow = () => {
             {/* Navbar Placeholder */}
             < div className="bg-white shadow-sm p-4 sticky top-0 z-50" >
                 <div className="max-w-7xl mx-auto flex justify-between items-center">
-                    <div className="font-bold text-xl text-[#273e8e]">TrooSolar</div>
+                    <div className="font-bold text-xl text-[#273e8e]">Troosolar</div>
                     <button onClick={() => navigate('/')} className="text-gray-600 hover:text-[#273e8e]">
                         Exit Application
                     </button>
@@ -4458,6 +5107,7 @@ const BNPLFlow = () => {
                     {step === 2.5 && renderStep2_5()}
                     {step === 3 && renderStep3()}
                     {step === 3.5 && renderStep3_5()}
+                    {step === 3.6 && renderStep3_6()}
                     {step === 3.75 && renderStep3_75()}
                     {step === 4 && renderStep4()}
                     {step === 5 && renderStep5()}
@@ -4482,138 +5132,6 @@ const BNPLFlow = () => {
                 </div>
             </div>
 
-            {/* Bundle Details Modal */}
-            {selectedBundleDetails && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-                    <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-                            <h2 className="text-2xl font-bold text-gray-800">Bundle Details</h2>
-                            <button
-                                onClick={() => setSelectedBundleDetails(null)}
-                                className="text-gray-500 hover:text-gray-700 transition-colors"
-                            >
-                                <X size={24} />
-                            </button>
-                        </div>
-                        
-                        <div className="p-6">
-                            {/* Bundle Image */}
-                            <div className="mb-6">
-                                <img
-                                    src={getBundleImage(selectedBundleDetails)}
-                                    alt={selectedBundleDetails.title || selectedBundleDetails.name || 'Bundle'}
-                                    className="w-full h-64 object-cover rounded-lg"
-                                    onError={(e) => {
-                                        e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
-                                    }}
-                                />
-                            </div>
-
-                            {/* Bundle Title and Price */}
-                            <div className="mb-6">
-                                <h3 className="text-2xl font-bold text-gray-800 mb-2">
-                                    {selectedBundleDetails.title || selectedBundleDetails.name || `Bundle #${selectedBundleDetails.id}`}
-                                </h3>
-                                {selectedBundleDetails.bundle_type && (
-                                    <p className="text-gray-500 mb-3">{selectedBundleDetails.bundle_type}</p>
-                                )}
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-3xl font-bold text-[#273e8e]">
-                                        {formatPrice(Number(selectedBundleDetails.discount_price || selectedBundleDetails.total_price || 0))}
-                                    </span>
-                                    {selectedBundleDetails.discount_price && selectedBundleDetails.total_price && selectedBundleDetails.discount_price < selectedBundleDetails.total_price && (
-                                        <span className="text-gray-400 line-through text-lg">
-                                            {formatPrice(Number(selectedBundleDetails.total_price))}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Bundle Specifications */}
-                            {(selectedBundleDetails.total_load || selectedBundleDetails.inver_rating || selectedBundleDetails.total_output) && (
-                                <div className="mb-6 bg-gray-50 rounded-lg p-4">
-                                    <h4 className="font-semibold text-gray-800 mb-3">Specifications</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        {selectedBundleDetails.total_load && (
-                                            <div>
-                                                <p className="text-sm text-gray-500">Total Load</p>
-                                                <p className="font-semibold text-gray-800">{selectedBundleDetails.total_load}W</p>
-                                            </div>
-                                        )}
-                                        {selectedBundleDetails.inver_rating && (
-                                            <div>
-                                                <p className="text-sm text-gray-500">Inverter Rating</p>
-                                                <p className="font-semibold text-gray-800">{selectedBundleDetails.inver_rating}W</p>
-                                            </div>
-                                        )}
-                                        {selectedBundleDetails.total_output && (
-                                            <div>
-                                                <p className="text-sm text-gray-500">Total Output</p>
-                                                <p className="font-semibold text-gray-800">{selectedBundleDetails.total_output}W</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Backup Info */}
-                            {selectedBundleDetails.backup_info && (
-                                <div className="mb-6">
-                                    <h4 className="font-semibold text-gray-800 mb-2">Backup Time</h4>
-                                    <p className="text-gray-600">{selectedBundleDetails.backup_info}</p>
-                                </div>
-                            )}
-
-                            {/* Items Included */}
-                            {((selectedBundleDetails.bundleItems || selectedBundleDetails.bundle_items || []).length > 0) && (
-                                <div className="mb-6">
-                                    <h4 className="font-semibold text-gray-800 mb-3">Items Included</h4>
-                                    <div className="space-y-2">
-                                        {(selectedBundleDetails.bundleItems || selectedBundleDetails.bundle_items || []).map((item, idx) => {
-                                            const product = item.product || item;
-                                            return (
-                                                <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                                    {product.featured_image && (
-                                                        <img
-                                                            src={toAbsolute(product.featured_image)}
-                                                            alt={product.title || product.name}
-                                                            className="w-12 h-12 object-cover rounded"
-                                                        />
-                                                    )}
-                                                    <div className="flex-1">
-                                                        <p className="font-medium text-gray-800">
-                                                            {product.title || product.name || `Product #${product.id}`}
-                                                        </p>
-                                                        {item.quantity && item.quantity > 1 && (
-                                                            <p className="text-sm text-gray-500">Quantity: {item.quantity}</p>
-                                                        )}
-                                                    </div>
-                                                    {product.price && (
-                                                        <p className="font-semibold text-[#273e8e]">
-                                                            {formatPrice(Number(product.price))}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Select Button */}
-                            <button
-                                onClick={() => {
-                                    handleBundleSelect(selectedBundleDetails);
-                                    setSelectedBundleDetails(null);
-                                }}
-                                className="w-full py-3 bg-[#273e8e] text-white rounded-lg font-semibold hover:bg-[#1a2b6b] transition-colors"
-                            >
-                                Select This Bundle
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div >
     );
 };

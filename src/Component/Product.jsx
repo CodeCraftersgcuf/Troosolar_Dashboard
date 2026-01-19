@@ -54,6 +54,9 @@ const formatTitle = (t) => {
   return s.length > 80 ? `${s.slice(0, 77)}…` : s;
 };
 
+// Fallback image URL
+const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/e212b55b-057a-4a39-8d80-d241169cdac0.png";
+
 const Product = ({
   image,
   heading,
@@ -73,15 +76,22 @@ const Product = ({
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
 
-  const Image_url =
-    image || assets?.placeholderProduct || "/placeholder-product.png";
+  const Image_url = image || FALLBACK_IMAGE;
   const title = useMemo(() => formatTitle(heading), [heading]);
 
   const starting_base_url = "https://troosolar.hmstech.org/";
   const safeImage = useMemo(() => {
-    return Image_url.includes(starting_base_url)
-      ? Image_url
-      : starting_base_url + Image_url;
+    if (!Image_url) return FALLBACK_IMAGE;
+    // If already absolute URL, return as is
+    if (Image_url.startsWith('http://') || Image_url.startsWith('https://')) {
+      return Image_url;
+    }
+    // If starts with /, prepend base URL
+    if (Image_url.startsWith('/')) {
+      return starting_base_url + Image_url.replace(/^\//, '');
+    }
+    // Otherwise, prepend base URL
+    return starting_base_url + Image_url;
   }, [Image_url]);
 
   const handleAddToCart = async (e) => {
@@ -144,26 +154,17 @@ const Product = ({
           </div>
         )}
 
-        {/* Error State */}
+        {/* Error State - Show fallback image */}
         {imageError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-            <div className="text-center text-gray-400">
-              <svg
-                className="w-8 h-8 mx-auto mb-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                />
-              </svg>
-              <p className="text-xs">Image unavailable</p>
-            </div>
-          </div>
+          <img
+            src={FALLBACK_IMAGE}
+            alt={title || "Product"}
+            className="w-full h-full object-contain"
+            onError={(e) => {
+              // If fallback also fails, just hide the error state
+              e.target.style.display = 'none';
+            }}
+          />
         )}
 
         {/* Actual Image - Fixed size to prevent layout shift */}
@@ -174,9 +175,15 @@ const Product = ({
             imageLoading ? "opacity-0 absolute" : "opacity-100"
           }`}
           onLoad={() => setImageLoading(false)}
-          onError={() => {
+          onError={(e) => {
             setImageLoading(false);
-            setImageError(true);
+            // Prevent infinite loop - only set fallback if not already set
+            if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+              e.target.src = FALLBACK_IMAGE;
+              setImageError(false); // Reset error to try fallback
+            } else {
+              setImageError(true);
+            }
           }}
           loading="lazy"
         />

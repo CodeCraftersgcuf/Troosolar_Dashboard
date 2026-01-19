@@ -38,11 +38,14 @@ const toAbsolute = (path) => {
   return `${API_ORIGIN}/storage/${cleaned}`;
 };
 
+// Fallback image URL
+const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/e212b55b-057a-4a39-8d80-d241169cdac0.png";
+
 // map API bundle -> card props
 const mapBundle = (b) => {
   const image = b?.featured_image
     ? toAbsolute(b.featured_image)
-    : assets?.placeholderProduct || "/placeholder-product.png";
+    : FALLBACK_IMAGE;
 
   const title = b?.title || `Bundle #${b?.id ?? ""}`;
   const total = Number(b?.total_price ?? 0);
@@ -160,7 +163,7 @@ const SolarBundle = () => {
         </div>
 
         {/* Grid */}
-        <div className="px-6 py-6 w-full overflow-scroll">
+        <div className="px-6 py-4 w-full overflow-scroll">
           <h1 className="text-2xl font-semibold text-gray-800 mb-4">
             {qParam ? "Choose from Recommended Bundle(s)" : "All Bundles"}
           </h1>
@@ -172,21 +175,20 @@ const SolarBundle = () => {
             </div>
           )}
 
-          <div className="grid xl:grid-cols-4 lg:grid-cols-4 md:grid-cols-2 grid-cols-1 gap-4">
+          <div className="grid xl:grid-cols-4 lg:grid-cols-4 md:grid-cols-2 grid-cols-1 gap-3">
             {bundles.map((item) => (
-              <Link key={item.id} to={`/productBundle/details/${item.id}`}>
-                <SolarBundleComponent
-                  id={item.id}
-                  image={item.image}
-                  heading={item.heading}
-                  price={item.price}
-                  oldPrice={item.oldPrice}
-                  discount={item.discount}
-                  borderColor={item.borderColor}
-                  rating={item.rating}
-                  bundleTitle={item.bundleTitle}
-                />
-              </Link>
+              <SolarBundleComponent
+                key={item.id}
+                id={item.id}
+                image={item.image}
+                heading={item.heading}
+                price={item.price}
+                oldPrice={item.oldPrice}
+                discount={item.discount}
+                borderColor={item.borderColor}
+                rating={item.rating}
+                bundleTitle={item.bundleTitle}
+              />
             ))}
 
             {!loading && !err && bundles.length === 0 && (

@@ -1,7 +1,7 @@
 // src/config/api.config.js
-// export const BASE_URL = 'https://troosolar.hmstech.org/api';
+export const BASE_URL = 'https://troosolar.hmstech.org/api';
 
-export const BASE_URL = 'http://127.0.0.1:8000/api';
+// export const BASE_URL = 'http://127.0.0.1:8000/api';
 
 const API = {
     LOGIN: `${BASE_URL}/login`,
@@ -22,6 +22,11 @@ const API = {
     PRODUCT_BY_ID: (id) => `${BASE_URL}/products/${id}`,
     BUNDLES: `${BASE_URL}/bundles`,
     BUNDLE_BY_ID: (id) => `${BASE_URL}/bundles/${id}`,
+    BUNDLES_BY_TYPE: (type) => `${BASE_URL}/bundles/type/${type}`,
+    BUNDLE_DETAILS: (id) => `${BASE_URL}/bundles/${id}/details`,
+    MATERIAL_CATEGORIES: `${BASE_URL}/material-categories`,
+    MATERIALS_BY_CATEGORY: (categoryId) => `${BASE_URL}/bundles/materials/category/${categoryId}`,
+    CUSTOM_BUNDLE_CALCULATE: `${BASE_URL}/bundles/custom/calculate`,
     UPDATE_USER: `${BASE_URL}/update-user`,
     CART: `${BASE_URL}/cart`,
     CART_ITEM: (id) => `${BASE_URL}/cart/${id}`,

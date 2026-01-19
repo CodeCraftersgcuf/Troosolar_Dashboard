@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader, CheckCircle2, XCircle, AlertCircle, CreditCard, Minus, Plus, X, Info } from 'lucide-react';
+import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader, CheckCircle2, XCircle, AlertCircle, CreditCard, Minus, Plus, X, Info, ChevronDown } from 'lucide-react';
 import axios from 'axios';
 import API, { BASE_URL } from '../../config/api.config';
 
@@ -35,9 +35,12 @@ const ensureFlutterwave = () =>
         document.body.appendChild(s);
     });
 
+// Fallback image URL
+const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/e212b55b-057a-4a39-8d80-d241169cdac0.png";
+
 // Helper to get bundle image (moved to component level for modal access)
 const getBundleImage = (bundle) => {
-    if (!bundle) return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+    if (!bundle) return FALLBACK_IMAGE;
     
     // Extract base URL from API config (remove /api)
     const API_BASE = BASE_URL || 'http://127.0.0.1:8000/api';
@@ -53,8 +56,8 @@ const getBundleImage = (bundle) => {
         const cleaned = path.replace(/^public\//, '');
         return `${API_ORIGIN}/storage/${cleaned}`;
     }
-    // Return a data URI SVG placeholder
-    return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+    // Return fallback image
+    return FALLBACK_IMAGE;
 };
 
 // Helper to format price (moved to component level for modal access)
@@ -126,12 +129,24 @@ const BuyNowFlow = () => {
     const [bundles, setBundles] = useState([]);
     const [bundlesLoading, setBundlesLoading] = useState(false);
     const [selectedBundleDetails, setSelectedBundleDetails] = useState(null); // For "Learn More" modal
+    const [selectedSystemSize, setSelectedSystemSize] = useState("all"); // System size filter
+    const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false);
+    const sizeDropdownRef = useRef(null);
 
     // Categories and products for individual components
     const [categories, setCategories] = useState([]);
     const [categoryProducts, setCategoryProducts] = useState([]);
     const [productsLoading, setProductsLoading] = useState(false);
     const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+    
+    // Material categories and materials for "Build Your Own System"
+    const [materialCategories, setMaterialCategories] = useState([]);
+    const [categoryMaterials, setCategoryMaterials] = useState([]);
+    const [materialsLoading, setMaterialsLoading] = useState(false);
+    const [selectedMaterialCategoryId, setSelectedMaterialCategoryId] = useState(null);
+    const [selectedMaterials, setSelectedMaterials] = useState([]); // [{material_id, quantity}, ...]
+    const [allMaterialsMap, setAllMaterialsMap] = useState({}); // Store all materials by ID for cart display
+    const [customBundleCalculation, setCustomBundleCalculation] = useState(null);
 
     // Check for custom order flow (cart token) on mount
     React.useEffect(() => {
@@ -514,6 +529,53 @@ const BuyNowFlow = () => {
     //     }
     // };
 
+    // Handle material category selection for "Build Your Own System"
+    const handleMaterialCategorySelect = async (categoryId) => {
+        setSelectedMaterialCategoryId(categoryId);
+        setCategoryMaterials([]);
+        setMaterialsLoading(true);
+        setStep(3.75);
+        // Don't clear selectedMaterials - keep selections when switching categories // Navigate to Material Selection step
+        
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                alert("Please login to continue");
+                navigate('/login');
+                return;
+            }
+            
+            // Fetch materials by category
+            const response = await axios.get(API.MATERIALS_BY_CATEGORY(categoryId), {
+                headers: {
+                    Accept: 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+            
+            const root = response.data?.data ?? response.data;
+            const materials = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+            setCategoryMaterials(materials);
+            
+            // Store materials in map for cart display (preserve across category changes)
+            setAllMaterialsMap(prev => {
+                const updated = { ...prev };
+                materials.forEach(m => {
+                    if (m.id) {
+                        updated[m.id] = m;
+                    }
+                });
+                return updated;
+            });
+        } catch (error) {
+            console.error("Failed to fetch materials:", error);
+            alert("Failed to load materials. Please try again.");
+            setCategoryMaterials([]);
+        } finally {
+            setMaterialsLoading(false);
+        }
+    };
+
     // NEW: Handle API category selection for "Build my solar system" path
     const handleBuildSystemCategorySelect = async (categoryId) => {
         // categoryId is now the actual category ID from the API
@@ -566,6 +628,61 @@ const BuyNowFlow = () => {
     };
 
     const bundlesFetchedRef = useRef(false);
+
+    // System size options (1.2kW to 10kW)
+    const sizeOptions = useMemo(() => {
+        const sizes = [];
+        for (let i = 1.2; i <= 10; i += 0.5) {
+            sizes.push({
+                label: `${i}kW`,
+                value: i.toString(),
+            });
+        }
+        return [{ label: "All Sizes", value: "all" }, ...sizes];
+    }, []);
+
+    // Helper function to extract numeric value from inverter rating (e.g., "1.2 kVA" -> 1.2)
+    const extractSystemSize = (bundle) => {
+        const rating = bundle.inver_rating || bundle.inverter_rating || bundle.inverterRating || '';
+        if (!rating) return null;
+        
+        // Extract numeric value (handles formats like "1.2 kVA", "1.2kVA", "1.2 kva", etc.)
+        const match = String(rating).match(/(\d+\.?\d*)/);
+        if (match) {
+            return parseFloat(match[1]);
+        }
+        return null;
+    };
+
+    // Filter bundles based on selected system size
+    const filteredBundles = useMemo(() => {
+        if (selectedSystemSize === "all") {
+            return bundles;
+        }
+        
+        const targetSize = parseFloat(selectedSystemSize);
+        if (isNaN(targetSize)) return bundles;
+        
+        return bundles.filter((bundle) => {
+            const bundleSize = extractSystemSize(bundle);
+            if (bundleSize === null) return false;
+            
+            // Match within ±0.3kW tolerance
+            const tolerance = 0.3;
+            return Math.abs(bundleSize - targetSize) <= tolerance;
+        });
+    }, [bundles, selectedSystemSize]);
+
+    // Close size dropdown if clicked outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (sizeDropdownRef.current && !sizeDropdownRef.current.contains(event.target)) {
+                setIsSizeDropdownOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
     // Audit handlers (same as BNPL)
     const handleAuditTypeSelect = async (type) => {
@@ -784,7 +901,62 @@ const BuyNowFlow = () => {
             
             try {
                 const token = localStorage.getItem('access_token');
-                const response = await axios.get(API.BUNDLES, {
+                
+                // Map product category to bundle type for API
+                // full-kit -> solar-inverter-battery
+                // inverter-battery -> inverter-battery
+                const bundleTypeMap = {
+                    'full-kit': 'solar-inverter-battery',
+                    'inverter-battery': 'inverter-battery'
+                };
+                
+                const bundleType = bundleTypeMap[formData.productCategory] || 'inverter-battery';
+                
+                // Fetch bundles by type using the new endpoint
+                const response = await axios.get(API.BUNDLES_BY_TYPE(bundleType), {
+                    headers: {
+                        Accept: 'application/json',
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                });
+                
+                // Handle different response formats
+                const root = response.data?.data ?? response.data;
+                const arr = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+                setBundles(arr);
+            } catch (error) {
+                console.error("Failed to fetch bundles:", error);
+                // Fallback to general bundles endpoint if type-specific fails
+                try {
+                    const token = localStorage.getItem('access_token');
+                    const fallbackResponse = await axios.get(API.BUNDLES, {
+                        headers: {
+                            Accept: 'application/json',
+                            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                        },
+                    });
+                    const root = fallbackResponse.data?.data ?? fallbackResponse.data;
+                    const arr = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+                    setBundles(arr);
+                } catch (fallbackError) {
+                    console.error("Fallback bundle fetch also failed:", fallbackError);
+                    alert("Failed to load bundles. Please try again.");
+                    setBundles([]);
+                }
+            } finally {
+                setBundlesLoading(false);
+            }
+        } else if (option === 'build-system') {
+            // Fetch material categories for building a custom system
+            setMaterialCategories([]);
+            setMaterialsLoading(true);
+            setStep(2.75); // Navigate to Material Category Selection step
+            
+            try {
+                const token = localStorage.getItem('access_token');
+                
+                // Fetch material categories (requires auth)
+                const response = await axios.get(API.MATERIAL_CATEGORIES, {
                     headers: {
                         Accept: 'application/json',
                         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -792,67 +964,18 @@ const BuyNowFlow = () => {
                 });
                 
                 const root = response.data?.data ?? response.data;
-                const arr = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
-                setBundles(arr);
+                const categories = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+                setMaterialCategories(categories);
             } catch (error) {
-                console.error("Failed to fetch bundles:", error);
-                alert("Failed to load bundles. Please try again.");
-                setBundles([]); // Ensure empty array on error
-            } finally {
-                setBundlesLoading(false);
-            }
-        } else if (option === 'build-system') {
-            // Fetch all products for building a custom system
-            setCategoryProducts([]);
-            setProductsLoading(true);
-            setStep(3.75); // Navigate to Build System Product Selection step
-            
-            try {
-                const token = localStorage.getItem('access_token');
-                let allProducts = [];
-                
-                // Fetch products from all categories
+                console.error("Failed to fetch material categories:", error);
+                // Fallback to product categories if material categories endpoint fails
                 if (categories.length > 0) {
-                    for (const category of categories) {
-                        try {
-                            const response = await axios.get(API.CATEGORY_PRODUCTS(category.id), {
-                                headers: {
-                                    Accept: 'application/json',
-                                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                                },
-                            });
-                            const root = response.data?.data ?? response.data;
-                            const products = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
-                            allProducts = [...allProducts, ...products];
-                        } catch (err) {
-                            console.warn(`Failed to fetch products for category ${category.id}:`, err);
-                        }
-                    }
+                    setMaterialCategories(categories.map(cat => ({ id: cat.id, name: cat.title || cat.name, code: cat.code || '' })));
+                } else {
+                    alert("Failed to load material categories. Please try again.");
                 }
-                
-                // If no products found via category endpoint, try fetching all products
-                if (allProducts.length === 0) {
-                    try {
-                        const allProductsRes = await axios.get(API.PRODUCTS, {
-                            headers: {
-                                Accept: 'application/json',
-                                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                            },
-                        });
-                        const allProductsList = Array.isArray(allProductsRes.data?.data) ? allProductsRes.data.data : [];
-                        allProducts = allProductsList;
-                    } catch (error) {
-                        console.error("Failed to fetch all products:", error);
-                    }
-                }
-                
-                setCategoryProducts(allProducts);
-            } catch (error) {
-                console.error("Failed to fetch products:", error);
-                alert("Failed to load products. Please try again.");
-                setCategoryProducts([]);
             } finally {
-                setProductsLoading(false);
+                setMaterialsLoading(false);
             }
         } else if (option === 'audit') {
             // Go to Audit Type Selection (same as BNPL)
@@ -869,7 +992,7 @@ const BuyNowFlow = () => {
             selectedProductPrice: price, // Store unit price
             singleItemQuantity: 1 // Reset quantity to 1 when selecting new bundle
         }));
-        setStep(7); // Go to Order Summary (NEW STEP)
+        setStep(4); // Go directly to Checkout Options (as per flow documentation)
     };
 
     const handleProductSelect = (product) => {
@@ -907,6 +1030,96 @@ const BuyNowFlow = () => {
             };
         });
         // Don't auto-navigate - let user select multiple items
+    };
+
+    // Handle material selection for "Build Your Own System"
+    const handleMaterialSelect = (material) => {
+        setSelectedMaterials(prev => {
+            const isSelected = prev.some(m => m.material_id === material.id);
+            
+            if (isSelected) {
+                // Remove material if already selected
+                return prev.filter(m => m.material_id !== material.id);
+            } else {
+                // Add material with quantity 1
+                return [...prev, {
+                    material_id: material.id,
+                    quantity: 1
+                }];
+            }
+        });
+    };
+
+    // Update material quantity
+    const updateMaterialQuantity = (materialId, newQuantity) => {
+        if (newQuantity < 1) {
+            // Remove material if quantity is 0 or less
+            setSelectedMaterials(prev => prev.filter(m => m.material_id !== materialId));
+            return;
+        }
+        
+        setSelectedMaterials(prev => 
+            prev.map(m => 
+                m.material_id === materialId 
+                    ? { ...m, quantity: newQuantity }
+                    : m
+            )
+        );
+    };
+
+    // Calculate custom bundle price
+    const calculateCustomBundle = async () => {
+        console.log("calculateCustomBundle called", { selectedMaterialsCount: selectedMaterials.length });
+        
+        if (selectedMaterials.length === 0) {
+            alert("Please select at least one material to calculate bundle price.");
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                alert("Please login to continue");
+                navigate('/login');
+                return;
+            }
+
+            const response = await axios.post(API.CUSTOM_BUNDLE_CALCULATE, {
+                materials: selectedMaterials
+            }, {
+                headers: {
+                    Accept: 'application/json',
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (response.data.status === 'success') {
+                const calculation = response.data.data;
+                setCustomBundleCalculation(calculation);
+                
+                // Update form data with calculated price and materials
+                setFormData(prev => ({
+                    ...prev,
+                    selectedProductPrice: Number(calculation.total_price || 0),
+                    selectedProducts: calculation.materials?.map(m => ({
+                        id: m.material_id,
+                        product: { name: m.name, price: m.unit_price },
+                        price: m.unit_price,
+                        quantity: m.quantity
+                    })) || []
+                }));
+            } else {
+                alert("Failed to calculate bundle price. Please try again.");
+            }
+        } catch (error) {
+            console.error("Custom bundle calculation error:", error);
+            const errorMessage = error.response?.data?.message || "Failed to calculate bundle price. Please try again.";
+            alert(errorMessage);
+        } finally {
+            setLoading(false);
+        }
     };
 
     // Update bundle quantity
@@ -967,22 +1180,49 @@ const BuyNowFlow = () => {
                 customer_type: formData.customerType,
                 product_category: formData.productCategory,
                 installer_choice: formData.installerChoice,
-                include_insurance: formData.includeInsurance,
-                amount: formData.selectedProductPrice
+                include_insurance: formData.includeInsurance || false,
             };
 
-            // Add bundle/product ID if selected
-            if (formData.selectedBundleId) {
+            // For pre-packaged bundles: send bundle_id
+            if (formData.selectedBundleId && formData.optionType === 'choose-system') {
                 payload.bundle_id = formData.selectedBundleId;
             }
-            if (formData.selectedProductId) {
-                payload.product_id = formData.selectedProductId;
+            // For custom bundles (build-system): send amount and custom_materials
+            else if (formData.optionType === 'build-system' && formData.selectedProducts.length > 0) {
+                payload.amount = formData.selectedProductPrice;
+                payload.custom_materials = formData.selectedProducts.map(p => ({
+                    material_id: p.id,
+                    quantity: p.quantity || 1
+                }));
+            }
+            // For individual products (single item categories)
+            else if (formData.selectedProductId || formData.selectedProducts.length > 0) {
+                if (formData.selectedProducts.length > 0) {
+                    // Multiple products selected
+                    payload.amount = formData.selectedProductPrice;
+                    payload.custom_materials = formData.selectedProducts.map(p => ({
+                        material_id: p.id,
+                        quantity: p.quantity || 1
+                    }));
+                } else {
+                    // Single product
+                    payload.product_id = formData.selectedProductId;
+                    payload.amount = formData.selectedProductPrice;
+                }
+            } else {
+                // Fallback: use amount if no specific selection
+                payload.amount = formData.selectedProductPrice || 0;
             }
 
-            // Add optional fields if available (only if they exist)
+            // Add optional fields if available
             if (formData.stateId) payload.state_id = formData.stateId;
             if (formData.deliveryLocationId) payload.delivery_location_id = formData.deliveryLocationId;
             if (selectedAddOns.length > 0) payload.add_on_ids = selectedAddOns;
+            
+            // Add include_inspection if available (from checkout options)
+            if (formData.includeInspection !== undefined) {
+                payload.include_inspection = formData.includeInspection;
+            }
 
             const response = await axios.post(API.BUY_NOW_CHECKOUT, payload, {
                 headers: { 
@@ -1404,30 +1644,54 @@ const BuyNowFlow = () => {
             return Zap; // Default icon
         };
 
+        // For build-system, show material categories; otherwise show product categories
+        const isBuildSystem = formData.optionType === 'build-system';
+        const categoriesToShow = isBuildSystem ? materialCategories : categories;
+        const isLoading = isBuildSystem ? materialsLoading : false;
+
         return (
             <div className="animate-fade-in">
-                <button onClick={() => setStep(3)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                <button 
+                    onClick={() => {
+                        if (isBuildSystem) {
+                            setStep(3); // Go back to method selection
+                        } else {
+                            setStep(2); // Go back to product category selection
+                        }
+                    }} 
+                    className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]"
+                >
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
                 <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
-                    Select Product Category
+                    {isBuildSystem ? 'Select Material Category' : 'Select Product Category'}
                 </h2>
-                {categories.length === 0 ? (
+                {isLoading ? (
                     <div className="text-center py-12">
                         <Loader className="animate-spin mx-auto text-[#273e8e]" size={48} />
                         <p className="mt-4 text-gray-600">Loading categories...</p>
                     </div>
+                ) : categoriesToShow.length === 0 ? (
+                    <div className="text-center py-12">
+                        <p className="text-gray-600">No categories available.</p>
+                    </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                        {categories.map((cat) => {
-                            const IconComponent = getCategoryIcon(cat.title || cat.name);
-                            const categoryName = cat.title || cat.name || `Category #${cat.id}`;
+                        {categoriesToShow.map((cat) => {
+                            const IconComponent = getCategoryIcon(cat.name || cat.title);
+                            const categoryName = cat.name || cat.title || `Category #${cat.id}`;
                             const categoryIcon = cat.icon ? toAbsolute(cat.icon) : null;
                             
                             return (
                                 <button
                                     key={cat.id}
-                                    onClick={() => handleBuildSystemCategorySelect(cat.id)}
+                                    onClick={() => {
+                                        if (isBuildSystem) {
+                                            handleMaterialCategorySelect(cat.id);
+                                        } else {
+                                            handleBuildSystemCategorySelect(cat.id);
+                                        }
+                                    }}
                                     className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center"
                                 >
                                     <div className="bg-blue-50 p-4 rounded-full mb-4 group-hover:bg-[#273e8e]/10 transition-colors flex items-center justify-center min-h-[64px] relative">
@@ -1444,6 +1708,9 @@ const BuyNowFlow = () => {
                                         )}
                                     </div>
                                     <h3 className="text-lg font-bold text-gray-800">{categoryName}</h3>
+                                    {cat.code && (
+                                        <p className="text-xs text-gray-500 mt-1">Code: {cat.code}</p>
+                                    )}
                                 </button>
                             );
                         })}
@@ -1465,8 +1732,8 @@ const BuyNowFlow = () => {
             if (product.images && product.images[0] && product.images[0].image) {
                 return toAbsolute(product.images[0].image);
             }
-            // Return a data URI SVG placeholder instead of a file path to prevent infinite loops
-            return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+            // Return fallback image
+            return FALLBACK_IMAGE;
         };
 
         return (
@@ -1524,11 +1791,17 @@ const BuyNowFlow = () => {
                                 return (
                                     <div
                                         key={product.id}
-                                        className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 ${
+                                        className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 cursor-pointer ${
                                             isSelected 
                                                 ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
                                                 : 'border-gray-100 hover:border-[#273e8e]'
                                         }`}
+                                        onClick={() => {
+                                            // Navigate to product details page
+                                            if (product.id) {
+                                                navigate(`/homePage/product/${product.id}`);
+                                            }
+                                        }}
                                     >
                                         <div className="mb-3">
                                             <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100 relative">
@@ -1537,8 +1810,9 @@ const BuyNowFlow = () => {
                                                     alt={product.title || product.name}
                                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                                     onError={(e) => {
-                                                        if (e.target.src && !e.target.src.includes('placeholder-product.png') && !e.target.src.includes('data:image')) {
-                                                            e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                                        // Prevent infinite loop - only set fallback if not already set
+                                                        if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                                            e.target.src = FALLBACK_IMAGE;
                                                         }
                                                     }}
                                                 />
@@ -1592,10 +1866,10 @@ const BuyNowFlow = () => {
                         {formData.selectedProducts.length > 0 && (
                             <div className="mt-8 flex justify-center">
                                 <button
-                                    onClick={() => setStep(7)}
+                                    onClick={() => setStep(4)}
                                     className="bg-[#273e8e] text-white px-8 py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors flex items-center"
                                 >
-                                    Continue with {formData.selectedProducts.length} {formData.selectedProducts.length !== 1 ? 'Items' : 'Item'} Selected
+                                    Proceed to Checkout Options
                                     <ArrowRight size={20} className="ml-2" />
                                 </button>
                             </div>
@@ -1607,56 +1881,61 @@ const BuyNowFlow = () => {
     };
 
     const renderStep3_75 = () => {
+        const isBuildSystem = formData.optionType === 'build-system';
+        const itemsToShow = isBuildSystem ? categoryMaterials : categoryProducts;
+        const isLoading = isBuildSystem ? materialsLoading : productsLoading;
 
-        const getProductImage = (product) => {
-            if (product.featured_image_url) {
-                return toAbsolute(product.featured_image_url);
-            }
-            if (product.featured_image) {
-                return toAbsolute(product.featured_image);
-            }
-            if (product.images && product.images[0] && product.images[0].image) {
-                return toAbsolute(product.images[0].image);
-            }
-            return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+        const getItemImage = (item) => {
+            if (item.featured_image_url) return toAbsolute(item.featured_image_url);
+            if (item.featured_image) return toAbsolute(item.featured_image);
+            if (item.images && item.images[0] && item.images[0].image) return toAbsolute(item.images[0].image);
+            return FALLBACK_IMAGE;
         };
 
         return (
             <div className="animate-fade-in">
                 <button 
                     onClick={() => {
-                        // Clear products when going back
-                        setCategoryProducts([]);
-                        setProductsLoading(false);
-                        setStep(3);
+                        if (isBuildSystem) {
+                            setCategoryMaterials([]);
+                            setMaterialsLoading(false);
+                            // Don't clear selectedMaterials - keep selections when going back
+                            setStep(2.75);
+                        } else {
+                            setCategoryProducts([]);
+                            setProductsLoading(false);
+                            setStep(3);
+                        }
                     }} 
                     className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]"
                 >
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
                 <h2 className="text-3xl font-bold text-center mb-4 text-[#273e8e]">
-                Build My System
+                    {isBuildSystem ? 'Select Materials' : 'Build My System'}
                 </h2>
                 <p className="text-center text-gray-600 mb-2">
-                    Select multiple products to create your custom bundle
+                    {isBuildSystem 
+                        ? 'Select materials and quantities to build your custom bundle'
+                        : 'Select multiple products to create your custom bundle'}
                 </p>
                 <p className="text-center text-sm text-orange-600 mb-8 font-semibold">
-                    * You must select at least one product to continue
+                    * You must select at least one {isBuildSystem ? 'material' : 'product'} to continue
                 </p>
 
-                {productsLoading ? (
+                {isLoading ? (
                     <div className="text-center py-16">
                         <div className="flex flex-col items-center justify-center">
                             <Loader className="animate-spin mx-auto text-[#273e8e]" size={48} />
-                            <p className="mt-6 text-lg font-medium text-gray-700">Loading products...</p>
-                            <p className="mt-2 text-sm text-gray-500">Please wait while we fetch available products</p>
+                            <p className="mt-6 text-lg font-medium text-gray-700">Loading {isBuildSystem ? 'materials' : 'products'}...</p>
+                            <p className="mt-2 text-sm text-gray-500">Please wait while we fetch available {isBuildSystem ? 'materials' : 'products'}</p>
                         </div>
                     </div>
-                ) : categoryProducts.length === 0 ? (
+                ) : itemsToShow.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-2xl border border-gray-200">
-                        <p className="text-gray-600">No products available at the moment.</p>
+                        <p className="text-gray-600">No {isBuildSystem ? 'materials' : 'products'} available at the moment.</p>
                         <button
-                            onClick={() => setStep(3)}
+                            onClick={() => setStep(isBuildSystem ? 2.75 : 3)}
                             className="mt-4 text-[#273e8e] hover:underline"
                         >
                             Go back
@@ -1665,36 +1944,53 @@ const BuyNowFlow = () => {
                 ) : (
                     <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                        {categoryProducts.map((product) => {
-                            const price = Number(product.discount_price || product.price || 0);
-                            const oldPrice = product.discount_price && product.price && product.discount_price < product.price 
-                                ? Number(product.price) 
+                        {itemsToShow.map((item) => {
+                            const rawPrice = Number(item.selling_rate || item.rate || item.discount_price || item.price || 0);
+                            // If price is 0, show 1000, otherwise show the actual price
+                            const price = rawPrice === 0 ? 1000 : rawPrice;
+                            const oldPrice = item.rate && item.selling_rate && item.selling_rate > item.rate
+                                ? Number(item.rate)
                                 : null;
                             const discount = oldPrice && price < oldPrice
                                 ? Math.round(((oldPrice - price) / oldPrice) * 100)
                                 : 0;
                             
-                            // Check if product is selected
-                            const isSelected = formData.selectedProducts.some(p => p.id === product.id);
+                            // Check if item is selected
+                            const isSelected = isBuildSystem 
+                                ? selectedMaterials.some(m => m.material_id === item.id)
+                                : formData.selectedProducts.some(p => p.id === item.id);
+                            
+                            // Get quantity for selected material
+                            const selectedMaterial = isBuildSystem && isSelected
+                                ? selectedMaterials.find(m => m.material_id === item.id)
+                                : null;
+                            const quantity = selectedMaterial?.quantity || 1;
                             
                             return (
                                 <div
-                                    key={product.id}
-                                    className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 ${
+                                    key={item.id}
+                                    className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 cursor-pointer ${
                                         isSelected 
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
+                                    onClick={() => {
+                                        // Navigate to product details page if item has an ID
+                                        if (item.id && !isBuildSystem) {
+                                            navigate(`/homePage/product/${item.id}`);
+                                        }
+                                    }}
                                 >
                                     <div className="mb-3">
                                         <div className="aspect-square w-full mb-4 rounded-lg overflow-hidden bg-gray-100 relative">
                                             <img
-                                                src={getProductImage(product)}
-                                                alt={product.title || product.name}
+                                                src={getItemImage(item)}
+                                                alt={item.name || item.title || `Item #${item.id}`}
                                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                                 onError={(e) => {
-                                                    if (e.target.src && !e.target.src.includes('placeholder-product.png') && !e.target.src.includes('data:image')) {
-                                                        e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                                    // Prevent infinite loop - only set fallback if not already set
+                                                    if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                                        e.target.src = FALLBACK_IMAGE;
                                                     }
                                                 }}
                                             />
@@ -1705,12 +2001,23 @@ const BuyNowFlow = () => {
                                             )}
                                         </div>
                                         <h3 className="font-bold text-lg mb-2 text-gray-800">
-                                            {product.title || product.name || `Product #${product.id}`}
+                                            {item.name || item.title || `Item #${item.id}`}
                                         </h3>
+                                        {item.category && (
+                                            <p className="text-xs text-gray-500 mb-2">
+                                                {item.category.name || item.category}
+                                            </p>
+                                        )}
+                                        {item.unit && (
+                                            <p className="text-xs text-gray-400 mb-2">Unit: {item.unit}</p>
+                                        )}
+                                        {item.warranty && (
+                                            <p className="text-xs text-blue-600 mb-2">Warranty: {item.warranty} years</p>
+                                        )}
                                         <div className="flex items-center justify-between mb-3">
                                             <div>
                                                 <p className="font-bold text-[#273e8e] text-lg">
-                                                    {formatPrice(price)}
+                                                    {formatPrice(price)} {item.unit ? `/${item.unit}` : ''}
                                                 </p>
                                                 {oldPrice && (
                                                     <p className="text-sm text-gray-500 line-through">
@@ -1724,12 +2031,41 @@ const BuyNowFlow = () => {
                                                 </span>
                                             )}
                                         </div>
+                                        
+                                        {/* Quantity selector for materials */}
+                                        {isBuildSystem && isSelected && (
+                                            <div className="flex items-center justify-center gap-3 mb-3 bg-gray-50 rounded-lg p-2">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        updateMaterialQuantity(item.id, quantity - 1);
+                                                    }}
+                                                    className="bg-[#273e8e] text-white rounded p-1.5 hover:bg-[#1a2b6b]"
+                                                >
+                                                    <Minus size={16} />
+                                                </button>
+                                                <span className="font-semibold text-gray-800 w-8 text-center">{quantity}</span>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        updateMaterialQuantity(item.id, quantity + 1);
+                                                    }}
+                                                    className="bg-[#273e8e] text-white rounded p-1.5 hover:bg-[#1a2b6b]"
+                                                >
+                                                    <Plus size={16} />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                     <button
                                         onClick={(e) => {
                                             e.preventDefault();
                                             e.stopPropagation();
-                                            handleProductSelect(product);
+                                            if (isBuildSystem) {
+                                                handleMaterialSelect(item);
+                                            } else {
+                                                handleProductSelect(item);
+                                            }
                                         }}
                                         className={`w-full py-2 rounded-lg font-semibold transition-colors mt-2 ${
                                             isSelected
@@ -1737,24 +2073,98 @@ const BuyNowFlow = () => {
                                                 : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
                                         }`}
                                     >
-                                        {isSelected ? 'Remove from Bundle' : 'Add to Bundle'}
+                                        {isSelected 
+                                            ? `Remove ${isBuildSystem ? 'Material' : 'from Bundle'}` 
+                                            : `Add ${isBuildSystem ? 'Material' : 'to Bundle'}`}
                                     </button>
                                 </div>
                             );
                         })}
                     </div>
                     
-                    {/* Continue Button - Show when at least one product is selected */}
-                    {formData.selectedProducts.length > 0 && (
-                        <div className="mt-8 flex justify-center">
-                            <button
-                                onClick={() => setStep(7)}
-                                className="bg-[#273e8e] text-white px-8 py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors flex items-center"
-                            >
-                                Continue with {formData.selectedProducts.length} Product{formData.selectedProducts.length !== 1 ? 's' : ''} in Bundle
-                                <ArrowRight size={20} className="ml-2" />
-                            </button>
-                        </div>
+                    {/* Action buttons */}
+                    {isBuildSystem ? (
+                        <>
+                            {/* Selected materials summary */}
+                            {selectedMaterials.length > 0 && (
+                                <div className="mt-8 bg-blue-50 border-2 border-[#273e8e] rounded-xl p-6 max-w-2xl mx-auto">
+                                    <h3 className="font-bold text-lg mb-4 text-gray-800">Selected Materials ({selectedMaterials.length})</h3>
+                                    <div className="space-y-2 mb-4">
+                                        {selectedMaterials.map((selMat) => {
+                                            // Use allMaterialsMap to find material even if not in current category
+                                            const material = allMaterialsMap[selMat.material_id] || categoryMaterials.find(m => m.id === selMat.material_id);
+                                            if (!material) return null;
+                                            const rawPrice = Number(material.selling_rate || material.rate || 0);
+                                            const displayPrice = rawPrice === 0 ? 1000 : rawPrice;
+                                            const totalPrice = displayPrice * selMat.quantity;
+                                            return (
+                                                <div key={selMat.material_id} className="flex justify-between items-center p-2 bg-white rounded">
+                                                    <span className="text-sm">{material.name || `Material #${selMat.material_id}`} x {selMat.quantity}</span>
+                                                    <span className="font-semibold text-[#273e8e]">
+                                                        {formatPrice(totalPrice)}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            calculateCustomBundle();
+                                        }}
+                                        disabled={loading}
+                                        className="w-full bg-[#273e8e] text-white py-3 rounded-lg font-semibold hover:bg-[#1a2b6b] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    >
+                                        {loading ? (
+                                            <>
+                                                <Loader className="animate-spin" size={20} />
+                                                Calculating...
+                                            </>
+                                        ) : (
+                                            <>
+                                                Calculate Bundle Price
+                                                <ArrowRight size={20} />
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            )}
+                            
+                            {/* Show calculated bundle price */}
+                            {customBundleCalculation && (
+                                <div className="mt-6 bg-green-50 border-2 border-green-400 rounded-xl p-6 max-w-2xl mx-auto">
+                                    <h3 className="font-bold text-lg mb-2 text-gray-800">Bundle Calculation</h3>
+                                    <p className="text-2xl font-bold text-[#273e8e] mb-4">
+                                        Total: {formatPrice(Number(customBundleCalculation.total_price || 0))}
+                                    </p>
+                                    <p className="text-sm text-gray-600 mb-4">
+                                        {customBundleCalculation.materials_count || 0} materials included
+                                    </p>
+                                    <button
+                                        onClick={() => setStep(4)}
+                                        className="w-full bg-[#273e8e] text-white py-3 rounded-lg font-semibold hover:bg-[#1a2b6b] transition-colors"
+                                    >
+                                        Proceed to Checkout Options
+                                        <ArrowRight size={20} className="inline ml-2" />
+                                    </button>
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        /* Continue Button for old product flow */
+                        formData.selectedProducts.length > 0 && (
+                            <div className="mt-8 flex justify-center">
+                                <button
+                                    onClick={() => setStep(7)}
+                                    className="bg-[#273e8e] text-white px-8 py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors flex items-center"
+                                >
+                                    Continue with {formData.selectedProducts.length} Product{formData.selectedProducts.length !== 1 ? 's' : ''} in Bundle
+                                    <ArrowRight size={20} className="ml-2" />
+                                </button>
+                            </div>
+                        )
                     )}
                     </>
                 )}
@@ -1784,7 +2194,7 @@ const BuyNowFlow = () => {
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <Zap size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose My Solar System</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose My Solar Bundle</h3>
                 </button>
                 <button onClick={() => handleOptionSelect('build-system')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
@@ -1837,15 +2247,7 @@ const BuyNowFlow = () => {
     // );
 
     const renderStep3_5 = () => {
-
-        // Helper to get bundle image
-        const getBundleImage = (bundle) => {
-            if (bundle.featured_image) {
-                return toAbsolute(bundle.featured_image);
-            }
-            // Return a data URI SVG placeholder instead of a file path to prevent infinite loops
-            return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
-        };
+        const selectedSizeLabel = sizeOptions.find((o) => o.value === selectedSystemSize)?.label || "All Sizes";
 
         return (
             <div className="animate-fade-in">
@@ -1863,6 +2265,48 @@ const BuyNowFlow = () => {
                     Select from our pre-configured solar bundles
                 </p>
 
+                {/* System Size Filter */}
+                {!bundlesLoading && bundles.length > 0 && (
+                    <div className="mb-6 flex justify-center">
+                        <div className="relative" ref={sizeDropdownRef}>
+                            <button
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setIsSizeDropdownOpen(!isSizeDropdownOpen);
+                                }}
+                                className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+                            >
+                                <span>System Size: {selectedSizeLabel}</span>
+                                <ChevronDown size={16} className={`transition-transform ${isSizeDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            
+                            {isSizeDropdownOpen && (
+                                <div className="absolute left-0 top-full mt-1 max-h-[300px] z-50 w-[200px] bg-white rounded-md shadow-lg border border-gray-200 overflow-y-auto">
+                                    <div className="py-1">
+                                        {sizeOptions.map((option) => (
+                                            <div
+                                                key={option.value}
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    setSelectedSystemSize(option.value);
+                                                    setIsSizeDropdownOpen(false);
+                                                }}
+                                                className={`px-4 py-2 text-sm cursor-pointer hover:bg-gray-100 ${
+                                                    selectedSystemSize === option.value ? 'bg-[#273e8e]/10 text-[#273e8e] font-medium' : 'text-gray-700'
+                                                }`}
+                                            >
+                                                {option.label}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {bundlesLoading ? (
                     <div className="text-center py-16">
                         <div className="flex flex-col items-center justify-center">
@@ -1871,19 +2315,31 @@ const BuyNowFlow = () => {
                             <p className="mt-2 text-sm text-gray-500">Please wait while we fetch available solar bundles</p>
                         </div>
                     </div>
-                ) : bundles.length === 0 ? (
+                ) : filteredBundles.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-2xl border border-gray-200">
-                        <p className="text-gray-600 mb-4">No bundles available at the moment.</p>
+                        <p className="text-gray-600 mb-4">
+                            {selectedSystemSize !== "all" 
+                                ? `No bundles found for ${selectedSizeLabel}.` 
+                                : "No bundles available at the moment."}
+                        </p>
+                        {selectedSystemSize !== "all" && (
+                            <button
+                                onClick={() => setSelectedSystemSize("all")}
+                                className="mt-2 text-[#273e8e] hover:underline font-semibold text-sm"
+                            >
+                                Clear filter
+                            </button>
+                        )}
                         <button
                             onClick={() => setStep(3)}
-                            className="mt-4 text-[#273e8e] hover:underline font-semibold"
+                            className="mt-4 block mx-auto text-[#273e8e] hover:underline font-semibold"
                         >
                             Go back
                         </button>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
-                        {bundles.map((bundle) => {
+                        {filteredBundles.map((bundle) => {
                             const price = Number(bundle.discount_price || bundle.total_price || 0);
                             const oldPrice = bundle.discount_price && bundle.total_price && bundle.discount_price < bundle.total_price
                                 ? Number(bundle.total_price)
@@ -1910,9 +2366,9 @@ const BuyNowFlow = () => {
                                             alt={bundle.title || 'Solar Bundle'}
                                             className="w-full h-48 object-cover"
                                             onError={(e) => {
-                                                // Prevent infinite loop - only set placeholder if not already set
-                                                if (e.target.src && !e.target.src.includes('placeholder-product.png') && !e.target.src.includes('data:image')) {
-                                                    e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                                // Prevent infinite loop - only set fallback if not already set
+                                                if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                                    e.target.src = FALLBACK_IMAGE;
                                                 }
                                             }}
                                         />
@@ -1946,9 +2402,36 @@ const BuyNowFlow = () => {
                                     
                                     {/* Learn More Button */}
                                     <button
-                                        onClick={(e) => {
+                                        onClick={async (e) => {
                                             e.stopPropagation();
-                                            setSelectedBundleDetails(bundle);
+                                            // Fetch full bundle details with fees and navigate to details page
+                                            try {
+                                                setLoading(true);
+                                                const token = localStorage.getItem('access_token');
+                                                const response = await axios.get(API.BUNDLE_DETAILS(bundle.id), {
+                                                    headers: {
+                                                        Accept: 'application/json',
+                                                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                                                    },
+                                                });
+                                                
+                                                const bundleDetails = response.data?.data ?? response.data;
+                                                if (bundleDetails) {
+                                                    setSelectedBundleDetails(bundleDetails);
+                                                    setStep(3.6); // Navigate to bundle details page
+                                                } else {
+                                                    // Fallback to basic bundle data if details endpoint fails
+                                                    setSelectedBundleDetails(bundle);
+                                                    setStep(3.6);
+                                                }
+                                            } catch (error) {
+                                                console.error("Failed to fetch bundle details:", error);
+                                                // Fallback to basic bundle data
+                                                setSelectedBundleDetails(bundle);
+                                                setStep(3.6);
+                                            } finally {
+                                                setLoading(false);
+                                            }
                                         }}
                                         className="w-full mb-2 py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
                                     >
@@ -1972,6 +2455,419 @@ const BuyNowFlow = () => {
                         })}
                     </div>
                 )}
+            </div>
+        );
+    };
+
+    // Bundle Details Page (Full Page View - Step 3.6)
+    const renderStep3_6 = () => {
+        if (!selectedBundleDetails) {
+            return (
+                <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center">
+                    <Loader className="animate-spin mx-auto text-[#273e8e]" size={40} />
+                    <p className="text-gray-600 mt-4">Loading bundle details...</p>
+                </div>
+            );
+        }
+
+        const bundle = selectedBundleDetails;
+        const totalPrice = Number(bundle.discount_price || bundle.total_price || 0);
+        const oldPrice = bundle.discount_price && bundle.total_price && bundle.discount_price < bundle.total_price
+            ? Number(bundle.total_price)
+            : null;
+        const discount = oldPrice && totalPrice < oldPrice
+            ? Math.round(((oldPrice - totalPrice) / oldPrice) * 100)
+            : 0;
+
+        // Get items included
+        const itemsIncluded = bundle.materials || bundle.bundleItems || bundle.bundle_items || [];
+        
+        // Get assets for fallback images
+        const getItemIcon = (item) => {
+            const product = item.product || item;
+            const material = item.material || item;
+            
+            // Try product image first
+            if (product?.featured_image) return toAbsolute(product.featured_image);
+            if (product?.featured_image_url) return toAbsolute(product.featured_image_url);
+            
+            // Try material image
+            if (material?.featured_image) return toAbsolute(material.featured_image);
+            if (material?.featured_image_url) return toAbsolute(material.featured_image_url);
+            if (material?.image) return toAbsolute(material.image);
+            
+            // Return fallback image
+            return FALLBACK_IMAGE;
+        };
+
+        return (
+            <div className="animate-fade-in bg-[#F5F7FF] min-h-screen p-3 sm:p-5">
+                <div className="bg-[#F6F8FF] min-h-screen rounded-lg p-3 sm:p-6">
+                    {/* Back Button */}
+                    <button 
+                        onClick={() => {
+                            setSelectedBundleDetails(null);
+                            setStep(3.5);
+                        }} 
+                        className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]"
+                    >
+                        <ArrowLeft size={16} className="mr-2" /> Back to Bundles
+                    </button>
+
+                    {/* Desktop Layout */}
+                    <div className="hidden sm:flex justify-between items-start gap-4">
+                        {/* Left Column - Main Content */}
+                        <div className="min-w-[66%]">
+                            <div className="bg-white w-full border border-[#800080] rounded-lg mt-3">
+                                {/* Image */}
+                                <div className="relative h-[350px] bg-[#F3F3F3] m-2 rounded-lg flex justify-center items-center overflow-hidden">
+                                    <img
+                                        src={getBundleImage(bundle)}
+                                        alt={bundle.title || 'Bundle'}
+                                        className="max-h-[80%] object-contain"
+                                        onError={(e) => {
+                                            e.target.src = FALLBACK_IMAGE;
+                                        }}
+                                    />
+                                </div>
+
+                                {/* Content */}
+                                <div className="p-4">
+                                    <h2 className="text-xl font-semibold">
+                                        {bundle.title || `Bundle #${bundle.id}`}
+                                    </h2>
+                                    {bundle.bundle_type && (
+                                        <p className="text-sm text-gray-500 pt-1">
+                                            {bundle.bundle_type}
+                                        </p>
+                                    )}
+                                    {bundle.backup_info && (
+                                        <p className="text-sm text-gray-500 pt-1">
+                                            {bundle.backup_info}
+                                        </p>
+                                    )}
+
+                                    <hr className="my-3 text-gray-300" />
+
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex flex-col items-start">
+                                            <p className="text-xl font-bold text-[#273E8E]">
+                                                {formatPrice(totalPrice)}
+                                            </p>
+                                            <div className="flex gap-2 mt-1">
+                                                {oldPrice && (
+                                                    <span className="text-sm text-gray-500 line-through">
+                                                        {formatPrice(oldPrice)}
+                                                    </span>
+                                                )}
+                                                {discount > 0 && (
+                                                    <span className="text-xs px-2 py-[2px] bg-[#FFA500]/20 text-[#FFA500] rounded-full">
+                                                        -{discount}%
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <hr className="my-2 text-gray-300" />
+
+                                {/* What's in the bundle */}
+                                <div className="p-4">
+                                    <h3 className="text-lg font-medium mb-3">
+                                        What is inside the bundle ?
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {itemsIncluded.length > 0 ? itemsIncluded.map((item, index) => {
+                                            const product = item.product || item;
+                                            const itemName = product?.name || product?.title || item?.name || `Item #${index + 1}`;
+                                            const rawPrice = Number(product?.price || item?.selling_rate || item?.rate || 0);
+                                            const itemPrice = rawPrice === 0 ? 1000 : rawPrice;
+                                            const itemQuantity = item.quantity || 1;
+                                            
+                                            return (
+                                                <div
+                                                    key={index}
+                                                    className="flex justify-between items-center bg-gray-100 h-[80px] px-3 py-2 rounded-md"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="bg-[#B0B7D0] rounded-md w-[60px] h-[60px] flex items-center justify-center overflow-hidden">
+                                                            <img
+                                                                src={getItemIcon(item)}
+                                                                alt={itemName}
+                                                                className="max-w-[60%] max-h-[60%] object-contain"
+                                                                onError={(e) => {
+                                                                    if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                                                        e.target.src = FALLBACK_IMAGE;
+                                                                    }
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-[#273E8E] text-base font-semibold">
+                                                                {itemName}
+                                                                {itemQuantity > 1 && <span className="text-gray-500 ml-2">(× {itemQuantity})</span>}
+                                                            </div>
+                                                            <div className="text-sm text-[#273E8E]">
+                                                                {formatPrice(itemPrice)}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }) : (
+                                            <div className="text-gray-500 bg-white border rounded-xl p-4">
+                                                No items attached to this bundle.
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Fees Information */}
+                                {bundle.fees && (
+                                    <div className="p-4 border-t border-gray-200">
+                                        <h3 className="text-lg font-medium mb-3">Additional Fees</h3>
+                                        <div className="space-y-2 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                            {bundle.fees.installation_fee && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Installation Fee</span>
+                                                    <span className="font-semibold text-gray-800">{formatPrice(Number(bundle.fees.installation_fee))}</span>
+                                                </div>
+                                            )}
+                                            {bundle.fees.delivery_fee && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Delivery Fee</span>
+                                                    <span className="font-semibold text-gray-800">{formatPrice(Number(bundle.fees.delivery_fee))}</span>
+                                                </div>
+                                            )}
+                                            {bundle.fees.inspection_fee && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Inspection Fee</span>
+                                                    <span className="font-semibold text-gray-800">{formatPrice(Number(bundle.fees.inspection_fee))}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex flex-col gap-3 mt-6 px-2">
+                                <button
+                                    onClick={() => {
+                                        handleBundleSelect(bundle);
+                                        setSelectedBundleDetails(null);
+                                    }}
+                                    className="w-full text-sm bg-[#273E8E] text-white py-4 rounded-full hover:bg-[#1a2b6b] transition-colors"
+                                >
+                                    Select This Bundle
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Right Column - Stats */}
+                        <div className="w-[34%]">
+                            <div className="flex flex-col gap-3 rounded-2xl">
+                                <div className="grid grid-cols-2 h-[110px] rounded-2xl overflow-hidden">
+                                    <div className="bg-[#273E8E] text-white px-4 py-2 flex flex-col justify-between">
+                                        <div className="text-sm text-left">Total Load</div>
+                                        <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center h-[60%] mt-1 px-1">
+                                            <span className="truncate">{bundle.total_load || "—"}</span>
+                                            <span className="text-xs ml-1 mt-2 whitespace-nowrap">Watts</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-[#273E8E] text-white px-4 py-2 flex flex-col justify-between">
+                                        <div className="text-sm text-left">Inverter Rating</div>
+                                        <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center h-[60%] mt-1 px-1">
+                                            <span className="truncate">{bundle.inver_rating || "—"}</span>
+                                            <span className="text-xs ml-1 mt-2 whitespace-nowrap">VA</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-[#273E8E] text-white px-4 py-3 h-[110px] rounded-2xl flex justify-between items-center">
+                                    <div className="text-lg font-bold">Total Output</div>
+                                    <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center w-[50%] h-[60%] mt-1 px-1">
+                                        <span className="truncate">{bundle.total_output || "—"}</span>
+                                        <span className="text-xs ml-1 mt-2 whitespace-nowrap">Watts</span>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white border rounded-2xl p-4">
+                                    <h3 className="text-base font-semibold text-gray-800 mb-4">Order Summary</h3>
+                                    
+                                    <div className="space-y-3 mb-4">
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-gray-600">Items</span>
+                                            <span className="font-medium">{itemsIncluded.length}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-gray-600">Bundle Price</span>
+                                            <span className="font-medium">{formatPrice(totalPrice)}</span>
+                                        </div>
+                                    </div>
+
+                                    <hr className="my-4 border-gray-200" />
+
+                                    {bundle.backup_info && (
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-gray-800 mb-2">Backup Time</h4>
+                                            <p className="text-xs text-gray-600">
+                                                {bundle.backup_info}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Mobile Layout */}
+                    <div className="sm:hidden">
+                        <div className="mx-3 mb-4 rounded-[18px] border border-[#800080] bg-white p-3">
+                            {/* Image */}
+                            <div className="relative h-[190px] rounded-[14px] bg-[#F3F3F3] flex items-center justify-center overflow-hidden">
+                                <img
+                                    src={getBundleImage(bundle)}
+                                    alt={bundle.title || 'Bundle'}
+                                    className="max-h-[80%] object-contain"
+                                    onError={(e) => {
+                                        e.target.src = FALLBACK_IMAGE;
+                                    }}
+                                />
+                            </div>
+
+                            {/* Title + Price */}
+                            <div className="pt-3">
+                                <h2 className="text-[12px] lg:text-[16px] font-semibold text-[#0F172A]">
+                                    {bundle.title || `Bundle #${bundle.id}`}
+                                </h2>
+                                {bundle.bundle_type && (
+                                    <p className="text-[12px] text-gray-500 mt-[2px]">
+                                        {bundle.bundle_type}
+                                    </p>
+                                )}
+                                {bundle.backup_info && (
+                                    <p className="text-[12px] text-gray-500 mt-[2px]">
+                                        {bundle.backup_info}
+                                    </p>
+                                )}
+
+                                <div className="mt-2 flex items-start justify-between">
+                                    <div>
+                                        <div className="text-[12px] lg:text-[18px] font-bold text-[#273E8E] leading-5">
+                                            {formatPrice(totalPrice)}
+                                        </div>
+                                        <div className="mt-1 flex items-center gap-2">
+                                            {oldPrice && (
+                                                <span className="text-[10px] lg:text-[12px] text-gray-400 line-through">
+                                                    {formatPrice(oldPrice)}
+                                                </span>
+                                            )}
+                                            {discount > 0 && (
+                                                <span className="px-2 py-[2px] rounded-full text-[11px] text-orange-600 bg-orange-100">
+                                                    -{discount}%
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* What's inside */}
+                            <div className="mt-3">
+                                <p className="text-[12px] lg:text-[14px] font-medium mb-2">
+                                    What is inside the bundle ?
+                                </p>
+                                <div className="space-y-2">
+                                    {itemsIncluded.length > 0 ? itemsIncluded.map((item, idx) => {
+                                        const product = item.product || item;
+                                        const itemName = product?.name || product?.title || item?.name || `Item #${idx + 1}`;
+                                        const rawPrice = Number(product?.price || item?.selling_rate || item?.rate || 0);
+                                        const itemPrice = rawPrice === 0 ? 1000 : rawPrice;
+                                        const itemQuantity = item.quantity || 1;
+                                        
+                                        return (
+                                            <div
+                                                key={idx}
+                                                className="flex items-center justify-between bg-[#E8EDF8] rounded-[12px] px-3 py-3"
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-[44px] h-[44px] rounded-md bg-[#C9D0E6] flex items-center justify-center overflow-hidden">
+                                                        <img
+                                                            src={getItemIcon(item)}
+                                                            alt={itemName}
+                                                            className="max-w-[70%] max-h-[70%] object-contain"
+                                                            onError={(e) => {
+                                                                if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                                                    e.target.src = FALLBACK_IMAGE;
+                                                                }
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="text-[10px] lg:text-[13px] text-[#273E8E]">
+                                                        <div className="font-medium leading-4">
+                                                            {itemName}
+                                                            {itemQuantity > 1 && <span className="text-gray-500 ml-1">(× {itemQuantity})</span>}
+                                                        </div>
+                                                        <div className="font-semibold mt-[2px]">
+                                                            {formatPrice(itemPrice)}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    }) : (
+                                        <div className="text-gray-500 bg-white border rounded-xl p-4 text-xs lg:text-sm">
+                                            No items attached to this bundle.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Fees - Mobile */}
+                            {bundle.fees && (
+                                <div className="mt-3">
+                                    <p className="text-[12px] lg:text-[14px] font-medium mb-2">Additional Fees</p>
+                                    <div className="space-y-2 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                        {bundle.fees.installation_fee && (
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-gray-600">Installation Fee</span>
+                                                <span className="font-semibold">{formatPrice(Number(bundle.fees.installation_fee))}</span>
+                                            </div>
+                                        )}
+                                        {bundle.fees.delivery_fee && (
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-gray-600">Delivery Fee</span>
+                                                <span className="font-semibold">{formatPrice(Number(bundle.fees.delivery_fee))}</span>
+                                            </div>
+                                        )}
+                                        {bundle.fees.inspection_fee && (
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-gray-600">Inspection Fee</span>
+                                                <span className="font-semibold">{formatPrice(Number(bundle.fees.inspection_fee))}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Actions - Mobile */}
+                            <div className="mt-4">
+                                <button
+                                    onClick={() => {
+                                        handleBundleSelect(bundle);
+                                        setSelectedBundleDetails(null);
+                                    }}
+                                    className="w-full h-11 rounded-full bg-[#273E8E] text-white text-[11px] lg:text-[14px] hover:bg-[#1a2b6b] transition-colors"
+                                >
+                                    Select This Bundle
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     };
@@ -2040,7 +2936,7 @@ const BuyNowFlow = () => {
                     >
                         <div className="flex items-center mb-2">
                             <CheckCircle size={20} className={formData.installerChoice === 'troosolar' ? 'text-[#273e8e]' : 'text-gray-300'} />
-                            <span className="ml-2 font-bold text-gray-800">Use TrooSolar Certified Installer</span>
+                            <span className="ml-2 font-bold text-gray-800">Use Troosolar Certified Installer</span>
                         </div>
                         <p className="text-sm text-gray-500 ml-7">Recommended. Includes 1-Year Installation Warranty.</p>
                     </button>
@@ -2056,7 +2952,7 @@ const BuyNowFlow = () => {
                             <CheckCircle size={20} className={formData.installerChoice === 'own' ? 'text-[#273e8e]' : 'text-gray-300'} />
                             <span className="ml-2 font-bold text-gray-800">Use My Own Installer</span>
                         </div>
-                        <p className="text-sm text-gray-500 ml-7">TrooSolar does not guarantee third-party installation.</p>
+                        <p className="text-sm text-gray-500 ml-7">Troosolar does not guarantee third-party installation.</p>
                     </button>
                 </div>
             </div>
@@ -2065,7 +2961,7 @@ const BuyNowFlow = () => {
             <div className="mb-8">
                 <h3 className="text-lg font-bold mb-4 text-gray-800">Additional Services</h3>
                 <div className="space-y-3">
-                    {/* Insurance Option - only available for TrooSolar installers */}
+                    {/* Insurance Option - only available for Troosolar installers */}
                     <label className={`flex items-start p-4 rounded-xl border-2 transition-all ${
                         formData.installerChoice === 'own' 
                             ? 'border-gray-200 bg-gray-100 cursor-not-allowed opacity-60' 
@@ -2092,7 +2988,7 @@ const BuyNowFlow = () => {
                                 formData.installerChoice === 'own' ? 'text-gray-400' : 'text-gray-500'
                             }`}>
                                 {formData.installerChoice === 'own' 
-                                    ? 'Insurance is only available with TrooSolar Certified Installer.' 
+                                    ? 'Insurance is only available with Troosolar Certified Installer.' 
                                     : 'Protect your investment against damage and theft (0.5% of product price).'}
                             </p>
                         </div>
@@ -2617,9 +3513,9 @@ const BuyNowFlow = () => {
         }
 
         // Otherwise, show regular product order summary
-        // Get product details
-        const productName = formData.selectedBundle 
-            ? formData.selectedBundle.title || 'Solar System Bundle'
+        // Get product details - prioritize bundle name from API if available
+        const productName = invoiceDetails?.bundle_title || formData.selectedBundle?.title || formData.selectedBundle?.name
+            ? (invoiceDetails?.bundle_title || formData.selectedBundle?.title || formData.selectedBundle?.name || 'Solar System Bundle')
             : formData.productCategory === 'full-kit' 
                 ? 'Solar Panels, Inverter & Battery'
                 : formData.productCategory === 'inverter-battery'
@@ -2654,7 +3550,7 @@ const BuyNowFlow = () => {
                                 </p>
                             </div>
                         </div>
-                        <span className="font-bold">₦{Number(invoiceDetails.product_price || formData.selectedProductPrice || 0).toLocaleString()}</span>
+                        <span className="font-bold">₦{Number(invoiceDetails?.product_price || formData.selectedProductPrice || 0).toLocaleString()}</span>
                     </div>
 
                     {formData.selectedBundles.length === 0 && formData.selectedProducts.length === 0 && (formData.productCategory === 'full-kit' || formData.productCategory === 'inverter-battery') && (
@@ -2892,25 +3788,31 @@ const BuyNowFlow = () => {
         }
 
         // Otherwise, show invoice
-        // Calculate totals from selected items (accounting for quantity)
-        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
-        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
-        const itemsSubtotal = bundlesTotal + productsTotal;
-        // For single items, multiply unit price by quantity (selectedProductPrice is the unit price)
-        const singleItemBasePrice = formData.selectedProductPrice * (formData.singleItemQuantity || 1);
-        const basePrice = itemsSubtotal > 0 ? itemsSubtotal : singleItemBasePrice;
-        
-        // Installation fee: ₦50,000 if TrooSolar installer is selected
-        const installationFee = formData.installerChoice === 'troosolar' ? 50000 : 0;
+        // Use product_price from API response if available, otherwise calculate from selected items
+        let basePrice = 0;
+        if (invoiceDetails?.product_price) {
+            // Use product price from API response (most accurate)
+            basePrice = Number(invoiceDetails.product_price);
+        } else {
+            // Calculate totals from selected items (accounting for quantity) - fallback
+            const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+            const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
+            const itemsSubtotal = bundlesTotal + productsTotal;
+            // For single items, multiply unit price by quantity (selectedProductPrice is the unit price)
+            const singleItemBasePrice = formData.selectedProductPrice * (formData.singleItemQuantity || 1);
+            basePrice = itemsSubtotal > 0 ? itemsSubtotal : singleItemBasePrice;
+        }
         
         // Get fees from invoiceDetails (from API) or use defaults
+        const installationFee = invoiceDetails?.installation_fee || (formData.installerChoice === 'troosolar' ? 50000 : 0);
         const materialCost = invoiceDetails?.material_cost || 0;
         const deliveryFee = invoiceDetails?.delivery_fee || 0;
         const inspectionFee = invoiceDetails?.inspection_fee || 0;
         const insuranceFee = invoiceDetails?.insurance_fee || 0;
+        const addOnsTotal = invoiceDetails?.add_ons_total || 0;
         
-        // Calculate total
-        const calculatedTotal = basePrice + materialCost + installationFee + deliveryFee + inspectionFee + insuranceFee;
+        // Calculate total (use API total if available, otherwise calculate)
+        const calculatedTotal = basePrice + materialCost + installationFee + deliveryFee + inspectionFee + insuranceFee + addOnsTotal;
         const invoiceTotal = invoiceDetails?.total || calculatedTotal;
         
         return (
@@ -3004,7 +3906,7 @@ const BuyNowFlow = () => {
                     <div className="flex justify-between items-center">
                         <div>
                             <p className="font-medium text-gray-800">
-                                {formData.selectedBundle?.title || formData.selectedBundle?.name || 
+                                {formData.selectedBundle?.title || formData.selectedBundle?.name || formData.selectedBundle?.bundleTitle || 
                                  formData.productCategory === 'full-kit' 
                                     ? 'Solar Panels, Inverter & Battery'
                                     : formData.productCategory === 'inverter-battery'
@@ -3025,9 +3927,14 @@ const BuyNowFlow = () => {
                             </p>
                         </div>
                         <div className="text-right">
-                            <span className="font-bold block">₦{Number(basePrice || 0).toLocaleString()}</span>
+                            {/* Use product_price from API if available, otherwise use calculated basePrice */}
+                            <span className="font-bold block">
+                                ₦{Number(invoiceDetails?.product_price || basePrice || 0).toLocaleString()}
+                            </span>
                             {(formData.singleItemQuantity || 1) > 1 && (
-                                <span className="text-xs text-gray-500">₦{Number(formData.selectedProductPrice).toLocaleString()} each</span>
+                                <span className="text-xs text-gray-500">
+                                    ₦{Number((invoiceDetails?.product_price || formData.selectedProductPrice || 0) / (formData.singleItemQuantity || 1)).toLocaleString()} each
+                                </span>
                             )}
                         </div>
                     </div>
@@ -3038,7 +3945,62 @@ const BuyNowFlow = () => {
                     <div className="border-t pt-3 mt-3">
                         <div className="flex justify-between items-center">
                             <span className="font-semibold text-gray-700">Items Subtotal:</span>
-                            <span className="font-bold">₦{Number(basePrice || 0).toLocaleString()}</span>
+                            {/* Use product_price from API if available, otherwise use calculated basePrice */}
+                            <span className="font-bold">₦{Number(invoiceDetails?.product_price || basePrice || 0).toLocaleString()}</span>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Product Breakdown from API (for pre-packaged bundles) */}
+                {invoiceDetails?.product_breakdown && (
+                    <div className="border-t pt-4 mt-4">
+                        <h4 className="font-semibold text-gray-800 mb-3">Product Breakdown</h4>
+                        <div className="space-y-2 bg-gray-50 rounded-lg p-4">
+                            {invoiceDetails.product_breakdown.solar_panels && (
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-700">
+                                        Solar Panels
+                                        {invoiceDetails.product_breakdown.solar_panels.quantity > 0 && (
+                                            <span className="ml-2 text-gray-500">
+                                                (× {invoiceDetails.product_breakdown.solar_panels.quantity})
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className="font-semibold text-gray-800">
+                                        ₦{Number(invoiceDetails.product_breakdown.solar_panels.price || 0).toLocaleString()}
+                                    </span>
+                                </div>
+                            )}
+                            {invoiceDetails.product_breakdown.solar_inverter && (
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-700">
+                                        Solar Inverter
+                                        {invoiceDetails.product_breakdown.solar_inverter.quantity > 0 && (
+                                            <span className="ml-2 text-gray-500">
+                                                (× {invoiceDetails.product_breakdown.solar_inverter.quantity})
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className="font-semibold text-gray-800">
+                                        ₦{Number(invoiceDetails.product_breakdown.solar_inverter.price || 0).toLocaleString()}
+                                    </span>
+                                </div>
+                            )}
+                            {invoiceDetails.product_breakdown.batteries && (
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-700">
+                                        Batteries
+                                        {invoiceDetails.product_breakdown.batteries.quantity > 0 && (
+                                            <span className="ml-2 text-gray-500">
+                                                (× {invoiceDetails.product_breakdown.batteries.quantity})
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className="font-semibold text-gray-800">
+                                        ₦{Number(invoiceDetails.product_breakdown.batteries.price || 0).toLocaleString()}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -3051,7 +4013,7 @@ const BuyNowFlow = () => {
                     </div>
                 )}
                 
-                {/* Installation Fee - only if TrooSolar installer is selected */}
+                {/* Installation Fee - only if Troosolar installer is selected */}
                 {installationFee > 0 && (
                     <div className="flex justify-between">
                         <span>Installation Fees</span>
@@ -3080,6 +4042,14 @@ const BuyNowFlow = () => {
                     <div className="flex justify-between">
                         <span>Insurance Fee (Optional)</span>
                         <span>₦{Number(insuranceFee).toLocaleString()}</span>
+                    </div>
+                )}
+                
+                {/* Add-ons Total */}
+                {addOnsTotal > 0 && (
+                    <div className="flex justify-between">
+                        <span>Additional Services</span>
+                        <span>₦{Number(addOnsTotal).toLocaleString()}</span>
                     </div>
                 )}
                 
@@ -3152,12 +4122,12 @@ const BuyNowFlow = () => {
                 );
             })()}
             
-            {/* Installation fee note - only show if TrooSolar installer is selected */}
-            {formData.installerChoice === 'troosolar' && (
+            {/* Installation fee note - from API or default */}
+            {(invoiceDetails?.note || (formData.installerChoice === 'troosolar')) && (
                 <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg mb-6 flex items-start">
                     <AlertCircle className="text-yellow-600 mr-3 mt-1" size={20} />
                     <p className="text-sm text-yellow-700">
-                        Installation fees may change after site inspection. Any difference will be updated and shared with you for a one-off payment before installation.
+                        {invoiceDetails?.note || "Installation fees may change after site inspection. Any difference will be updated and shared with you for a one-off payment before installation."}
                     </p>
                 </div>
             )}
@@ -3222,12 +4192,12 @@ const BuyNowFlow = () => {
                                 <li>✓ You'll receive an email with the quote and next steps</li>
                             </ul>
                         </div>
-                        <button
+                        {/* <button
                             onClick={() => setStep(7)}
                             className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
                         >
                             View Order Summary
-                        </button>
+                        </button> */}
                     </div>
                 </div>
             );
@@ -3255,7 +4225,7 @@ const BuyNowFlow = () => {
                     )}
                     <div className="space-y-3">
                         <button
-                            onClick={() => navigate(`/order/details/${orderId}`)}
+                            onClick={() => navigate(`/more?section=myOrders&orderId=${orderId}`)}
                             className="w-full bg-[#273e8e] text-white py-3 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
                         >
                             View Order Details
@@ -3295,12 +4265,26 @@ const BuyNowFlow = () => {
         );
     };
 
+    // Calculate total price for floating cart
+    const cartTotalPrice = useMemo(() => {
+        if (formData.optionType !== 'build-system' || step !== 3.75 || selectedMaterials.length === 0) {
+            return 0;
+        }
+        return selectedMaterials.reduce((sum, selMat) => {
+            const material = allMaterialsMap[selMat.material_id] || categoryMaterials.find(m => m.id === selMat.material_id);
+            if (!material) return sum;
+            const rawPrice = Number(material.selling_rate || material.rate || 0);
+            const displayPrice = rawPrice === 0 ? 1000 : rawPrice;
+            return sum + (displayPrice * selMat.quantity);
+        }, 0);
+    }, [formData.optionType, step, selectedMaterials, allMaterialsMap, categoryMaterials]);
+
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
             {/* Navbar Placeholder */}
             <div className="bg-white shadow-sm p-4 sticky top-0 z-50">
                 <div className="max-w-7xl mx-auto flex justify-between items-center">
-                    <div className="font-bold text-xl text-[#273e8e]">TrooSolar</div>
+                    <div className="font-bold text-xl text-[#273e8e]">Troosolar</div>
                     <button onClick={() => navigate('/')} className="text-gray-600 hover:text-[#273e8e]">
                         Exit Application
                     </button>
@@ -3354,6 +4338,7 @@ const BuyNowFlow = () => {
                     {step === 2.75 && renderStep2_75()}
                     {step === 3 && renderStep3()}
                     {step === 3.5 && renderStep3_5()}
+                    {step === 3.6 && renderStep3_6()}
                     {step === 3.75 && renderStep3_75()}
                     {step === 4 && renderStep4()}
                     {step === 7 && renderStep7()}
@@ -3363,138 +4348,136 @@ const BuyNowFlow = () => {
                 </div>
             </div>
 
-            {/* Bundle Details Modal */}
-            {selectedBundleDetails && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-                    <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-                            <h2 className="text-2xl font-bold text-gray-800">Bundle Details</h2>
-                            <button
-                                onClick={() => setSelectedBundleDetails(null)}
-                                className="text-gray-500 hover:text-gray-700 transition-colors"
-                            >
-                                <X size={24} />
-                            </button>
+            {/* Floating Cart - Only show during material selection (build-system) */}
+            {formData.optionType === 'build-system' && step === 3.75 && selectedMaterials.length > 0 && (
+                    <div className="fixed right-6 top-24 z-40 w-80 bg-white rounded-2xl shadow-2xl border-2 border-[#273e8e] max-h-[calc(100vh-8rem)] hidden xl:flex flex-col">
+                        {/* Cart Header */}
+                        <div className="bg-[#273e8e] text-white px-4 py-3 rounded-t-2xl flex items-center justify-between">
+                            <h3 className="font-bold text-lg">Selected Materials</h3>
+                            <span className="bg-white text-[#273e8e] rounded-full px-3 py-1 text-sm font-semibold">
+                                {selectedMaterials.length}
+                            </span>
                         </div>
-                        
-                        <div className="p-6">
-                            {/* Bundle Image */}
-                            <div className="mb-6">
-                                <img
-                                    src={getBundleImage(selectedBundleDetails)}
-                                    alt={selectedBundleDetails.title || 'Bundle'}
-                                    className="w-full h-64 object-cover rounded-lg"
-                                    onError={(e) => {
-                                        e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
-                                    }}
-                                />
-                            </div>
 
-                            {/* Bundle Title and Price */}
-                            <div className="mb-6">
-                                <h3 className="text-2xl font-bold text-gray-800 mb-2">
-                                    {selectedBundleDetails.title || `Bundle #${selectedBundleDetails.id}`}
-                                </h3>
-                                {selectedBundleDetails.bundle_type && (
-                                    <p className="text-gray-500 mb-3">{selectedBundleDetails.bundle_type}</p>
-                                )}
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-3xl font-bold text-[#273e8e]">
-                                        {formatPrice(Number(selectedBundleDetails.discount_price || selectedBundleDetails.total_price || 0))}
-                                    </span>
-                                    {selectedBundleDetails.discount_price && selectedBundleDetails.total_price && selectedBundleDetails.discount_price < selectedBundleDetails.total_price && (
-                                        <span className="text-gray-400 line-through text-lg">
-                                            {formatPrice(Number(selectedBundleDetails.total_price))}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
+                        {/* Cart Items */}
+                        <div className="flex-1 overflow-y-auto p-4">
+                            <div className="space-y-3">
+                                {selectedMaterials.map((selMat) => {
+                                    const material = allMaterialsMap[selMat.material_id] || categoryMaterials.find(m => m.id === selMat.material_id);
+                                    if (!material) return null;
+                                    const rawPrice = Number(material.selling_rate || material.rate || 0);
+                                    const displayPrice = rawPrice === 0 ? 1000 : rawPrice;
+                                    const itemTotal = displayPrice * selMat.quantity;
+                                    const materialImage = material.featured_image_url 
+                                        ? toAbsolute(material.featured_image_url)
+                                        : material.featured_image 
+                                        ? toAbsolute(material.featured_image)
+                                        : (material.images && material.images[0] && material.images[0].image)
+                                        ? toAbsolute(material.images[0].image)
+                                        : FALLBACK_IMAGE;
 
-                            {/* Bundle Specifications */}
-                            {(selectedBundleDetails.total_load || selectedBundleDetails.inver_rating || selectedBundleDetails.total_output) && (
-                                <div className="mb-6 bg-gray-50 rounded-lg p-4">
-                                    <h4 className="font-semibold text-gray-800 mb-3">Specifications</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        {selectedBundleDetails.total_load && (
-                                            <div>
-                                                <p className="text-sm text-gray-500">Total Load</p>
-                                                <p className="font-semibold text-gray-800">{selectedBundleDetails.total_load}W</p>
+                                    return (
+                                        <div key={selMat.material_id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                            <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-200 flex-shrink-0">
+                                                <img
+                                                    src={materialImage}
+                                                    alt={material.name || `Material #${selMat.material_id}`}
+                                                    className="w-full h-full object-cover"
+                                                    onError={(e) => {
+                                                        if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
+                                                            e.target.src = FALLBACK_IMAGE;
+                                                        }
+                                                    }}
+                                                />
                                             </div>
-                                        )}
-                                        {selectedBundleDetails.inver_rating && (
-                                            <div>
-                                                <p className="text-sm text-gray-500">Inverter Rating</p>
-                                                <p className="font-semibold text-gray-800">{selectedBundleDetails.inver_rating}W</p>
-                                            </div>
-                                        )}
-                                        {selectedBundleDetails.total_output && (
-                                            <div>
-                                                <p className="text-sm text-gray-500">Total Output</p>
-                                                <p className="font-semibold text-gray-800">{selectedBundleDetails.total_output}W</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Backup Info */}
-                            {selectedBundleDetails.backup_info && (
-                                <div className="mb-6">
-                                    <h4 className="font-semibold text-gray-800 mb-2">Backup Time</h4>
-                                    <p className="text-gray-600">{selectedBundleDetails.backup_info}</p>
-                                </div>
-                            )}
-
-                            {/* Items Included */}
-                            {((selectedBundleDetails.bundleItems || selectedBundleDetails.bundle_items || []).length > 0) && (
-                                <div className="mb-6">
-                                    <h4 className="font-semibold text-gray-800 mb-3">Items Included</h4>
-                                    <div className="space-y-2">
-                                        {(selectedBundleDetails.bundleItems || selectedBundleDetails.bundle_items || []).map((item, idx) => {
-                                            const product = item.product || item;
-                                            return (
-                                                <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                                    {product.featured_image && (
-                                                        <img
-                                                            src={toAbsolute(product.featured_image)}
-                                                            alt={product.title || product.name}
-                                                            className="w-12 h-12 object-cover rounded"
-                                                        />
-                                                    )}
-                                                    <div className="flex-1">
-                                                        <p className="font-medium text-gray-800">
-                                                            {product.title || product.name || `Product #${product.id}`}
-                                                        </p>
-                                                        {item.quantity && item.quantity > 1 && (
-                                                            <p className="text-sm text-gray-500">Quantity: {item.quantity}</p>
-                                                        )}
+                                            <div className="flex-1 min-w-0">
+                                                <h4 className="font-semibold text-sm text-gray-800 truncate">
+                                                    {material.name || `Material #${selMat.material_id}`}
+                                                </h4>
+                                                <div className="flex items-center justify-between mt-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                updateMaterialQuantity(selMat.material_id, selMat.quantity - 1);
+                                                            }}
+                                                            className="bg-[#273e8e] text-white rounded p-1 hover:bg-[#1a2b6b] transition-colors"
+                                                        >
+                                                            <Minus size={12} />
+                                                        </button>
+                                                        <span className="text-sm font-medium text-gray-700 w-8 text-center">
+                                                            {selMat.quantity}
+                                                        </span>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                updateMaterialQuantity(selMat.material_id, selMat.quantity + 1);
+                                                            }}
+                                                            className="bg-[#273e8e] text-white rounded p-1 hover:bg-[#1a2b6b] transition-colors"
+                                                        >
+                                                            <Plus size={12} />
+                                                        </button>
                                                     </div>
-                                                    {product.price && (
-                                                        <p className="font-semibold text-[#273e8e]">
-                                                            {formatPrice(Number(product.price))}
-                                                        </p>
-                                                    )}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleMaterialSelect(material);
+                                                        }}
+                                                        className="text-red-600 hover:text-red-700 p-1"
+                                                        title="Remove"
+                                                    >
+                                                        <X size={16} />
+                                                    </button>
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
+                                                <div className="mt-1 flex items-center justify-between">
+                                                    <span className="text-xs text-gray-500">
+                                                        {formatPrice(displayPrice)} {material.unit ? `/${material.unit}` : ''}
+                                                    </span>
+                                                    <span className="font-bold text-sm text-[#273e8e]">
+                                                        {formatPrice(itemTotal)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
 
-                            {/* Select Button */}
+                        {/* Cart Footer with Total */}
+                        <div className="border-t border-gray-200 p-4 bg-gray-50 rounded-b-2xl">
+                            <div className="flex items-center justify-between mb-3">
+                                <span className="font-semibold text-gray-700">Total:</span>
+                                <span className="text-2xl font-bold text-[#273e8e]">
+                                    {formatPrice(cartTotalPrice)}
+                                </span>
+                            </div>
                             <button
-                                onClick={() => {
-                                    handleBundleSelect(selectedBundleDetails);
-                                    setSelectedBundleDetails(null);
+                                type="button"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    calculateCustomBundle();
                                 }}
-                                className="w-full py-3 bg-[#273e8e] text-white rounded-lg font-semibold hover:bg-[#1a2b6b] transition-colors"
+                                disabled={loading}
+                                className="w-full bg-[#273e8e] text-white py-3 rounded-lg font-semibold hover:bg-[#1a2b6b] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
-                                Select This Bundle
+                                {loading ? (
+                                    <>
+                                        <Loader className="animate-spin" size={20} />
+                                        Calculating...
+                                    </>
+                                ) : (
+                                    <>
+                                        Calculate Bundle Price
+                                        <ArrowRight size={20} />
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>
-                </div>
             )}
+
         </div>
     );
 };
