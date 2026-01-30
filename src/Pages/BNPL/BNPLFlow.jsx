@@ -25,7 +25,7 @@ const toAbsolute = (path) => {
 };
 
 // Fallback image URL
-const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/e212b55b-057a-4a39-8d80-d241169cdac0.png";
+const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
 
 // Helper to get bundle image (moved to component level for modal access)
 const getBundleImage = (bundle) => {
@@ -229,6 +229,7 @@ const BNPLFlow = () => {
     const [selectedSystemSize, setSelectedSystemSize] = useState("all"); // System size filter
     const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false);
     const sizeDropdownRef = useRef(null);
+    const bundlesFetchedForLoadRef = useRef(false);
 
     // Map predefined category groups to API category IDs
     const getCategoryIdsForGroup = (groupType) => {
@@ -337,10 +338,10 @@ const BNPLFlow = () => {
 
     // --- Effects ---
     
-    // Auto-select automatic credit check method when step 10 is reached
+    // Use manual credit check only when step 10 is reached
     React.useEffect(() => {
         if (step === 10 && !formData.creditCheckMethod) {
-            setFormData(prev => ({ ...prev, creditCheckMethod: 'auto' }));
+            setFormData(prev => ({ ...prev, creditCheckMethod: 'manual' }));
         }
     }, [step]);
     
@@ -367,6 +368,20 @@ const BNPLFlow = () => {
         // If coming from bundle detail page, load bundle and skip to order summary
         if (bundleIdParam && fromBundle) {
             loadBundleAndSkipToStep(Number(bundleIdParam), stepParam ? Number(stepParam) : 6.5);
+            return;
+        }
+        // When coming from Load Calculator with step=3.5 and q, go to bundle selection with load-based bundles
+        const qParam = searchParams.get('q');
+        if (stepParam && Number(stepParam) === 3.5) {
+            setStep(3.5);
+            if (qParam) {
+                setFormData(prev => ({
+                    ...prev,
+                    optionType: prev.optionType || 'choose-system',
+                    productCategory: prev.productCategory || 'full-kit',
+                    customerType: prev.customerType || 'residential',
+                }));
+            }
         }
     }, [searchParams]);
     
@@ -629,6 +644,41 @@ const BNPLFlow = () => {
         };
         fetchConfig();
     }, []);
+
+    // When landing on step 3.5 with q (from Load Calculator), fetch bundles by load
+    React.useEffect(() => {
+        const qParam = searchParams.get('q');
+        if (step === 3.5 && qParam && !Number.isNaN(Number(qParam)) && !bundlesFetchedForLoadRef.current) {
+            bundlesFetchedForLoadRef.current = true;
+            setBundles([]);
+            const loadW = Number(qParam);
+            const fetchBundlesByLoad = async () => {
+                setBundlesLoading(true);
+                try {
+                    const token = localStorage.getItem('access_token');
+                    const url = `${API.BUNDLES}?q=${encodeURIComponent(loadW)}`;
+                    const response = await axios.get(url, {
+                        headers: {
+                            Accept: 'application/json',
+                            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                        },
+                    });
+                    const root = response.data?.data ?? response.data;
+                    const arr = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+                    setBundles(arr);
+                } catch (error) {
+                    console.error('Failed to fetch bundles by load:', error);
+                    setBundles([]);
+                } finally {
+                    setBundlesLoading(false);
+                }
+            };
+            fetchBundlesByLoad();
+        }
+        if (step !== 3.5) {
+            bundlesFetchedForLoadRef.current = false;
+        }
+    }, [step, searchParams]);
 
     // --- Handlers ---
 
@@ -1437,6 +1487,15 @@ const BNPLFlow = () => {
             <h2 className="text-3xl font-bold text-center mb-10 text-[#273e8e]">
                 How would you like to proceed?
             </h2>
+            <div className="mb-8 max-w-2xl mx-auto">
+                <a
+                    href="/tools?solarPanel=true&returnTo=bnpl"
+                    className="flex items-center justify-center gap-2 w-full py-4 px-6 rounded-xl border-2 border-dashed border-[#273e8e] text-[#273e8e] hover:bg-[#273e8e]/5 transition-colors text-sm font-medium"
+                >
+                    <Zap size={20} />
+                    Use Load Calculator to find bundles that match your energy usage
+                </a>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
                 <button onClick={() => handleOptionSelect('choose-system')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
@@ -1474,9 +1533,9 @@ const BNPLFlow = () => {
             <div className="animate-fade-in">
                 <button 
                     onClick={() => {
-                        // Clear bundles when going back
                         setBundles([]);
                         setBundlesLoading(false);
+                        bundlesFetchedForLoadRef.current = false;
                         setStep(3);
                     }} 
                     className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]"
@@ -1486,9 +1545,15 @@ const BNPLFlow = () => {
                 <h2 className="text-3xl font-bold text-center mb-4 text-[#273e8e]">
                 Choose My Solar Bundle
                 </h2>
-                <p className="text-center text-gray-600 mb-8">
-                    Select from our pre-configured solar bundles
+                <p className="text-center text-gray-600 mb-2">
+                    {searchParams.get('q') ? `Bundles matching your load (${searchParams.get('q')} W)` : 'Select from our pre-configured solar bundles'}
                 </p>
+                {searchParams.get('q') && (
+                    <p className="text-center mb-8">
+                        <a href="/tools?solarPanel=true&returnTo=bnpl" className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
+                    </p>
+                )}
+                {!searchParams.get('q') && <div className="mb-8" />}
 
                 {/* System Size Filter */}
                 {!bundlesLoading && bundles.length > 0 && (
@@ -3663,78 +3728,22 @@ const BNPLFlow = () => {
     const renderStep10 = () => {
         return (
             <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100 relative">
-                {/* Loading overlay when processing Mono Connect */}
-                {processingCreditCheckPayment && formData.creditCheckMethod === 'auto' && !monoFailed && (
-                    <div className="absolute inset-0 bg-white/90 z-50 flex flex-col items-center justify-center rounded-2xl">
-                        <div className="text-center">
-                            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#273e8e] mb-4"></div>
-                            <p className="text-lg font-semibold text-[#273e8e] mb-2">Checking Mono Connect...</p>
-                            <p className="text-sm text-gray-600">Please wait while we initialize the credit check process.</p>
-                        </div>
-                    </div>
-                )}
                 <button onClick={() => setStep(11)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
-                <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Credit Check Method</h2>
-                <div className="space-y-4 mb-6">
-                    <button
-                        onClick={() => {
-                            setFormData({ ...formData, creditCheckMethod: 'auto' });
-                            setMonoFailed(false); // Reset monoFailed when selecting auto
-                        }}
-                        disabled={formData.creditCheckMethod === 'manual'}
-                        className={`w-full p-6 rounded-xl border-2 text-left transition-all ${
-                            formData.creditCheckMethod === 'auto'
-                                ? 'border-[#273e8e] bg-blue-50'
-                                : formData.creditCheckMethod === 'manual'
-                                ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
-                                : 'border-gray-200 hover:border-blue-200'
-                        }`}
-                    >
-                        <div className="flex items-center mb-2">
-                            <CheckCircle size={20} className={formData.creditCheckMethod === 'auto' ? 'text-[#273e8e]' : 'text-gray-300'} />
-                            <span className={`ml-2 font-bold ${formData.creditCheckMethod === 'manual' ? 'text-gray-400' : 'text-gray-800'}`}>
-                                Automatic (BVN Verification)
-                            </span>
-                        </div>
-                        <p className={`text-sm ml-7 ${formData.creditCheckMethod === 'manual' ? 'text-gray-400' : 'text-gray-500'}`}>
-                            Fast and automated credit check using your BVN. You'll connect your bank account via Mono to complete the verification.
-                        </p>
-                    </button>
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                        <p className="text-sm text-yellow-800 font-medium">
-                            <strong>Note:</strong> We will first use the automatic option. If unsuccessful, we will then request for manual upload and review.
-                        </p>
+                <h2 className="text-2xl font-bold mb-2 text-[#273e8e]">Credit Check</h2>
+                <p className="text-gray-600 mb-6">Upload your documents for manual review. We will verify your bank statement and identity.</p>
+                <div className="p-6 rounded-xl border-2 border-[#273e8e] bg-blue-50 mb-6">
+                    <div className="flex items-center mb-2">
+                        <CheckCircle size={20} className="text-[#273e8e]" />
+                        <span className="ml-2 font-bold text-gray-800">Manual (Bank Statement Review)</span>
                     </div>
-                    <button
-                        onClick={() => {
-                            setFormData({ ...formData, creditCheckMethod: 'manual' });
-                            setMonoFailed(false); // Reset monoFailed when manually selecting manual
-                        }}
-                        disabled={formData.creditCheckMethod === 'auto'}
-                        className={`w-full p-6 rounded-xl border-2 text-left transition-all ${
-                            formData.creditCheckMethod === 'manual'
-                                ? 'border-[#273e8e] bg-blue-50'
-                                : formData.creditCheckMethod === 'auto'
-                                ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
-                                : 'border-gray-200 hover:border-blue-200'
-                        }`}
-                    >
-                        <div className="flex items-center mb-2">
-                            <CheckCircle size={20} className={formData.creditCheckMethod === 'manual' ? 'text-[#273e8e]' : 'text-gray-300'} />
-                            <span className={`ml-2 font-bold ${formData.creditCheckMethod === 'auto' ? 'text-gray-400' : 'text-gray-800'}`}>
-                                Manual (Bank Statement Review)
-                            </span>
-                        </div>
-                        <p className={`text-sm ml-7 ${formData.creditCheckMethod === 'auto' ? 'text-gray-400' : 'text-gray-500'}`}>
-                            Manual review of your bank statements (takes longer).
-                        </p>
-                    </button>
+                    <p className="text-sm ml-7 text-gray-500">
+                        Manual review of your bank statements and live photo. Please upload the required documents below.
+                    </p>
                 </div>
 
-                {/* File Uploads - Only show when manual credit check is selected OR Mono has failed */}
-                {(formData.creditCheckMethod === 'manual' || monoFailed) && (
+                {/* File Uploads - Manual credit check only */}
                 <div className="space-y-4 mb-6">
                     <h3 className="text-lg font-bold text-gray-800 border-b pb-2">Required Documents</h3>
                     {monoFailed && (
@@ -3811,30 +3820,23 @@ const BNPLFlow = () => {
                         </p>
                     </div>
                 </div>
-                )}
 
                 <button
                     onClick={(e) => {
                         e.preventDefault();
-                        if (!formData.creditCheckMethod) {
-                            alert("Please select a credit check method");
-                            return;
-                        }
-                        // Only validate files if manual method is selected or Mono has failed
-                        if ((formData.creditCheckMethod === 'manual' || monoFailed) && !formData.bankStatement) {
+                        if (!formData.bankStatement) {
                             alert("Please upload your bank statement (Last 6 Months)");
                             return;
                         }
-                        if ((formData.creditCheckMethod === 'manual' || monoFailed) && !formData.livePhoto) {
+                        if (!formData.livePhoto) {
                             alert("Please upload your live photo / selfie");
                             return;
                         }
-                        // Show credit check fee popup
                         setShowCreditCheckFeeModal(true);
                     }}
-                    disabled={loading || !formData.creditCheckMethod || ((formData.creditCheckMethod === 'manual' || monoFailed) && (!formData.bankStatement || !formData.livePhoto))}
+                    disabled={loading || !formData.bankStatement || !formData.livePhoto}
                     className={`w-full py-4 rounded-xl font-bold transition-colors ${
-                        loading || !formData.creditCheckMethod || ((formData.creditCheckMethod === 'manual' || monoFailed) && (!formData.bankStatement || !formData.livePhoto))
+                        loading || !formData.bankStatement || !formData.livePhoto
                             ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                             : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
                     }`}
@@ -4002,7 +4004,7 @@ const BNPLFlow = () => {
             formDataToSend.append('product_category', formData.productCategory || 'full-kit');
             formDataToSend.append('loan_amount', formData.loanDetails?.totalRepayment || formData.selectedProductPrice);
             formDataToSend.append('repayment_duration', formData.loanDetails?.tenor || 6);
-            formDataToSend.append('credit_check_method', formData.creditCheckMethod || 'auto');
+            formDataToSend.append('credit_check_method', formData.creditCheckMethod || 'manual');
             
             // Add loan calculation ID if available
             if (loanCalculationId) {

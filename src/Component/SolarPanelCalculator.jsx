@@ -8,6 +8,8 @@ const SolarPanelCalculator = () => {
   const searchParams = new URLSearchParams(location.search);
   const fromBundles = searchParams.get("fromBundles") === "true";
   const qParam = searchParams.get("q");
+  // When user came from Buy Now or BNPL flow, return to that flow with load (q) after Proceed
+  const returnTo = searchParams.get("returnTo"); // "buy-now" | "bnpl" | null
   
   // Appliance data matching the Excel spreadsheet
   const applianceList = [
@@ -262,7 +264,7 @@ const SolarPanelCalculator = () => {
     setShowAddAppliance(false);
   };
 
-  // Proceed -> /solar-bundles?q=<peakLoadW>
+  // Proceed -> /solar-bundles?q=<peakLoadW> OR back to buy-now/bnpl with step=3.5&q=
   // Save calculator data before navigating
   const handleProceed = () => {
     // Calculate values before saving
@@ -288,8 +290,25 @@ const SolarPanelCalculator = () => {
     
     try {
       localStorage.setItem("solarCalculatorData", JSON.stringify(dataToSave));
+      // Save appliances for bundle detail page (Load Calculator appliances)
+      const appliancesForBundle = appliances
+        .filter((a) => (a.quantity || 0) > 0)
+        .map((a) => ({ name: a.name, power: a.power, quantity: a.quantity || 0, hours: a.hours || 0 }));
+      if (appliancesForBundle.length > 0) {
+        localStorage.setItem("loadCalculatorAppliances", JSON.stringify(appliancesForBundle));
+      }
     } catch (e) {
       console.warn("Failed to save calculator data:", e);
+    }
+    
+    // Return to Buy Now or BNPL flow with load (q) so they see bundles matching their usage
+    if (returnTo === "buy-now") {
+      navigate(`/buy-now?step=3.5&q=${q}&fromCalculator=true`);
+      return;
+    }
+    if (returnTo === "bnpl") {
+      navigate(`/bnpl?step=3.5&q=${q}&fromCalculator=true`);
+      return;
     }
     
     navigate(`/solar-bundles?q=${q}`);

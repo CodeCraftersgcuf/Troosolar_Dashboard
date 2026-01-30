@@ -26,7 +26,7 @@ const formatNGN = (n) => {
 };
 
 // Fallback image URL
-const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/e212b55b-057a-4a39-8d80-d241169cdac0.png";
+const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
 
 // Map API product -> card props the Product component expects
 const mapApiProductToCard = (p) => {

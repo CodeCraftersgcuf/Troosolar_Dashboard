@@ -65,27 +65,28 @@ const Tools = () => {
   const searchParams = new URLSearchParams(location.search);
   const fromBundles = searchParams.get("fromBundles") === "true";
   const solarPanelParam = searchParams.get("solarPanel") === "true";
+  const returnTo = searchParams.get("returnTo"); // "buy-now" | "bnpl" – from BN/BNPL flow
   const qParam = searchParams.get("q");
   
-  // Set default tool based on URL params
+  const openSolarPanel = solarPanelParam || fromBundles || returnTo === "buy-now" || returnTo === "bnpl";
+  
   const getInitialTool = () => {
-    if (solarPanelParam || fromBundles) {
+    if (openSolarPanel) {
       return "solarPanel";
     }
     return "inverter";
   };
 
-  const [activeTool, setActiveTool] = useState(getInitialTool()); // Default tool or from URL
-  const [mobileView, setMobileView] = useState(solarPanelParam || fromBundles ? "tool" : "tabs"); // 'tabs' or 'tool'
+  const [activeTool, setActiveTool] = useState(getInitialTool());
+  const [mobileView, setMobileView] = useState(openSolarPanel ? "tool" : "tabs");
   const selectedTool = toolsData.find((tool) => tool.id === activeTool);
 
-  // Update activeTool when URL params change
   useEffect(() => {
-    if (solarPanelParam || fromBundles) {
+    if (openSolarPanel) {
       setActiveTool("solarPanel");
       setMobileView("tool");
     }
-  }, [solarPanelParam, fromBundles]);
+  }, [solarPanelParam, fromBundles, returnTo]);
 
   const handleMobileToolSelect = (toolId) => {
     setActiveTool(toolId);

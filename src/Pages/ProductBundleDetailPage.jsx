@@ -13,7 +13,7 @@ import Loading from "../Component/Loading";
 const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, "");
 
 // Fallback image URL
-const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/e212b55b-057a-4a39-8d80-d241169cdac0.png";
+const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
 
 // currency helpers
 const toNumber = (v) =>
@@ -349,15 +349,6 @@ const ProductBundle = () => {
     }
   };
 
-  const handleEditBundle = () => {
-    // Navigate to BuyNow flow category selection to edit products in the bundle
-    // This allows users to select/edit products (not appliances) to add to the bundle
-    const returnUrl = cartToken
-      ? `/buy-now?token=${cartToken}&bundleId=${id}&step=2&editBundle=true`
-      : `/buy-now?bundleId=${id}&step=2&editBundle=true`;
-    navigate(returnUrl);
-  };
-
   if (loading) {
     return (
       <div className="flex min-h-screen w-full relative bg-[#F5F7FF]">
@@ -582,12 +573,6 @@ const ProductBundle = () => {
 
                 {/* Actions */}
                 <div className="flex flex-col gap-3 mt-6 px-2">
-                  <button
-                    onClick={handleEditBundle}
-                    className="w-full text-sm border border-[#273E8E] text-[#273E8E] py-4 rounded-full hover:bg-[#273E8E] hover:text-white transition-colors"
-                  >
-                    Edit Bundle
-                  </button>
                   <div className="flex gap-3">
                     <button
                       onClick={handleBuyNowPayLater}
@@ -869,12 +854,6 @@ const ProductBundle = () => {
 
                 {/* Actions */}
                 <div className="mt-4 flex flex-col gap-3">
-                  <button
-                    onClick={handleEditBundle}
-                    className="w-full h-11 rounded-full border border-[#273E8E] text-[#273E8E] text-[11px] lg:text-[14px] hover:bg-[#273E8E] hover:text-white transition-colors"
-                  >
-                    Edit Bundle
-                  </button>
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={handleBuyNowPayLater}

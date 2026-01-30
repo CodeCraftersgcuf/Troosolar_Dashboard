@@ -36,8 +36,8 @@ const ensureFlutterwave = () =>
     });
 
 // Fallback image URL
-const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/e212b55b-057a-4a39-8d80-d241169cdac0.png";
-
+const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
+    
 // Helper to get bundle image (moved to component level for modal access)
 const getBundleImage = (bundle) => {
     if (!bundle) return FALLBACK_IMAGE;
@@ -288,8 +288,17 @@ const BuyNowFlow = () => {
             
             loadBundleForEditing();
         } else if (stepParam) {
-            // Just navigate to the specified step if provided
             setStep(Number(stepParam));
+            // When coming from Load Calculator with step=3.5 and q, set defaults so bundle list shows
+            const qParam = searchParams.get('q');
+            if (Number(stepParam) === 3.5 && qParam) {
+                setFormData(prev => ({
+                    ...prev,
+                    optionType: prev.optionType || 'choose-system',
+                    productCategory: prev.productCategory || 'full-kit',
+                    customerType: prev.customerType || 'residential',
+                }));
+            }
         }
     }, [searchParams]);
 
@@ -1411,39 +1420,40 @@ const BuyNowFlow = () => {
     }, [step, auditRequestId, formData.optionType, formData.auditType]);
 
     useEffect(() => {
-        if (step === 3.5 && !bundlesFetchedRef.current && !bundlesLoading) {
+        const qParam = searchParams.get('q');
+        const hasLoadParam = qParam && !Number.isNaN(Number(qParam));
+        if (step === 3.5 && hasLoadParam && !bundlesFetchedRef.current && !bundlesLoading) {
             bundlesFetchedRef.current = true;
-            // Clear previous bundles before fetching
             setBundles([]);
+            const loadW = Number(qParam);
             const fetchBundles = async () => {
                 setBundlesLoading(true);
                 try {
                     const token = localStorage.getItem('access_token');
-                    const response = await axios.get(API.BUNDLES, {
+                    const url = `${API.BUNDLES}?q=${encodeURIComponent(loadW)}`;
+                    const response = await axios.get(url, {
                         headers: {
                             Accept: 'application/json',
                             ...(token ? { Authorization: `Bearer ${token}` } : {}),
                         },
                     });
-                    
                     const root = response.data?.data ?? response.data;
                     const arr = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
                     setBundles(arr);
                 } catch (error) {
                     console.error("Failed to fetch bundles:", error);
-                    setBundles([]); // Set empty array on error
+                    setBundles([]);
                 } finally {
                     setBundlesLoading(false);
                 }
             };
             fetchBundles();
         }
-        // Reset when leaving step 3.5
         if (step !== 3.5) {
             bundlesFetchedRef.current = false;
-            setBundles([]); // Clear bundles when navigating away
+            setBundles([]);
         }
-    }, [step, bundlesLoading]);
+    }, [step, bundlesLoading, searchParams]);
 
     // --- Render Steps ---
 
@@ -2188,6 +2198,16 @@ const BuyNowFlow = () => {
             <h2 className="text-3xl font-bold text-center mb-10 text-[#273e8e]">
                 How would you like to proceed?
             </h2>
+            {/* Use Load Calculator to find bundles that match your energy usage */}
+            <div className="mb-8 max-w-2xl mx-auto">
+                <a
+                    href="/tools?solarPanel=true&returnTo=buy-now"
+                    className="flex items-center justify-center gap-2 w-full py-4 px-6 rounded-xl border-2 border-dashed border-[#273e8e] text-[#273e8e] hover:bg-[#273e8e]/5 transition-colors text-sm font-medium"
+                >
+                    <Zap size={20} />
+                    Use Load Calculator to find bundles that match your energy usage
+                </a>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
                 <button onClick={() => handleOptionSelect('choose-system')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
@@ -2261,9 +2281,15 @@ const BuyNowFlow = () => {
                 <h2 className="text-3xl font-bold text-center mb-4 text-[#273e8e]">
                 Choose My Solar Bundle
                 </h2>
-                <p className="text-center text-gray-600 mb-8">
-                    Select from our pre-configured solar bundles
+                <p className="text-center text-gray-600 mb-2">
+                    {searchParams.get('q') ? `Bundles matching your load (${searchParams.get('q')} W)` : 'Select from our pre-configured solar bundles'}
                 </p>
+                {searchParams.get('q') && (
+                    <p className="text-center mb-8">
+                        <a href="/tools?solarPanel=true&returnTo=buy-now" className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
+                    </p>
+                )}
+                {!searchParams.get('q') && <div className="mb-8" />}
 
                 {/* System Size Filter */}
                 {!bundlesLoading && bundles.length > 0 && (
