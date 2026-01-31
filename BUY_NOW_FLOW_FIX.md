@@ -2,7 +2,7 @@
 
 ## ✅ What I Fixed
 
-### 1. **Payment Integration** ✅
+### 1. **Payment Integration** 
 - Added Flutterwave payment integration
 - "Proceed to Payment" button now actually triggers payment
 - Added payment confirmation with backend
