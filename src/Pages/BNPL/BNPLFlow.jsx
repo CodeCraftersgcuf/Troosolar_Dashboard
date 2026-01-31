@@ -651,7 +651,9 @@ const BNPLFlow = () => {
         if (step === 3.5 && qParam && !Number.isNaN(Number(qParam)) && !bundlesFetchedForLoadRef.current) {
             bundlesFetchedForLoadRef.current = true;
             setBundles([]);
-            const loadW = Number(qParam);
+            // Request bundles for 30% above user's load (headroom)
+            const userLoadW = Number(qParam);
+            const loadW = Math.round(userLoadW * 1.3);
             const fetchBundlesByLoad = async () => {
                 setBundlesLoading(true);
                 try {
@@ -1487,15 +1489,6 @@ const BNPLFlow = () => {
             <h2 className="text-3xl font-bold text-center mb-10 text-[#273e8e]">
                 How would you like to proceed?
             </h2>
-            <div className="mb-8 max-w-2xl mx-auto">
-                <a
-                    href="/tools?solarPanel=true&returnTo=bnpl"
-                    className="flex items-center justify-center gap-2 w-full py-4 px-6 rounded-xl border-2 border-dashed border-[#273e8e] text-[#273e8e] hover:bg-[#273e8e]/5 transition-colors text-sm font-medium"
-                >
-                    <Zap size={20} />
-                    Use Load Calculator to find bundles that match your energy usage
-                </a>
-            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
                 <button onClick={() => handleOptionSelect('choose-system')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
@@ -1504,7 +1497,7 @@ const BNPLFlow = () => {
                     </div>
                     <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose My Solar Bundle</h3>
                 </button>
-                <button onClick={() => handleOptionSelect('build-system')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                <button onClick={() => navigate('/tools?solarPanel=true&returnTo=bnpl')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <Wrench size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
