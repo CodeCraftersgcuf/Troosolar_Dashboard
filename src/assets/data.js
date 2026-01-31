@@ -99,7 +99,7 @@ export const assets = {
 export const Sidebar_links = [
   { name: "Home", link: "/", icon: assets.dashboard, sublinks: [] },
   { name: "Solar Store", link: "/homePage", icon: assets.ShopMgt, sublinks: [] },
-  { name: "Shop Solar Bundles", link: "/solar-bundles", icon: assets.Loanmgt, sublinks: [] },
+  { name: "Buy Solar Bundles", link: "/solar-bundles", icon: assets.Loanmgt, sublinks: [] },
   { name: "Buy Now, Pay Later", link: "/bnpl", icon: assets.creditMgt, sublinks: [] },
   { name: "BNPL Loans", link: "/bnpl-loans", icon: assets.Loanmgt, sublinks: [] },
   { name: "Solar Calculators", link: "/tools", icon: assets.settings, sublinks: [] },
