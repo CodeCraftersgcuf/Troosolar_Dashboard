@@ -202,9 +202,80 @@ const Home = () => {
   const [apiProducts, setApiProducts] = useState([]);
   const [prodLoading, setProdLoading] = useState(false);
   const [prodError, setProdError] = useState("");
+  
+  // active loan check
+  const [hasActiveLoan, setHasActiveLoan] = useState(false);
 
   useEffect(() => {
     setUser(readStoredUser());
+  }, []);
+
+  // Check for active loans
+  useEffect(() => {
+    const checkActiveLoans = async () => {
+      try {
+        const token = localStorage.getItem("access_token");
+        if (!token) {
+          setHasActiveLoan(false);
+          return;
+        }
+
+        // Check for active BNPL applications/orders
+        const [ordersRes, appsRes] = await Promise.allSettled([
+          axios.get(API.BNPL_ORDERS, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+            },
+            params: { per_page: 1, page: 1 },
+          }),
+          axios.get(API.BNPL_APPLICATIONS, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+            },
+            params: { per_page: 1, page: 1 },
+          }),
+        ]);
+
+        let hasActive = false;
+
+        // Check orders
+        if (ordersRes.status === "fulfilled" && ordersRes.value.data?.status === "success") {
+          const orders = ordersRes.value.data.data?.data || ordersRes.value.data.data || [];
+          hasActive = orders.some((order) => {
+            const status = order.order_status || order.status;
+            const loanApp = order.loan_application;
+            // Active if: approved and has repayment schedule, or has pending installments
+            return (
+              (status === "approved" || loanApp?.status === "approved") &&
+              (order.repayment_schedule?.length > 0 || order.loan_summary?.pending_installments > 0)
+            );
+          });
+        }
+
+        // Check applications if no active orders found
+        if (!hasActive && appsRes.status === "fulfilled" && appsRes.value.data?.status === "success") {
+          const apps = appsRes.value.data.data?.data || appsRes.value.data.data || [];
+          hasActive = apps.some((app) => {
+            const status = app.status?.toLowerCase();
+            // Active if: approved (with or without down payment), or counter_offer
+            return (
+              status === "approved" ||
+              status === "counter_offer" ||
+              (status === "pending" && app.down_payment_completed)
+            );
+          });
+        }
+
+        setHasActiveLoan(hasActive);
+      } catch (error) {
+        console.log("Error checking active loans:", error);
+        setHasActiveLoan(false);
+      }
+    };
+
+    checkActiveLoans();
   }, []);
 
   // fetch bundles
@@ -392,7 +463,7 @@ const Home = () => {
 
             {/* Service Cards (New Flow Entry Points) */}
             {/* <div className="mt-6">
-              <ServiceCards />
+              <ServiceCards hasActiveLoan={hasActiveLoan} />
             </div> */}
 
             {/* Wallets / banner */}

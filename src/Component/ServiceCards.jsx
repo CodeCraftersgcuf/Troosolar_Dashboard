@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, CreditCard, ShoppingBag, Sun } from 'lucide-react';
 
-const ServiceCards = () => {
+const ServiceCards = ({ hasActiveLoan = false }) => {
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
             {/* Buy Now Card */}
@@ -20,7 +20,7 @@ const ServiceCards = () => {
             </Link>
 
             {/* BNPL Card */}
-            <Link to="/bnpl" className="group relative bg-gradient-to-br from-[#273e8e] to-[#1a2b6b] text-white rounded-2xl p-6 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 flex flex-col items-center text-center overflow-hidden ring-1 ring-blue-900/10">
+            <Link to={hasActiveLoan ? "/bnpl-loans" : "/bnpl"} className="group relative bg-gradient-to-br from-[#273e8e] to-[#1a2b6b] text-white rounded-2xl p-6 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 flex flex-col items-center text-center overflow-hidden ring-1 ring-blue-900/10">
                 <div className="absolute top-0 right-0 bg-yellow-400 text-black text-[10px] font-bold px-2 py-1 rounded-bl-lg">
                     POPULAR
                 </div>
@@ -29,10 +29,13 @@ const ServiceCards = () => {
                 </div>
                 <h2 className="text-xl font-bold mb-2">Buy Now, Pay Later</h2>
                 <p className="text-blue-100 text-sm mb-4 flex-grow">
-                    Flexible payment plans. Start with a small deposit.
+                    {hasActiveLoan 
+                        ? "Manage your loan repayments and view payment schedule."
+                        : "Flexible payment plans. Start with a small deposit."
+                    }
                 </p>
                 <div className="flex items-center text-yellow-400 font-semibold text-sm group-hover:text-white transition-colors">
-                    Apply Now <ArrowRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform" />
+                    {hasActiveLoan ? "Repay Loan" : "Apply Now"} <ArrowRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform" />
                 </div>
             </Link>
 

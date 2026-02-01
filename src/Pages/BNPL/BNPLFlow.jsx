@@ -666,7 +666,16 @@ const BNPLFlow = () => {
                         },
                     });
                     const root = response.data?.data ?? response.data;
-                    const arr = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+                    // Handle both array and single object responses
+                    let arr = [];
+                    if (Array.isArray(root)) {
+                        arr = root;
+                    } else if (Array.isArray(root?.data)) {
+                        arr = root.data;
+                    } else if (root && typeof root === "object" && root.id) {
+                        // Single bundle object - wrap in array
+                        arr = [root];
+                    }
                     setBundles(arr);
                 } catch (error) {
                     console.error('Failed to fetch bundles by load:', error);
@@ -782,7 +791,16 @@ const BNPLFlow = () => {
                 });
                 
                 const root = response.data?.data ?? response.data;
-                const arr = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+                // Handle both array and single object responses
+                let arr = [];
+                if (Array.isArray(root)) {
+                    arr = root;
+                } else if (Array.isArray(root?.data)) {
+                    arr = root.data;
+                } else if (root && typeof root === "object" && root.id) {
+                    // Single bundle object - wrap in array
+                    arr = [root];
+                }
                 setBundles(arr);
             } catch (error) {
                 console.error("Failed to fetch bundles:", error);

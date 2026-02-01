@@ -12,6 +12,7 @@ const LoanWallet = () => {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [balance, setBalance] = useState(0); // numeric
+  const [hasActiveLoan, setHasActiveLoan] = useState(false);
 
   useEffect(() => {
     const fetchWallet = async () => {
@@ -58,7 +59,68 @@ const LoanWallet = () => {
       }
     };
 
+    const checkActiveLoans = async () => {
+      try {
+        const token = localStorage.getItem("access_token");
+        if (!token) return;
+
+        // Check for active BNPL applications/orders
+        const [ordersRes, appsRes] = await Promise.allSettled([
+          axios.get(API.BNPL_ORDERS, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+            },
+            params: { per_page: 1, page: 1 },
+          }),
+          axios.get(API.BNPL_APPLICATIONS, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+            },
+            params: { per_page: 1, page: 1 },
+          }),
+        ]);
+
+        let hasActive = false;
+
+        // Check orders
+        if (ordersRes.status === "fulfilled" && ordersRes.value.data?.status === "success") {
+          const orders = ordersRes.value.data.data?.data || ordersRes.value.data.data || [];
+          hasActive = orders.some((order) => {
+            const status = order.order_status || order.status;
+            const loanApp = order.loan_application;
+            // Active if: approved and has repayment schedule, or has pending installments
+            return (
+              (status === "approved" || loanApp?.status === "approved") &&
+              (order.repayment_schedule?.length > 0 || order.loan_summary?.pending_installments > 0)
+            );
+          });
+        }
+
+        // Check applications if no active orders found
+        if (!hasActive && appsRes.status === "fulfilled" && appsRes.value.data?.status === "success") {
+          const apps = appsRes.value.data.data?.data || appsRes.value.data.data || [];
+          hasActive = apps.some((app) => {
+            const status = app.status?.toLowerCase();
+            // Active if: approved (with or without down payment), or counter_offer
+            return (
+              status === "approved" ||
+              status === "counter_offer" ||
+              (status === "pending" && app.down_payment_completed)
+            );
+          });
+        }
+
+        setHasActiveLoan(hasActive);
+      } catch (error) {
+        console.log("Error checking active loans:", error);
+        // Don't set error state, just default to false
+      }
+    };
+
     fetchWallet();
+    checkActiveLoans();
   }, [navigate]);
 
   const path = location.pathname.includes("loanDetails/loanDashboard");
@@ -121,10 +183,18 @@ const LoanWallet = () => {
 
       {/* CTA Button */}
       <button
-        onClick={() => navigate(path ? "/loan" : "/bnpl")}
+        onClick={() => {
+          if (path) {
+            navigate("/loan");
+          } else if (hasActiveLoan) {
+            navigate("/bnpl-loans");
+          } else {
+            navigate("/bnpl");
+          }
+        }}
         className="bg-white text-[#000] text-sm rounded-full py-3 mt-2 w-full cursor-pointer text-[12px] hover:bg-gray-100 transition-colors"
       >
-        {path ? "Transfer to Wallet" : "Apply for Loan"}
+        {path ? "Transfer to Wallet" : hasActiveLoan ? "Repay Loan" : "Apply for Loan"}
       </button>
     </div>
   );

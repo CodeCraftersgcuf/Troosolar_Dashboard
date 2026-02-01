@@ -10,13 +10,19 @@ const RepaymentCalendar = ({ installments = [], onInstallmentClick }) => {
   const daysInMonth = lastDayOfMonth.getDate();
   const startingDayOfWeek = firstDayOfMonth.getDay();
 
-  // Group installments by date
+  // Group installments by date - normalize dates to avoid timezone issues
   const installmentsByDate = useMemo(() => {
     const map = new Map();
     installments.forEach(installment => {
-      if (installment.due_date) {
-        const date = new Date(installment.due_date);
-        const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+      // Handle both due_date and payment_date
+      const dateStr = installment.due_date || installment.payment_date;
+      if (dateStr) {
+        const date = new Date(dateStr);
+        // Normalize to YYYY-MM-DD format to avoid timezone issues
+        const year = date.getFullYear();
+        const month = date.getMonth(); // 0-11
+        const day = date.getDate();
+        const dateKey = `${year}-${month}-${day}`;
         if (!map.has(dateKey)) {
           map.set(dateKey, []);
         }
@@ -39,10 +45,11 @@ const RepaymentCalendar = ({ installments = [], onInstallmentClick }) => {
     setCurrentDate(new Date());
   };
 
-  // Get installments for a specific date
+  // Get installments for a specific date in the current month view
   const getInstallmentsForDate = (day) => {
-    const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-    const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth(); // 0-11
+    const dateKey = `${year}-${month}-${day}`;
     return installmentsByDate.get(dateKey) || [];
   };
 
@@ -103,6 +110,19 @@ const RepaymentCalendar = ({ installments = [], onInstallmentClick }) => {
     );
   };
 
+  // Check if current month has any installments
+  const currentMonthHasInstallments = useMemo(() => {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateKey = `${year}-${month}-${day}`;
+      if (installmentsByDate.has(dateKey)) {
+        return true;
+      }
+    }
+    return false;
+  }, [currentDate, daysInMonth, installmentsByDate]);
+
   // Month and year display
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -134,8 +154,13 @@ const RepaymentCalendar = ({ installments = [], onInstallmentClick }) => {
           >
             <ChevronLeft size={20} className="text-gray-600" />
           </button>
-          <span className="px-4 py-1.5 text-sm font-semibold text-gray-800 min-w-[150px] text-center">
+          <span className={`px-4 py-1.5 text-sm font-semibold min-w-[150px] text-center ${
+            currentMonthHasInstallments ? 'text-[#273e8e]' : 'text-gray-800'
+          }`}>
             {monthYear}
+            {currentMonthHasInstallments && (
+              <span className="ml-2 text-xs text-green-600">●</span>
+            )}
           </span>
           <button
             onClick={goToNextMonth}
@@ -175,21 +200,23 @@ const RepaymentCalendar = ({ installments = [], onInstallmentClick }) => {
           return (
             <div
               key={day}
-              className={`min-h-24 border rounded-lg p-2 transition-all ${
+              className={`min-h-24 border-2 rounded-lg p-2 transition-all ${
                 isTodayDate
-                  ? 'border-[#273e8e] border-2 bg-blue-50'
+                  ? 'border-[#273e8e] border-2 bg-blue-100 shadow-md'
                   : hasInst
                   ? status === 'overdue'
-                    ? 'border-red-300 bg-red-50 hover:bg-red-100 cursor-pointer'
+                    ? 'border-red-400 bg-red-100 hover:bg-red-200 cursor-pointer shadow-sm'
                     : status === 'paid'
-                    ? 'border-green-300 bg-green-50'
-                    : 'border-yellow-300 bg-yellow-50 hover:bg-yellow-100 cursor-pointer'
+                    ? 'border-green-400 bg-green-100 hover:bg-green-200 cursor-pointer'
+                    : 'border-yellow-400 bg-yellow-100 hover:bg-yellow-200 cursor-pointer shadow-sm'
                   : 'border-gray-200 hover:bg-gray-50'
               }`}
               onClick={() => {
                 if (hasInst && onInstallmentClick && dateInstallments.length > 0) {
                   // If multiple installments, show the first unpaid one, or first one if all paid
-                  const unpaidInst = dateInstallments.find(inst => inst.status !== 'paid');
+                  const unpaidInst = dateInstallments.find(inst => 
+                    inst.status !== 'paid' && inst.payment_status !== 'paid'
+                  );
                   onInstallmentClick(unpaidInst || dateInstallments[0]);
                 }
               }}
@@ -205,28 +232,32 @@ const RepaymentCalendar = ({ installments = [], onInstallmentClick }) => {
               {hasInst && (
                 <div className="space-y-1">
                   {dateInstallments.map((installment, idx) => {
-                    const isPaid = installment.status === 'paid';
-                    const isOverdue = new Date(installment.due_date) < new Date() && !isPaid;
+                    const dueDate = new Date(installment.due_date || installment.payment_date);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    dueDate.setHours(0, 0, 0, 0);
+                    const isPaid = installment.status === 'paid' || installment.payment_status === 'paid';
+                    const isOverdue = dueDate < today && !isPaid;
                     
                     return (
                       <div
                         key={installment.id || idx}
-                        className={`text-xs p-1 rounded ${
+                        className={`text-xs p-1 rounded font-medium ${
                           isPaid
-                            ? 'bg-green-100 text-green-700'
+                            ? 'bg-green-200 text-green-800 border border-green-300'
                             : isOverdue
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-yellow-100 text-yellow-700'
+                            ? 'bg-red-200 text-red-800 border border-red-300'
+                            : 'bg-yellow-200 text-yellow-800 border border-yellow-300'
                         }`}
-                        title={`Installment #${installment.installment_number || idx + 1}: ${formatCurrency(installment.amount)} - ${installment.status}`}
+                        title={`Installment #${installment.installment_number || idx + 1}: ${formatCurrency(installment.amount)} - ${installment.status || 'pending'}`}
                       >
                         <div className="flex items-center gap-1">
                           {isPaid ? (
-                            <CheckCircle size={10} className="text-green-600" />
+                            <CheckCircle size={10} className="text-green-700" />
                           ) : isOverdue ? (
-                            <AlertCircle size={10} className="text-red-600" />
+                            <AlertCircle size={10} className="text-red-700" />
                           ) : (
-                            <Clock size={10} className="text-yellow-600" />
+                            <Clock size={10} className="text-yellow-700" />
                           )}
                           <span className="font-semibold truncate">
                             {formatCurrency(installment.amount)}
@@ -238,7 +269,7 @@ const RepaymentCalendar = ({ installments = [], onInstallmentClick }) => {
                   
                   {/* Show total if multiple installments */}
                   {dateInstallments.length > 1 && totalAmount > 0 && (
-                    <div className="text-xs font-bold text-gray-700 pt-1 border-t border-gray-300">
+                    <div className="text-xs font-bold text-gray-800 pt-1 border-t border-gray-400 bg-gray-100 px-1 rounded">
                       Total: {formatCurrency(totalAmount)}
                     </div>
                   )}

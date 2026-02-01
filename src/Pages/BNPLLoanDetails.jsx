@@ -59,6 +59,7 @@ const BNPLLoanDetails = () => {
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [installmentsWithHistory, setInstallmentsWithHistory] = useState(null);
     const [processingDownPayment, setProcessingDownPayment] = useState(false);
+    const [processingCounterOffer, setProcessingCounterOffer] = useState(false);
 
     useEffect(() => {
         if (id) {
@@ -132,7 +133,19 @@ const BNPLLoanDetails = () => {
                     console.log('Could not fetch installments with history:', historyErr);
                 }
                 
-                setOrderData(orderDetails);
+                // Normalize the order data structure
+                const normalizedOrder = {
+                    ...orderDetails,
+                    // Ensure status is available (use order_status if status is not present)
+                    status: orderDetails.status || orderDetails.order_status,
+                    order_status: orderDetails.order_status || orderDetails.status,
+                    // Ensure loan_application is accessible
+                    loan_application: orderDetails.loan_application || orderDetails.application,
+                    application: orderDetails.application || orderDetails.loan_application,
+                    isApplication: false // This is an order, not an application
+                };
+                
+                setOrderData(normalizedOrder);
             } else {
                 setError(response.data.message || 'Failed to fetch order details');
             }
@@ -233,7 +246,12 @@ const BNPLLoanDetails = () => {
                     loan_calculation: appData.loan_calculation,
                     order_id: appData.order_id,
                     order_number: appData.order_number,
-                    down_payment_completed: appData.down_payment_completed
+                    down_payment_completed: appData.down_payment_completed,
+                    // Counter offer details - can be at root level or nested
+                    counter_offer_min_deposit: appData.counter_offer_min_deposit,
+                    counter_offer_min_tenor: appData.counter_offer_min_tenor,
+                    counter_offer_details: appData.counter_offer_details,
+                    admin_notes: appData.admin_notes
                 });
             } else {
                 setError(response.data.message || 'Failed to fetch application details');
@@ -355,8 +373,10 @@ const BNPLLoanDetails = () => {
     const getStatusIcon = (status) => {
         switch (status?.toLowerCase()) {
             case 'approved':
+            case 'active':
             case 'completed':
             case 'paid':
+            case 'counter_offer_accepted':
                 return <CheckCircle size={24} className="text-green-600" />;
             case 'rejected':
             case 'cancelled':
@@ -364,6 +384,8 @@ const BNPLLoanDetails = () => {
             case 'pending':
             case 'processing':
                 return <Clock size={24} className="text-blue-600" />;
+            case 'counter_offer':
+                return <AlertCircle size={24} className="text-yellow-600" />;
             default:
                 return <AlertCircle size={24} className="text-yellow-600" />;
         }
@@ -373,13 +395,16 @@ const BNPLLoanDetails = () => {
         const statusLower = status?.toLowerCase() || 'pending';
         const badges = {
             approved: 'bg-green-100 text-green-800 border-green-300',
+            active: 'bg-green-100 text-green-800 border-green-300',
             completed: 'bg-green-100 text-green-800 border-green-300',
             paid: 'bg-green-100 text-green-800 border-green-300',
             rejected: 'bg-red-100 text-red-800 border-red-300',
             cancelled: 'bg-red-100 text-red-800 border-red-300',
             pending: 'bg-blue-100 text-blue-800 border-blue-300',
             processing: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-            overdue: 'bg-red-100 text-red-800 border-red-300'
+            overdue: 'bg-red-100 text-red-800 border-red-300',
+            counter_offer: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+            counter_offer_accepted: 'bg-green-100 text-green-800 border-green-300'
         };
         return badges[statusLower] || badges.pending;
     };
@@ -699,6 +724,42 @@ const BNPLLoanDetails = () => {
         };
     };
 
+    // Determine the correct status to display
+    const getDisplayStatus = (order) => {
+        const isApplication = order.isApplication;
+        const loanApp = order.loan_application || order.application || (isApplication ? order : null);
+        
+        // For orders with loan applications, prioritize loan application status
+        if (!isApplication && loanApp) {
+            // If loan is approved and down payment is completed, show as approved/active
+            if (loanApp.status?.toLowerCase() === 'approved' && 
+                (loanApp.down_payment_completed || order.payment_status === 'paid')) {
+                return 'approved';
+            }
+            // If loan application has a status, use it
+            if (loanApp.status) {
+                return loanApp.status;
+            }
+        }
+        
+        // For applications, use application status
+        if (isApplication && order.status) {
+            return order.status;
+        }
+        
+        // For orders, check both order_status and status
+        const orderStatus = order.order_status || order.status;
+        
+        // If payment is paid but order status is pending, and there's an approved loan, show approved
+        if (order.payment_status === 'paid' && 
+            orderStatus?.toLowerCase() === 'pending' && 
+            loanApp?.status?.toLowerCase() === 'approved') {
+            return 'approved';
+        }
+        
+        return orderStatus || order.status || 'pending';
+    };
+
     const renderOrderDetails = () => {
         if (!orderData || orderData.isList) return null;
 
@@ -708,6 +769,9 @@ const BNPLLoanDetails = () => {
         const loanCalc = order.loan_calculation || loanApp?.loan_calculation;
         const repaymentSchedule = order.repayment_schedule || [];
         const repaymentHistory = order.repayment_history || [];
+        
+        // Get the correct display status
+        const displayStatus = getDisplayStatus(order);
         
         // Calculate repayment summary if not provided
         const repaymentSummary = order.repayment_summary || calculateRepaymentSummary(
@@ -722,21 +786,165 @@ const BNPLLoanDetails = () => {
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-4">
-                            {getStatusIcon(order.status)}
+                            {getStatusIcon(displayStatus)}
                             <div>
                                 <h2 className="text-2xl font-bold text-gray-800">
-                                    {isApplication ? `BNPL Application #${order.id}` : `BNPL Order #${order.id}`}
+                                    {isApplication ? `BNPL Application #${order.id}` : `BNPL Order #${order.order_number || order.id}`}
                                 </h2>
                                 <p className="text-sm text-gray-500">
                                     {isApplication ? 'Application' : 'Order'} created on {formatDate(order.created_at)}
                                 </p>
                             </div>
                         </div>
-                        <span className={`px-4 py-2 rounded-full text-sm font-semibold border ${getStatusBadge(order.status)}`}>
-                            {order.status?.toUpperCase().replace(/_/g, ' ') || 'PENDING'}
+                        <span className={`px-4 py-2 rounded-full text-sm font-semibold border ${getStatusBadge(displayStatus)}`}>
+                            {displayStatus?.toUpperCase().replace(/_/g, ' ') || 'PENDING'}
                         </span>
                     </div>
                 </div>
+
+                {/* Counter Offer Section */}
+                {isApplication && displayStatus?.toLowerCase() === 'counter_offer' && (
+                    <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <AlertCircle size={32} className="text-yellow-600" />
+                            <h3 className="text-2xl font-bold text-yellow-800">Counter Offer Available</h3>
+                        </div>
+                        <p className="text-gray-700 mb-6">
+                            Your loan application has been partially approved with a counter offer. Please review the new terms:
+                        </p>
+                        <div className="bg-white border border-yellow-200 p-6 rounded-lg mb-6">
+                            <h4 className="font-bold text-gray-800 mb-4">Counter Offer Terms:</h4>
+                            {order.admin_notes && (
+                                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <p className="text-sm text-gray-700">
+                                        <strong>Admin Note:</strong> {order.admin_notes}
+                                    </p>
+                                </div>
+                            )}
+                            <div className="space-y-3">
+                                {/* Get counter offer from root level fields or counter_offer_details */}
+                                {(() => {
+                                    const minDeposit = order.counter_offer_min_deposit || order.counter_offer_details?.down_payment;
+                                    const minTenor = order.counter_offer_min_tenor || order.counter_offer_details?.repayment_duration;
+                                    const monthlyPayment = order.counter_offer_details?.monthly_payment;
+                                    const totalAmount = order.counter_offer_details?.total_amount;
+                                    
+                                    return (
+                                        <>
+                                            {minDeposit && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-gray-600">Minimum Deposit:</span>
+                                                    <span className="font-bold text-lg text-gray-800">
+                                                        {formatCurrency(minDeposit)}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {minTenor && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-gray-600">Minimum Tenor:</span>
+                                                    <span className="font-bold text-lg text-gray-800">
+                                                        {minTenor} months
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {monthlyPayment && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-gray-600">Monthly Payment:</span>
+                                                    <span className="font-bold text-lg text-[#273e8e]">
+                                                        {formatCurrency(monthlyPayment)}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {totalAmount && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-gray-600">Total Amount:</span>
+                                                    <span className="font-bold text-lg text-gray-800">
+                                                        {formatCurrency(totalAmount)}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </>
+                                    );
+                                })()}
+                            </div>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-6">
+                            <strong>Note:</strong> If you accept the counter offer or re-apply, you do not need to pay for credit checks again.
+                        </p>
+                        <div className="space-y-3">
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    if (!id || !id.startsWith('app-')) return;
+                                    const applicationId = id.replace('app-', '');
+                                    
+                                    setProcessingCounterOffer(true);
+                                    try {
+                                        const token = localStorage.getItem('access_token');
+                                        if (!token) {
+                                            alert('Please login to accept the counter offer');
+                                            return;
+                                        }
+
+                                        // Get counter offer details from root level fields or counter_offer_details
+                                        const minimumDeposit = order.counter_offer_min_deposit || order.counter_offer_details?.down_payment
+                                            ? parseAmount(order.counter_offer_min_deposit || order.counter_offer_details.down_payment)
+                                            : loanCalc?.down_payment 
+                                                ? parseAmount(loanCalc.down_payment)
+                                                : 0;
+                                        
+                                        const minimumTenor = order.counter_offer_min_tenor || order.counter_offer_details?.repayment_duration
+                                            || loanCalc?.repayment_duration 
+                                            || loanCalc?.tenor 
+                                            || 12;
+
+                                        const response = await axios.post(
+                                            API.BNPL_COUNTEROFFER_ACCEPT,
+                                            {
+                                                application_id: parseInt(applicationId),
+                                                minimum_deposit: minimumDeposit,
+                                                minimum_tenor: parseInt(minimumTenor)
+                                            },
+                                            {
+                                                headers: {
+                                                    Authorization: `Bearer ${token}`,
+                                                    Accept: 'application/json'
+                                                }
+                                            }
+                                        );
+
+                                        if (response.data.status === 'success') {
+                                            alert('Counter offer accepted successfully! Your application will be updated.');
+                                            // Refresh the application details
+                                            fetchApplicationDetails(applicationId);
+                                        } else {
+                                            alert(response.data.message || 'Failed to accept counter offer. Please try again.');
+                                        }
+                                    } catch (error) {
+                                        console.error('Error accepting counter offer:', error);
+                                        alert(error.response?.data?.message || 'Failed to accept counter offer. Please try again.');
+                                    } finally {
+                                        setProcessingCounterOffer(false);
+                                    }
+                                }}
+                                disabled={processingCounterOffer}
+                                className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {processingCounterOffer ? 'Processing...' : 'Accept Counter Offer'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    // Navigate to BNPL flow to re-apply
+                                    navigate('/bnpl');
+                                }}
+                                className="w-full border-2 border-gray-300 text-gray-700 py-4 rounded-xl font-bold hover:bg-gray-50 transition-colors"
+                            >
+                                Re-apply with Different Terms
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Down payment completed – show order link when application has an order */}
                 {isApplication && (order.order_id || order.down_payment_completed) && (
@@ -842,7 +1050,7 @@ const BNPLLoanDetails = () => {
                         )}
                         {/* Pay Down Payment – show when approved, down payment not yet paid, and no order yet */}
                         {isApplication &&
-                            (order.status?.toLowerCase() === 'approved' || order.status?.toLowerCase() === 'counter_offer_accepted') &&
+                            (displayStatus?.toLowerCase() === 'approved' || displayStatus?.toLowerCase() === 'counter_offer_accepted') &&
                             !order.order_id &&
                             !order.down_payment_completed &&
                             loanCalc.down_payment &&
