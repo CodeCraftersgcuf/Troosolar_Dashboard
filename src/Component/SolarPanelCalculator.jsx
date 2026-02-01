@@ -317,7 +317,7 @@ const SolarPanelCalculator = () => {
   return (
     <>
       {/* Desktop View  */}
-      <div className=" sm:block hidden min-h-screen bg-[#f5f6ff] px-10 py-6">
+      <div className="sm:block hidden min-h-screen bg-[#f5f6ff] px-4 sm:px-6 lg:px-10 py-4 sm:py-6">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-medium">Load Calculator</h1>
@@ -330,9 +330,9 @@ const SolarPanelCalculator = () => {
         </div>
 
         {/* Main Grid */}
-        <div className="grid grid-cols-12 gap-6 w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
           {/* Appliance Table */}
-          <div className="col-span-7 space-y-4">
+          <div className="lg:col-span-7 space-y-4 min-w-0">
             {/* Search */}
             <div className="flex items-center w-full border-2 border-gray-300 rounded-xl bg-white px-4 py-3">
               <Search className="text-gray-400 w-6 h-6 mr-3" />
@@ -591,23 +591,23 @@ const SolarPanelCalculator = () => {
           </div>
 
           {/* Summary Box */}
-          <div className="col-span-5">
-            <div className="bg-[#273e8e] w-full text-white rounded-2xl px-6 py-6 flex justify-between items-center gap-6 shadow-lg">
+          <div className="lg:col-span-5 min-w-0">
+            <div className="bg-[#273e8e] w-full text-white rounded-2xl px-4 sm:px-6 py-4 sm:py-6 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 sm:gap-6 shadow-lg min-w-0">
               {/* Total Power in Watts */}
-              <div className="w-1/2">
-                <h2 className="text-lg  mb-2">Total Load in Watts</h2>
-                <div className="bg-white h-[60px] w-full rounded-xl flex justify-center items-center gap-2 text-[#273e8e] shadow-inner">
-                  <span className="text-4xl font-bold">{peakLoadW.toLocaleString()}</span>
-                  <span className="text-sm self-end pb-2">Watts</span>
+              <div className="w-full sm:w-1/2 min-w-0 flex-shrink-0">
+                <h2 className="text-base sm:text-lg mb-2">Total Load in Watts</h2>
+                <div className="bg-white min-h-[56px] sm:h-[60px] w-full rounded-xl flex justify-center items-center gap-1 sm:gap-2 text-[#273e8e] shadow-inner px-2">
+                  <span className="text-xl sm:text-3xl lg:text-4xl font-bold break-words">{peakLoadW.toLocaleString()}</span>
+                  <span className="text-xs sm:text-sm self-end pb-1 sm:pb-2 flex-shrink-0">Watts</span>
                 </div>
               </div>
 
               {/* Total Energy */}
-              <div className="w-1/2">
-                <h2 className="text-lg  mb-2">Total Energy</h2>
-                <div className="bg-white h-[60px] w-full rounded-xl flex justify-center items-center gap-2 text-[#273e8e] shadow-inner">
-                  <span className="text-4xl font-bold">{dailyWh.toLocaleString()}</span>
-                  <span className="text-sm self-end pb-2">Wh</span>
+              <div className="w-full sm:w-1/2 min-w-0 flex-shrink-0">
+                <h2 className="text-base sm:text-lg mb-2">Total Energy</h2>
+                <div className="bg-white min-h-[56px] sm:h-[60px] w-full rounded-xl flex justify-center items-center gap-1 sm:gap-2 text-[#273e8e] shadow-inner px-2">
+                  <span className="text-xl sm:text-3xl lg:text-4xl font-bold break-words">{dailyWh.toLocaleString()}</span>
+                  <span className="text-xs sm:text-sm self-end pb-1 sm:pb-2 flex-shrink-0">Wh</span>
                 </div>
               </div>
             </div>

@@ -77,6 +77,7 @@ const mapBundleDetail = (b) => {
             : FALLBACK_IMAGE,
           title: p?.title || p?.name || `Product #${p?.id ?? ""}`,
           price: toNumber(p?.price),
+          quantity: bi?.quantity ?? 1,
         };
       })
       .filter(Boolean),
@@ -107,6 +108,7 @@ const mapBundleDetail = (b) => {
       icon: FALLBACK_IMAGE,
       title: s?.title || "Custom service",
       price: toNumber(s?.service_amount),
+      quantity: s?.quantity ?? 1,
     })),
   ];
 
@@ -133,11 +135,17 @@ const mapBundleDetail = (b) => {
   const inverterRating = b.inver_rating ?? "";
   const totalOutput = b.total_output ?? "";
 
+  // Prefer detailed_description like BNPL/Buy Now flow
+  const description = (b.detailed_description && String(b.detailed_description).trim()) || (b.description && String(b.description).trim()) || (b.desc && String(b.desc).trim())
+    ? ((b.detailed_description && String(b.detailed_description).trim()) ? b.detailed_description : (b.description && String(b.description).trim()) ? b.description : b.desc)
+    : "";
+
   return {
     id,
     label,
     bundleTitle: title,
     backupInfo: b.backup_info ?? "",
+    description,
     price,
     oldPrice,
     discount: discountBadge,
@@ -146,7 +154,7 @@ const mapBundleDetail = (b) => {
     inverterRating,
     totalOutput,
     itemsIncluded,
-    appliances, // Add appliances to the returned object
+    appliances,
   };
 };
 
@@ -175,6 +183,7 @@ const ProductBundle = () => {
   const [productData, setProductData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [bundleDetailTab, setBundleDetailTab] = useState("description"); // 'description' | 'specs'
 
   // Try to get appliances from localStorage or URL params (if coming from load calculator)
   const getAppliancesFromStorage = (bundleId) => {
@@ -367,10 +376,6 @@ const ProductBundle = () => {
   if (err) return <div className="p-6 text-red-600">{err}</div>;
   if (!productData) return <div className="p-6">Not found.</div>;
 
-  console.log("productData Imagesss", productData.heroImage);
-
-  // mapBundleDetail()
-
   return (
     <div className="flex min-h-screen w-full relative bg-[#F5F7FF]">
       {/* DESKTOP */}
@@ -396,13 +401,13 @@ const ProductBundle = () => {
               </Link>
             </div>
 
-            {/* Desktop two-column layout */}
-            <div className="hidden sm:flex justify-between items-start gap-4">
+            {/* Desktop two-column layout - aligned with BNPL/Buy Now flow */}
+            <div className="hidden sm:flex justify-between items-start gap-6">
               {/* Left column */}
               <div className="min-w-[66%]">
-                <div className="bg-white w-full border border-[#800080] rounded-lg mt-3">
+                <div className="bg-white w-full border border-gray-200 rounded-xl mt-3 shadow-sm overflow-hidden">
                   {/* Image */}
-                  <div className="relative h-[350px] bg-[#F3F3F3] m-2 rounded-lg flex justify-center items-center overflow-hidden">
+                  <div className="relative h-[350px] bg-[#F8FAFC] m-3 rounded-lg flex justify-center items-center overflow-hidden">
                     {/* {productData.label && (
                       <div className="absolute top-4 right-4 bg-[#800080] text-white text-xs px-3 py-1 rounded-full shadow">
                         {productData.label}
@@ -435,6 +440,11 @@ const ProductBundle = () => {
                     <h2 className="text-xl font-semibold">
                       {productData.bundleTitle}
                     </h2>
+                    {productData.label && (
+                      <p className="text-sm text-gray-500 pt-1">
+                        {productData.label}
+                      </p>
+                    )}
                     {productData.backupInfo && (
                       <p className="text-sm text-gray-500 pt-1">
                         {productData.backupInfo}
@@ -443,86 +453,94 @@ const ProductBundle = () => {
 
                     <hr className="my-3 text-gray-300" />
 
-                    <div className="flex justify-between items-start">
-                      <div className="flex flex-col items-start">
-                        <p className="text-xl font-bold text-[#273E8E]">
-                          {productData.price}
-                        </p>
-                        <div className="flex gap-2 mt-1">
-                          {productData.oldPrice && (
-                            <span className="text-sm text-gray-500 line-through">
-                              {productData.oldPrice}
-                            </span>
-                          )}
-                          {productData.discount && (
-                            <span className="text-xs px-2 py-[2px] bg-[#FFA500]/20 text-[#FFA500] rounded-full">
-                              {productData.discount}
-                            </span>
-                          )}
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs text-gray-500 uppercase tracking-wide">Bundle Price</span>
+                      <div className="flex justify-between items-start">
+                        <div className="flex flex-col items-start">
+                          <p className="text-xl font-bold text-[#273E8E]">
+                            {productData.price}
+                          </p>
+                          <div className="flex gap-2 mt-0.5">
+                            {productData.oldPrice && (
+                              <span className="text-sm text-gray-500 line-through">
+                                {productData.oldPrice}
+                              </span>
+                            )}
+                            {productData.discount && (
+                              <span className="text-xs px-2 py-[2px] bg-[#FFA500]/20 text-[#FFA500] rounded-full">
+                                {productData.discount}
+                              </span>
+                            )}
+                          </div>
                         </div>
+                        <img
+                          src={assets.stars}
+                          alt="Rating"
+                          className="w-20 h-auto"
+                        />
                       </div>
-                      <img
-                        src={assets.stars}
-                        alt="Rating"
-                        className="w-20 h-auto"
-                      />
                     </div>
                   </div>
 
                   <hr className="my-2 text-gray-300" />
 
-                  {/* What's in the bundle */}
+                  {/* Tabs: Description | Specifications - same as BNPL/Buy Now flow */}
                   <div className="p-4">
-                    <h3 className="text-lg font-medium mb-3">
-                      What is inside the bundle ?
-                    </h3>
-                    <div className="space-y-2">
-                      {(productData.itemsIncluded || []).map((item, index) => (
-                        <div
-                          key={index}
-                          className="flex justify-between items-center bg-gray-100 h-[80px] px-3 py-2 rounded-md"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="bg-[#B0B7D0] rounded-md w-[60px] h-[60px] flex items-center justify-center overflow-hidden">
-                              <img
-                                src={item.icon || FALLBACK_IMAGE}
-                                alt={item.title}
-                                className="max-w-[60%] max-h-[60%] object-contain"
-                                onError={(e) => {
-                                  if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
-                                    e.target.src = FALLBACK_IMAGE;
-                                  }
-                                }}
-                              />
-                            </div>
-                            <div>
-                              <div className="text-[#273E8E] text-base font-semibold">
-                                {item.title}
-                                {item.quantity && item.quantity > 1 && (
-                                  <span className="text-xs text-gray-500 ml-1">
-                                    (x{item.quantity})
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-sm text-[#273E8E]">
-                                {formatNGN(item.price)}
-                                {item.unit && (
-                                  <span className="text-xs text-gray-500 ml-1">
-                                    / {item.unit}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-
-                      {!productData.itemsIncluded?.length && (
-                        <div className="text-gray-500 bg-white border rounded-xl p-4">
-                          No items attached to this bundle.
-                        </div>
-                      )}
+                    <div className="flex border-b border-gray-200 mb-4">
+                      <button
+                        type="button"
+                        onClick={() => setBundleDetailTab("description")}
+                        className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${bundleDetailTab === "description" ? "border-[#273E8E] text-[#273E8E]" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+                      >
+                        Description
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBundleDetailTab("specs")}
+                        className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${bundleDetailTab === "specs" ? "border-[#273E8E] text-[#273E8E]" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+                      >
+                        Specifications
+                      </button>
                     </div>
+
+                    {bundleDetailTab === "description" && (
+                      <div className="min-h-[80px]">
+                        {productData.description && String(productData.description).trim() ? (
+                          <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
+                            {productData.description}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-gray-400 italic">No description found.</p>
+                        )}
+                      </div>
+                    )}
+
+                    {bundleDetailTab === "specs" && (
+                      <div className="overflow-x-auto">
+                        {(productData.itemsIncluded || []).length > 0 ? (
+                          <table className="w-full text-sm border-collapse">
+                            <thead>
+                              <tr className="border-b border-gray-200">
+                                <th className="text-left py-2 pr-4 text-gray-500 font-medium w-10">#</th>
+                                <th className="text-left py-2 pr-4 text-gray-700 font-medium">Item</th>
+                                <th className="text-right py-2 text-gray-500 font-medium w-16">Qty</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(productData.itemsIncluded || []).map((item, index) => (
+                                <tr key={index} className="border-b border-gray-100">
+                                  <td className="py-2.5 pr-4 text-gray-500">{index + 1}</td>
+                                  <td className="py-2.5 pr-4 text-[#273E8E] font-medium">{item.title}</td>
+                                  <td className="py-2.5 text-right text-gray-600">{item.quantity ?? 1}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <p className="text-sm text-gray-500 py-4">No items attached to this bundle.</p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Appliances from Load Calculator - Only show if appliances exist */}
@@ -590,43 +608,40 @@ const ProductBundle = () => {
                 </div>
               </div>
 
-              {/* Right column (stats) */}
+              {/* Right column (stats) - aligned with BNPL/Buy Now flow */}
               <div className="w-[34%]">
                 <div className="flex flex-col gap-3 rounded-2xl">
-                  <div className="grid grid-cols-2 h-[110px] rounded-2xl overflow-hidden">
-                    <div className="bg-[#273E8E] text-white px-4 py-2 flex flex-col justify-between">
-                      <div className="text-sm text-left">Total Load</div>
-                      <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center h-[60%] mt-1 px-1">
-                        <span className="truncate">{productData.totalLoad || "—"}</span>
-                        <span className="text-xs ml-1 mt-2 whitespace-nowrap">Watts</span>
+                  <div className="grid grid-cols-2 gap-2 rounded-2xl overflow-hidden">
+                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
+                      <div className="text-xs text-left font-medium">Total Load</div>
+                      <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
+                        <span className="text-sm text-center break-words leading-tight">{productData.totalLoad || "—"}</span>
                       </div>
                     </div>
 
-                    <div className="bg-[#273E8E] text-white px-4 py-2 flex flex-col justify-between">
-                      <div className="text-sm text-left">Inverter Rating</div>
-                      <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center h-[60%] mt-1 px-1">
-                        <span className="truncate">{productData.inverterRating || "—"}</span>
-                        <span className="text-xs ml-1 mt-2 whitespace-nowrap">VA</span>
+                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
+                      <div className="text-xs text-left font-medium">Inverter Rating</div>
+                      <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
+                        <span className="text-sm text-center break-words leading-tight">{productData.inverterRating || "—"}</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-[#273E8E] text-white px-4 py-3 h-[110px] rounded-2xl flex justify-between items-center">
-                    <div className="text-lg font-bold">Total Output</div>
-                    <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center w-[50%] h-[60%] mt-1 px-1">
-                      <span className="truncate">{productData.totalOutput || "—"}</span>
-                      <span className="text-xs ml-1 mt-2 whitespace-nowrap">Watts</span>
+                  <div className="bg-[#273E8E] text-white px-4 py-3 rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 min-h-0">
+                    <div className="text-sm font-bold shrink-0">Total Output</div>
+                    <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] px-2 py-1 flex-1 min-w-0">
+                      <span className="text-sm text-center break-words leading-tight">{productData.totalOutput || "—"}</span>
                     </div>
                   </div>
 
-                  <div className="bg-white border rounded-2xl p-4">
+                  <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
                     <h3 className="text-base font-semibold text-gray-800 mb-4">Order Summary</h3>
                     
                     {/* Bundle Details */}
                     <div className="space-y-3 mb-4">
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Items</span>
-                        <span className="font-medium">{productData.itemsIncluded?.length ?? 0}</span>
+                        <span className="font-medium">1</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Bundle Price</span>
@@ -688,10 +703,10 @@ const ProductBundle = () => {
                 </Link>
               </div>
 
-              {/* Bundle card — tighter outer spacing */}
-              <div className="mx-3 mb-4 rounded-[18px] border border-[#800080] bg-white p-3 sm:p-4">
+              {/* Bundle card - aligned with BNPL/Buy Now flow */}
+              <div className="mx-3 mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                 {/* Image area */}
-                <div className="relative h-[190px] rounded-[14px] bg-[#F3F3F3] flex items-center justify-center overflow-hidden">
+                <div className="relative h-[200px] rounded-xl bg-[#F8FAFC] flex items-center justify-center overflow-hidden">
                   {/* {productData.label && (
                     <div className="absolute top-3 right-3 bg-[#800080] text-white text-[11px] px-3 py-[6px] rounded-full shadow">
                       {productData.label}
@@ -719,91 +734,102 @@ const ProductBundle = () => {
                   )}
                 </div>
 
-                {/* Title + price block */}
+                {/* Title + price block - aligned with BNPL/Buy Now flow */}
                 <div className="pt-3">
                   <h2 className="text-[12px] lg:text-[16px] font-semibold text-[#0F172A]">
                     {productData.bundleTitle}
                   </h2>
+                  {productData.label && (
+                    <p className="text-[12px] text-gray-500 mt-[2px]">{productData.label}</p>
+                  )}
                   {productData.backupInfo && (
                     <p className="text-[12px] text-gray-500 mt-[2px]">
                       {productData.backupInfo}
                     </p>
                   )}
 
-                  <div className="mt-2 flex items-start justify-between">
-                    <div>
-                      <div className="text-[12px] lg:text-[18px] font-bold text-[#273E8E] leading-5">
-                        {productData.price}
+                  <div className="mt-3 flex flex-col gap-0.5">
+                    <span className="text-[10px] text-gray-500 uppercase tracking-wide">Bundle Price</span>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="text-[12px] lg:text-[18px] font-bold text-[#273E8E] leading-5">
+                          {productData.price}
+                        </div>
+                        <div className="mt-1 flex items-center gap-2">
+                          {productData.oldPrice && (
+                            <span className="text-[10px] lg:text-[12px] text-gray-400 line-through">
+                              {productData.oldPrice}
+                            </span>
+                          )}
+                          {productData.discount && (
+                            <span className="px-2 py-[2px] rounded-full text-[11px] text-orange-600 bg-orange-100">
+                              {productData.discount}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="mt-1 flex items-center gap-2">
-                        {productData.oldPrice && (
-                          <span className="text-[10px] lg:text-[12px] text-gray-400 line-through">
-                            {productData.oldPrice}
-                          </span>
-                        )}
-                        {productData.discount && (
-                          <span className="px-2 py-[2px] rounded-full text-[11px] text-orange-600 bg-orange-100">
-                            {productData.discount}
-                          </span>
-                        )}
-                      </div>
+                      <img src={assets.stars} alt="Rating" className="w-[76px]" />
                     </div>
-                    <img src={assets.stars} alt="Rating" className="w-[76px]" />
                   </div>
                 </div>
 
-                {/* What's inside */}
-                <div className="mt-3">
-                  <p className="text-[12px] lg:text-[14px] font-medium mb-2">
-                    What is inside the bundle ?
-                  </p>
-
-                  <div className="space-y-2">
-                    {(productData.itemsIncluded || []).map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between bg-[#E8EDF8] rounded-[12px] px-3 py-3"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-[44px] h-[44px] rounded-md bg-[#C9D0E6] flex items-center justify-center overflow-hidden">
-                            <img
-                              src={item.icon || FALLBACK_IMAGE}
-                              alt={item.title}
-                              className="max-w-[70%] max-h-[70%] object-contain"
-                              onError={(e) => {
-                                if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
-                                  e.target.src = FALLBACK_IMAGE;
-                                }
-                              }}
-                            />
-                          </div>
-                          <div className=" text-[10px] lg:text-[13px] text-[#273E8E]">
-                            <div className="font-medium leading-4">
-                              {item.title}
-                              {item.quantity && item.quantity > 1 && (
-                                <span className="text-[9px] text-gray-500 ml-1">
-                                  (x{item.quantity})
-                                </span>
-                              )}
-                            </div>
-                            <div className="font-semibold mt-[2px]">
-                              {formatNGN(item.price)}
-                              {item.unit && (
-                                <span className="text-[9px] text-gray-500 ml-1">
-                                  / {item.unit}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {!productData.itemsIncluded?.length && (
-                      <div className="text-gray-500 bg-white border rounded-xl p-4 text-xs lg:text-sm">
-                        No items attached to this bundle.
-                      </div>
-                    )}
+                {/* Tabs: Description | Specifications - Mobile (same as BNPL/Buy Now flow) */}
+                <div className="mt-4">
+                  <div className="flex border-b border-gray-200 mb-3">
+                    <button
+                      type="button"
+                      onClick={() => setBundleDetailTab("description")}
+                      className={`px-3 py-2 text-[12px] font-medium border-b-2 -mb-px transition-colors ${bundleDetailTab === "description" ? "border-[#273E8E] text-[#273E8E]" : "border-transparent text-gray-500"}`}
+                    >
+                      Description
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBundleDetailTab("specs")}
+                      className={`px-3 py-2 text-[12px] font-medium border-b-2 -mb-px transition-colors ${bundleDetailTab === "specs" ? "border-[#273E8E] text-[#273E8E]" : "border-transparent text-gray-500"}`}
+                    >
+                      Specifications
+                    </button>
                   </div>
+
+                  {bundleDetailTab === "description" && (
+                    <div className="min-h-[60px]">
+                      {productData.description && String(productData.description).trim() ? (
+                        <p className="text-[11px] lg:text-[13px] text-gray-600 leading-relaxed whitespace-pre-wrap">
+                          {productData.description}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-gray-400 italic">No description found.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {bundleDetailTab === "specs" && (
+                    <div className="overflow-x-auto -mx-1">
+                      {(productData.itemsIncluded || []).length > 0 ? (
+                        <table className="w-full text-[11px] lg:text-[12px] border-collapse">
+                          <thead>
+                            <tr className="border-b border-gray-200">
+                              <th className="text-left py-2 pr-2 text-gray-500 font-medium w-8">#</th>
+                              <th className="text-left py-2 pr-2 text-gray-700 font-medium">Item</th>
+                              <th className="text-right py-2 text-gray-500 font-medium w-10">Qty</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(productData.itemsIncluded || []).map((item, idx) => (
+                              <tr key={idx} className="border-b border-gray-100">
+                                <td className="py-2 pr-2 text-gray-500">{idx + 1}</td>
+                                <td className="py-2 pr-2 text-[#273E8E] font-medium">{item.title}</td>
+                                <td className="py-2 text-right text-gray-600">{item.quantity ?? 1}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <p className="text-[11px] text-gray-500 py-3">No items attached to this bundle.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Appliances from Load Calculator - Mobile - Only show if appliances exist */}

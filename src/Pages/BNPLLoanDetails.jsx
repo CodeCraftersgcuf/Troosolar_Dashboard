@@ -31,6 +31,18 @@ import Loading from '../Component/Loading';
 import BNPLPaymentModal from '../Component/BNPLPaymentModal';
 import RepaymentCalendar from '../Component/RepaymentCalendar';
 
+/* Flutterwave script for down payment */
+const ensureFlutterwave = () =>
+  new Promise((resolve, reject) => {
+    if (window.FlutterwaveCheckout) return resolve();
+    const s = document.createElement('script');
+    s.src = 'https://checkout.flutterwave.com/v3.js';
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Failed to load Flutterwave script'));
+    document.body.appendChild(s);
+  });
+
 const BNPLLoanDetails = () => {
     const navigate = useNavigate();
     const { id } = useParams(); // Get order ID from URL
@@ -46,6 +58,7 @@ const BNPLLoanDetails = () => {
     const [selectedInstallment, setSelectedInstallment] = useState(null);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [installmentsWithHistory, setInstallmentsWithHistory] = useState(null);
+    const [processingDownPayment, setProcessingDownPayment] = useState(false);
 
     useEffect(() => {
         if (id) {
@@ -158,6 +171,13 @@ const BNPLLoanDetails = () => {
                 // Transform application data to match order data structure
                 const appData = response.data.data;
                 
+                // If down payment is done, an order exists – redirect to order view so user sees correct repayment summary
+                if (appData.order_id && appData.down_payment_completed) {
+                    navigate(`/bnpl-loans/${appData.order_id}`, { replace: true });
+                    setLoading(false);
+                    return;
+                }
+                
                 // Try to fetch repayment schedule for the application
                 let repaymentSchedule = [];
                 try {
@@ -210,8 +230,10 @@ const BNPLLoanDetails = () => {
                     application: appData,
                     repayment_schedule: repaymentSchedule,
                     isApplication: true,
-                    // Ensure loan_calculation is included
-                    loan_calculation: appData.loan_calculation
+                    loan_calculation: appData.loan_calculation,
+                    order_id: appData.order_id,
+                    order_number: appData.order_number,
+                    down_payment_completed: appData.down_payment_completed
                 });
             } else {
                 setError(response.data.message || 'Failed to fetch application details');
@@ -304,10 +326,10 @@ const BNPLLoanDetails = () => {
                 console.log('Error fetching applications:', appsErr);
             }
 
-            // Combine orders and applications, prioritizing orders
-            // If we have orders, show those. Otherwise show applications
-            const allItems = orders.length > 0 ? orders : applications;
-            const finalPagination = (orders.length > 0 ? ordersPagination : applicationsPagination) || {
+            // Show all applications as the main list (so every BNPL application is visible).
+            // If there are no applications, fall back to showing orders only.
+            const allItems = applications.length > 0 ? applications : orders;
+            const finalPagination = (applications.length > 0 ? applicationsPagination : ordersPagination) || {
                 current_page: 1,
                 last_page: 1,
                 per_page: 15,
@@ -319,7 +341,7 @@ const BNPLLoanDetails = () => {
             setOrderData({ 
                 orders: allItems, 
                 isList: true,
-                isApplications: applications.length > 0 && orders.length === 0 // Flag to indicate these are applications
+                isApplications: applications.length > 0 // Treat as applications so labels and navigation use application ID
             });
             setPagination(finalPagination);
         } catch (err) {
@@ -360,6 +382,117 @@ const BNPLLoanDetails = () => {
             overdue: 'bg-red-100 text-red-800 border-red-300'
         };
         return badges[statusLower] || badges.pending;
+    };
+
+    const confirmDownPayment = async (applicationId, txId, amount) => {
+        const token = localStorage.getItem('access_token');
+        if (!token) return null;
+        try {
+            const payload = {
+                amount_paid: amount,
+            };
+            if (txId != null && txId !== '') {
+                payload.transaction_reference = String(txId);
+            }
+            const { data } = await axios.post(
+                API.BNPL_CONFIRM_DOWN_PAYMENT(applicationId),
+                payload,
+                {
+                    headers: {
+                        Accept: 'application/json',
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+            if (data?.status !== 'success') return null;
+            return data?.data || data;
+        } catch (e) {
+            console.error('Down payment confirmation failed:', e);
+            return null;
+        }
+    };
+
+    const handlePayDownPayment = async () => {
+        if (!id || !id.startsWith('app-')) return;
+        const applicationId = id.replace('app-', '');
+        const order = orderData;
+        if (!order?.loan_calculation?.down_payment) return;
+        const downPaymentAmount = parseAmount(order.loan_calculation.down_payment);
+        if (downPaymentAmount <= 0) return;
+
+        setProcessingDownPayment(true);
+        try {
+            await ensureFlutterwave();
+            const txRef = 'deposit_' + applicationId + '_' + Date.now();
+            const CANDIDATE_KEYS = ['user', 'user_info', 'auth_user', 'current_user', 'profile', 'logged_in_user'];
+            let userInfo = null;
+            for (const key of CANDIDATE_KEYS) {
+                try {
+                    const raw = localStorage.getItem(key);
+                    if (raw) {
+                        const parsed = JSON.parse(raw);
+                        if (parsed && typeof parsed === 'object') {
+                            userInfo = parsed;
+                            break;
+                        }
+                    }
+                } catch (e) {}
+            }
+            const userEmail = userInfo?.email || userInfo?.user_email || 'customer@troosolar.com';
+            const userName = userInfo?.name || userInfo?.full_name
+                || (userInfo?.first_name && userInfo?.sur_name ? `${userInfo.first_name} ${userInfo.sur_name}` : null)
+                || (userInfo?.first_name && userInfo?.last_name ? `${userInfo.first_name} ${userInfo.last_name}` : null)
+                || 'Customer';
+            const userPhone = userInfo?.phone || userInfo?.phone_number || '';
+
+            window.FlutterwaveCheckout({
+                public_key: 'FLWPUBK_TEST-dd1514f7562b1d623c4e63fb58b6aedb-X',
+                tx_ref: txRef,
+                amount: downPaymentAmount,
+                currency: 'NGN',
+                payment_options: 'card,ussd,banktransfer',
+                customer: {
+                    email: userEmail,
+                    name: userName,
+                    ...(userPhone ? { phone_number: userPhone } : {}),
+                },
+                callback: async (response) => {
+                    if (response?.status === 'successful') {
+                        try {
+                            const txId = response?.transaction_id || response?.id || response?.flw_ref || txRef;
+                            const result = await confirmDownPayment(applicationId, txId, downPaymentAmount);
+                            if (result) {
+                                alert('Down payment successful! Your order will proceed.');
+                                if (result.order_id) {
+                                    setProcessingDownPayment(false);
+                                    navigate(`/bnpl-loans/${result.order_id}`, { replace: true });
+                                    return;
+                                }
+                                fetchApplicationDetails(applicationId);
+                            } else {
+                                alert('Payment verification failed. Please contact support if amount was debited.');
+                            }
+                        } catch (err) {
+                            console.error('Down payment confirmation error:', err);
+                            alert('Payment successful but confirmation failed. Please contact support.');
+                        }
+                    } else {
+                        alert('Payment was not completed. Please try again.');
+                    }
+                    setProcessingDownPayment(false);
+                },
+                onclose: () => setProcessingDownPayment(false),
+                customizations: {
+                    title: 'BNPL Down Payment',
+                    description: `Down payment for Application #${applicationId}`,
+                    logo: 'https://yourdomain.com/logo.png',
+                },
+            });
+        } catch (err) {
+            console.error('Down payment init failed:', err);
+            alert('Failed to initialize payment. Please try again.');
+            setProcessingDownPayment(false);
+        }
     };
 
     const formatDate = (dateString) => {
@@ -605,6 +738,31 @@ const BNPLLoanDetails = () => {
                     </div>
                 </div>
 
+                {/* Down payment completed – show order link when application has an order */}
+                {isApplication && (order.order_id || order.down_payment_completed) && (
+                    <div className="bg-green-50 border-2 border-green-200 rounded-xl p-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <CheckCircle2 className="text-green-600" size={28} />
+                                <div>
+                                    <h3 className="text-lg font-semibold text-green-800">Down payment completed</h3>
+                                    <p className="text-sm text-green-700">Your BNPL order has been placed. View your order for repayment schedule and installments.</p>
+                                    {order.order_number && <p className="text-sm text-green-600 mt-1">Order #{order.order_number}</p>}
+                                </div>
+                            </div>
+                            {order.order_id && (
+                                <button
+                                    type="button"
+                                    onClick={() => navigate(`/bnpl-loans/${order.order_id}`)}
+                                    className="px-6 py-3 bg-[#273e8e] text-white font-semibold rounded-lg hover:bg-[#1a2b6b] transition-colors whitespace-nowrap"
+                                >
+                                    View order
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* Repayment Summary */}
                 {repaymentSummary && Object.keys(repaymentSummary).length > 0 && (
                     <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-sm border border-blue-200 p-6">
@@ -680,6 +838,34 @@ const BNPLLoanDetails = () => {
                                 <p className="text-2xl font-bold text-[#273e8e]">
                                     {formatCurrency(loanCalc.monthly_repayment)}
                                 </p>
+                            </div>
+                        )}
+                        {/* Pay Down Payment – show when approved, down payment not yet paid, and no order yet */}
+                        {isApplication &&
+                            (order.status?.toLowerCase() === 'approved' || order.status?.toLowerCase() === 'counter_offer_accepted') &&
+                            !order.order_id &&
+                            !order.down_payment_completed &&
+                            loanCalc.down_payment &&
+                            parseAmount(repaymentSummary?.paid_amount ?? 0) < parseAmount(loanCalc.down_payment) && (
+                            <div className="mt-4 bg-white rounded-lg p-4 border-2 border-[#273e8e]">
+                                <p className="text-sm text-gray-600 mb-2">
+                                    Pay your down payment to proceed with your order.
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={handlePayDownPayment}
+                                    disabled={processingDownPayment}
+                                    className="w-full sm:w-auto px-6 py-3 bg-[#273e8e] text-white font-semibold rounded-lg hover:bg-[#1a2b6b] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                >
+                                    {processingDownPayment ? (
+                                        <>Processing...</>
+                                    ) : (
+                                        <>
+                                            <CreditCard size={20} />
+                                            Pay Down Payment ({formatCurrency(loanCalc.down_payment)})
+                                        </>
+                                    )}
+                                </button>
                             </div>
                         )}
                     </div>

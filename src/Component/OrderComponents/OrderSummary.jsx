@@ -6,6 +6,9 @@ import API, { BASE_URL } from "../../config/api.config";
 import axios from "axios";
 import Loading from "../Loading";
 
+/** Fallback image when item has no featured_image */
+const PLACEHOLDER_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
+
 const OrderSummary = ({ order, onBack }) => {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [userReview, setUserReview] = useState(null);
@@ -72,6 +75,29 @@ const OrderSummary = ({ order, onBack }) => {
         if (response.data.status === "success") {
           const data = response.data.data;
 
+          // Build address from delivery_address, or from BNPL application (property_address) when missing
+          const addr = data.delivery_address;
+          const appAddr = data.loan_application || data.application_address;
+          const deliveryAddressText =
+            addr?.address ||
+            [addr?.state, addr?.title].filter(Boolean).join(", ") ||
+            appAddr?.property_address ||
+            (appAddr?.address && [appAddr.address, appAddr.state].filter(Boolean).join(", ")) ||
+            [appAddr?.state, appAddr?.title].filter(Boolean).join(", ") ||
+            "Address not provided";
+          const phoneNumber =
+            addr?.phone_number ||
+            appAddr?.phone_number ||
+            data.user_info?.phone ||
+            "Phone not provided";
+
+          // Total quantity across all line items; keep items array for per-line display
+          const items = Array.isArray(data.items) ? data.items : [];
+          const totalQuantity = items.reduce(
+            (sum, i) => sum + (Number(i?.quantity) || 0),
+            0
+          ) || 1;
+
           // Transform API data to match component structure
           const transformedData = {
             id: data.id,
@@ -90,10 +116,8 @@ const OrderSummary = ({ order, onBack }) => {
                 year: "numeric",
               }
             ),
-            deliveryAddress:
-              data.delivery_address?.address || "Address not provided",
-            phoneNumber:
-              data.delivery_address?.phone_number || "Phone not provided",
+            deliveryAddress: deliveryAddressText,
+            phoneNumber,
             estimatedDeliveryTime: "July 2 - 7, 2025", // This might need to be calculated or from API
             deliveryPrice: "N20,000", // This might need to be from API
             installationNote:
@@ -115,17 +139,18 @@ const OrderSummary = ({ order, onBack }) => {
             paymentMethod:
               data.payment_method === "direct" ? "Direct" : data.payment_method,
             charge: "Free", // This might need to be from API
-            productImage: data.items?.[0]?.item?.featured_image
-              ? `${BASE_URL.replace("/api", "")}${
-                  data.items[0].item.featured_image
-                }`
-              : "https://troosolar.hmstech.org/storage/products/gallery/87177e7f-3879-4aba-9952-3a9e989dc0c0.png",
+            productImage: (() => {
+              const img = data.items?.[0]?.item?.featured_image;
+              if (!img) return PLACEHOLDER_IMAGE;
+              return img.startsWith("http") ? img : `${BASE_URL.replace("/api", "")}${img}`;
+            })(),
             technicianName: data.installation?.technician_name,
             userInfo: data.user_info,
             includeUserInfo: data.include_user_info,
             // Additional API data
-            rawData: data, // Keep original data for reference
-            quantity: data.items?.[0]?.quantity || 1,
+            rawData: data,
+            quantity: totalQuantity,
+            items, // full items list for per-line display
             unitPrice: data.items?.[0]?.unit_price || data.total_price,
             subtotal: data.items?.[0]?.subtotal || data.total_price,
           };
@@ -299,34 +324,50 @@ const OrderSummary = ({ order, onBack }) => {
 
       {/* Main Content */}
       <div className="px-4 py-6 space-y-6 bg-white">
-        {/* Success Confirmation Banner */}
-        <div className="bg-white rounded-2xl p-6 text-center mt-4 border border-gray-400">
-          <div className="flex justify-center items-center">
-            {/* Green Check Icon Circle */}
-            <img
-              src={assets.tick}
-              alt="tick"
-              className="w-20 h-20 align-middle mb-4"
-            />
-          </div>
-          {/* Status Message */}
-          <h2 className="text-sm font-semibold text-gray-900 text-center max-w-md mx-auto">
-            <b>Congratulations</b> your order {orderData.orderNumber} has been
-            successfully delivered on {orderData.deliveryDate}
-          </h2>
-          <div className="mt-2 text-xs text-gray-600">
-            Order Status:{" "}
-            <span className="font-medium capitalize">
-              {orderData.orderStatus}
-            </span>{" "}
-            | Payment Status:{" "}
-            <span className="font-medium capitalize">
-              {orderData.paymentStatus}
-            </span>
-          </div>
-        </div>
+        {/* Order Status Banner - "Congratulations delivered" only when delivered */}
+        {(() => {
+          const isDelivered =
+            String(orderData.orderStatus || "").toLowerCase() === "delivered" ||
+            String(orderData.orderStatus || "").toLowerCase() === "completed";
+          return (
+            <div className="bg-white rounded-2xl p-6 text-center mt-4 border border-gray-400">
+              <div className="flex justify-center items-center">
+                <img
+                  src={assets.tick}
+                  alt="tick"
+                  className="w-20 h-20 align-middle mb-4"
+                />
+              </div>
+              <h2 className="text-sm font-semibold text-gray-900 text-center max-w-md mx-auto">
+                {isDelivered ? (
+                  <>
+                    <b>Congratulations</b> — your order {orderData.orderNumber}{" "}
+                    has been successfully delivered on {orderData.deliveryDate}
+                  </>
+                ) : (
+                  <>
+                    Your order <b>{orderData.orderNumber}</b> is confirmed
+                    {orderData.deliveryDate ? (
+                      <> (placed on {orderData.deliveryDate})</>
+                    ) : null}
+                  </>
+                )}
+              </h2>
+              <div className="mt-2 text-xs text-gray-600">
+                Order Status:{" "}
+                <span className="font-medium capitalize">
+                  {orderData.orderStatus}
+                </span>{" "}
+                | Payment Status:{" "}
+                <span className="font-medium capitalize">
+                  {orderData.paymentStatus}
+                </span>
+              </div>
+            </div>
+          );
+        })()}
 
-        {/* Product Details Section */}
+        {/* Product Details Section - show all line items with correct quantity */}
         <div>
           <div className="flex ">
             <h3 className="text-sm font-semibold text-gray-900 mb-4">
@@ -334,35 +375,78 @@ const OrderSummary = ({ order, onBack }) => {
             </h3>
             <hr className="border-gray-400" />
           </div>
-          <div className="bg-white rounded-2xl p-2 border border-gray-400">
-            <div className="flex items-start gap-4">
-              {/* Product Image */}
-              <div className="w-20 h-20 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                <img
-                  src={orderData.productImage}
-                  alt={orderData.productName}
-                  className="w-16 h-16 bg-gray-200 rounded-lg object-cover"
-                />
-              </div>
-
-              {/* Product Details */}
-              <div className="flex-1 min-w-0">
-                <h4 className="text-sm font-medium text-gray-900 mb-2">
-                  {orderData.productName}
-                </h4>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="bg-purple-100 text-[#000000] text-xs px-2 py-1 rounded">
-                    Qty: {orderData.quantity}
-                  </span>
-                  <span className="bg-gray-100 text-[#000000] text-xs px-2 py-1 rounded">
-                    {orderData.views}
-                  </span>
+          <div className="bg-white rounded-2xl p-2 border border-gray-400 space-y-4">
+            {Array.isArray(orderData.items) && orderData.items.length > 0 ? (
+              orderData.items.map((lineItem, idx) => {
+                const rawImg = lineItem?.item?.featured_image;
+                const img = rawImg
+                  ? (rawImg.startsWith("http") ? rawImg : `${BASE_URL.replace("/api", "")}${rawImg}`)
+                  : PLACEHOLDER_IMAGE;
+                const totalPrice = parseFloat(orderData.rawData?.total_price) || 0;
+                const totalQty = orderData.items.reduce((s, i) => s + (Number(i?.quantity) || 1), 0) || 1;
+                const qty = Number(lineItem?.quantity) || 1;
+                const lineSubtotal = parseFloat(lineItem?.subtotal) || parseFloat(lineItem?.unit_price) * qty || 0;
+                const displayPrice = lineSubtotal > 0
+                  ? lineSubtotal
+                  : (totalPrice / totalQty) * qty;
+                return (
+                  <div
+                    key={idx}
+                    className="flex items-start gap-4"
+                  >
+                    <div className="w-20 h-20 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <img
+                        src={img}
+                        alt={lineItem?.item?.title || "Product"}
+                        className="w-16 h-16 bg-gray-200 rounded-lg object-cover"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-medium text-gray-900 mb-2">
+                        {lineItem?.item?.title || "Product"}
+                      </h4>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="bg-purple-100 text-[#000000] text-xs px-2 py-1 rounded">
+                          Qty: {qty}
+                        </span>
+                        <span className="bg-gray-100 text-[#000000] text-xs px-2 py-1 rounded">
+                          {orderData.views}
+                        </span>
+                      </div>
+                      <p className="text-xl font-bold text-[#273E8E]">
+                        N{displayPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="flex items-start gap-4">
+                <div className="w-20 h-20 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <img
+                    src={orderData.productImage || PLACEHOLDER_IMAGE}
+                    alt={orderData.productName}
+                    className="w-16 h-16 bg-gray-200 rounded-lg object-cover"
+                  />
                 </div>
-                <p className="text-xl font-bold text-[#273E8E]">
-                  {orderData.price}
-                </p>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-sm font-medium text-gray-900 mb-2">
+                    {orderData.productName}
+                  </h4>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="bg-purple-100 text-[#000000] text-xs px-2 py-1 rounded">
+                      Qty: {orderData.quantity}
+                    </span>
+                    <span className="bg-gray-100 text-[#000000] text-xs px-2 py-1 rounded">
+                      {orderData.views}
+                    </span>
+                  </div>
+                  <p className="text-xl font-bold text-[#273E8E]">
+                    {orderData.price}
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 

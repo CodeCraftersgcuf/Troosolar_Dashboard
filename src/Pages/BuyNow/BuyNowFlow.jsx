@@ -129,6 +129,7 @@ const BuyNowFlow = () => {
     const [bundles, setBundles] = useState([]);
     const [bundlesLoading, setBundlesLoading] = useState(false);
     const [selectedBundleDetails, setSelectedBundleDetails] = useState(null); // For "Learn More" modal
+    const [bundleDetailTab, setBundleDetailTab] = useState('description'); // 'description' | 'specs'
     const [selectedSystemSize, setSelectedSystemSize] = useState("all"); // System size filter
     const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false);
     const sizeDropdownRef = useRef(null);
@@ -2499,46 +2500,30 @@ const BuyNowFlow = () => {
 
         // Get items included
         const itemsIncluded = bundle.materials || bundle.bundleItems || bundle.bundle_items || [];
-        
-        // Get assets for fallback images
-        const getItemIcon = (item) => {
-            const product = item.product || item;
-            const material = item.material || item;
-            
-            // Try product image first
-            if (product?.featured_image) return toAbsolute(product.featured_image);
-            if (product?.featured_image_url) return toAbsolute(product.featured_image_url);
-            
-            // Try material image
-            if (material?.featured_image) return toAbsolute(material.featured_image);
-            if (material?.featured_image_url) return toAbsolute(material.featured_image_url);
-            if (material?.image) return toAbsolute(material.image);
-            
-            // Return fallback image
-            return FALLBACK_IMAGE;
-        };
+        // Description: API may send detailed_description, description, or desc
+        const descriptionText = (bundle.detailed_description && String(bundle.detailed_description).trim()) || (bundle.description && String(bundle.description).trim()) || (bundle.desc && String(bundle.desc).trim()) || '';
 
         return (
             <div className="animate-fade-in bg-[#F5F7FF] min-h-screen p-3 sm:p-5">
-                <div className="bg-[#F6F8FF] min-h-screen rounded-lg p-3 sm:p-6">
+                <div className="bg-[#F6F8FF] min-h-screen rounded-xl p-3 sm:p-6 shadow-sm">
                     {/* Back Button */}
                     <button 
                         onClick={() => {
                             setSelectedBundleDetails(null);
                             setStep(3.5);
                         }} 
-                        className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]"
+                        className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e] transition-colors"
                     >
                         <ArrowLeft size={16} className="mr-2" /> Back to Bundles
                     </button>
 
                     {/* Desktop Layout */}
-                    <div className="hidden sm:flex justify-between items-start gap-4">
+                    <div className="hidden sm:flex justify-between items-start gap-6">
                         {/* Left Column - Main Content */}
                         <div className="min-w-[66%]">
-                            <div className="bg-white w-full border border-[#800080] rounded-lg mt-3">
+                            <div className="bg-white w-full border border-gray-200 rounded-xl mt-3 shadow-sm overflow-hidden">
                                 {/* Image */}
-                                <div className="relative h-[350px] bg-[#F3F3F3] m-2 rounded-lg flex justify-center items-center overflow-hidden">
+                                <div className="relative h-[350px] bg-[#F8FAFC] m-3 rounded-lg flex justify-center items-center overflow-hidden">
                                     <img
                                         src={getBundleImage(bundle)}
                                         alt={bundle.title || 'Bundle'}
@@ -2554,11 +2539,21 @@ const BuyNowFlow = () => {
                                     <h2 className="text-xl font-semibold">
                                         {bundle.title || `Bundle #${bundle.id}`}
                                     </h2>
-                                    {bundle.bundle_type && (
-                                        <p className="text-sm text-gray-500 pt-1">
-                                            {bundle.bundle_type}
-                                        </p>
-                                    )}
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-1">
+                                        {bundle.bundle_type && (
+                                            <p className="text-sm text-gray-500">
+                                                {bundle.bundle_type}
+                                            </p>
+                                        )}
+                                        {(bundle.category || bundle.product_category || bundle.category_type) && (
+                                            <span className="text-sm text-gray-400">·</span>
+                                        )}
+                                        {(bundle.category || bundle.product_category || bundle.category_type) && (
+                                            <p className="text-sm text-gray-500">
+                                                {bundle.category || bundle.product_category || bundle.category_type}
+                                            </p>
+                                        )}
+                                    </div>
                                     {bundle.backup_info && (
                                         <p className="text-sm text-gray-500 pt-1">
                                             {bundle.backup_info}
@@ -2567,106 +2562,93 @@ const BuyNowFlow = () => {
 
                                     <hr className="my-3 text-gray-300" />
 
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex flex-col items-start">
-                                            <p className="text-xl font-bold text-[#273E8E]">
-                                                {formatPrice(totalPrice)}
-                                            </p>
-                                            <div className="flex gap-2 mt-1">
-                                                {oldPrice && (
-                                                    <span className="text-sm text-gray-500 line-through">
-                                                        {formatPrice(oldPrice)}
-                                                    </span>
-                                                )}
-                                                {discount > 0 && (
-                                                    <span className="text-xs px-2 py-[2px] bg-[#FFA500]/20 text-[#FFA500] rounded-full">
-                                                        -{discount}%
-                                                    </span>
-                                                )}
-                                            </div>
+                                    {/* Price - column layout */}
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-xs text-gray-500 uppercase tracking-wide">Bundle Price</span>
+                                        <p className="text-xl font-bold text-[#273E8E]">
+                                            {formatPrice(totalPrice)}
+                                        </p>
+                                        <div className="flex gap-2 mt-0.5">
+                                            {oldPrice && (
+                                                <span className="text-sm text-gray-500 line-through">
+                                                    {formatPrice(oldPrice)}
+                                                </span>
+                                            )}
+                                            {discount > 0 && (
+                                                <span className="text-xs px-2 py-[2px] bg-[#FFA500]/20 text-[#FFA500] rounded-full">
+                                                    -{discount}%
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
 
                                 <hr className="my-2 text-gray-300" />
 
-                                {/* What's in the bundle */}
+                                {/* Tabs: Description | Specifications */}
                                 <div className="p-4">
-                                    <h3 className="text-lg font-medium mb-3">
-                                        What is inside the bundle ?
-                                    </h3>
-                                    <div className="space-y-2">
-                                        {itemsIncluded.length > 0 ? itemsIncluded.map((item, index) => {
-                                            const product = item.product || item;
-                                            const itemName = product?.name || product?.title || item?.name || `Item #${index + 1}`;
-                                            const rawPrice = Number(product?.price || item?.selling_rate || item?.rate || 0);
-                                            const itemPrice = rawPrice === 0 ? 1000 : rawPrice;
-                                            const itemQuantity = item.quantity || 1;
-                                            
-                                            return (
-                                                <div
-                                                    key={index}
-                                                    className="flex justify-between items-center bg-gray-100 h-[80px] px-3 py-2 rounded-md"
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="bg-[#B0B7D0] rounded-md w-[60px] h-[60px] flex items-center justify-center overflow-hidden">
-                                                            <img
-                                                                src={getItemIcon(item)}
-                                                                alt={itemName}
-                                                                className="max-w-[60%] max-h-[60%] object-contain"
-                                                                onError={(e) => {
-                                                                    if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
-                                                                        e.target.src = FALLBACK_IMAGE;
-                                                                    }
-                                                                }}
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <div className="text-[#273E8E] text-base font-semibold">
-                                                                {itemName}
-                                                                {itemQuantity > 1 && <span className="text-gray-500 ml-2">(× {itemQuantity})</span>}
-                                                            </div>
-                                                            <div className="text-sm text-[#273E8E]">
-                                                                {formatPrice(itemPrice)}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        }) : (
-                                            <div className="text-gray-500 bg-white border rounded-xl p-4">
-                                                No items attached to this bundle.
-                                            </div>
-                                        )}
+                                    <div className="flex border-b border-gray-200 mb-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => setBundleDetailTab('description')}
+                                            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${bundleDetailTab === 'description' ? 'border-[#273E8E] text-[#273E8E]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            Description
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setBundleDetailTab('specs')}
+                                            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${bundleDetailTab === 'specs' ? 'border-[#273E8E] text-[#273E8E]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            Specifications
+                                        </button>
                                     </div>
-                                </div>
 
-                                {/* Fees Information */}
-                                {bundle.fees && (
-                                    <div className="p-4 border-t border-gray-200">
-                                        <h3 className="text-lg font-medium mb-3">Additional Fees</h3>
-                                        <div className="space-y-2 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                                            {bundle.fees.installation_fee && (
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Installation Fee</span>
-                                                    <span className="font-semibold text-gray-800">{formatPrice(Number(bundle.fees.installation_fee))}</span>
-                                                </div>
-                                            )}
-                                            {bundle.fees.delivery_fee && (
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Delivery Fee</span>
-                                                    <span className="font-semibold text-gray-800">{formatPrice(Number(bundle.fees.delivery_fee))}</span>
-                                                </div>
-                                            )}
-                                            {bundle.fees.inspection_fee && (
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Inspection Fee</span>
-                                                    <span className="font-semibold text-gray-800">{formatPrice(Number(bundle.fees.inspection_fee))}</span>
-                                                </div>
+                                    {bundleDetailTab === 'description' && (
+                                        <div className="min-h-[80px]">
+                                            {descriptionText ? (
+                                                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
+                                                    {descriptionText}
+                                                </p>
+                                            ) : (
+                                                <p className="text-sm text-gray-400 italic">No description found.</p>
                                             )}
                                         </div>
-                                    </div>
-                                )}
+                                    )}
+
+                                    {bundleDetailTab === 'specs' && (
+                                        <div className="overflow-x-auto">
+                                            {itemsIncluded.length > 0 ? (
+                                                <table className="w-full text-sm border-collapse">
+                                                    <thead>
+                                                        <tr className="border-b border-gray-200">
+                                                            <th className="text-left py-2 pr-4 text-gray-500 font-medium w-10">#</th>
+                                                            <th className="text-left py-2 pr-4 text-gray-700 font-medium">Item</th>
+                                                            <th className="text-right py-2 text-gray-500 font-medium w-16">Qty</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {itemsIncluded.map((item, index) => {
+                                                            const product = item.product || item;
+                                                            const itemName = product?.name || product?.title || item?.name || `Item #${index + 1}`;
+                                                            const itemQuantity = item.quantity || 1;
+                                                            return (
+                                                                <tr key={index} className="border-b border-gray-100">
+                                                                    <td className="py-2.5 pr-4 text-gray-500">{index + 1}</td>
+                                                                    <td className="py-2.5 pr-4 text-[#273E8E] font-medium">{itemName}</td>
+                                                                    <td className="py-2.5 text-right text-gray-600">{itemQuantity}</td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            ) : (
+                                                <p className="text-sm text-gray-500 py-4">No items attached to this bundle.</p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
                             </div>
 
                             {/* Actions */}
@@ -2686,39 +2668,36 @@ const BuyNowFlow = () => {
                         {/* Right Column - Stats */}
                         <div className="w-[34%]">
                             <div className="flex flex-col gap-3 rounded-2xl">
-                                <div className="grid grid-cols-2 h-[110px] rounded-2xl overflow-hidden">
-                                    <div className="bg-[#273E8E] text-white px-4 py-2 flex flex-col justify-between">
-                                        <div className="text-sm text-left">Total Load</div>
-                                        <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center h-[60%] mt-1 px-1">
-                                            <span className="truncate">{bundle.total_load || "—"}</span>
-                                            <span className="text-xs ml-1 mt-2 whitespace-nowrap">Watts</span>
+                                <div className="grid grid-cols-2 gap-2 rounded-2xl overflow-hidden">
+                                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
+                                        <div className="text-xs text-left font-medium">Total Load</div>
+                                        <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
+                                            <span className="text-sm text-center break-words leading-tight">{bundle.total_load || "—"}</span>
                                         </div>
                                     </div>
 
-                                    <div className="bg-[#273E8E] text-white px-4 py-2 flex flex-col justify-between">
-                                        <div className="text-sm text-left">Inverter Rating</div>
-                                        <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center h-[60%] mt-1 px-1">
-                                            <span className="truncate">{bundle.inver_rating || "—"}</span>
-                                            <span className="text-xs ml-1 mt-2 whitespace-nowrap">VA</span>
+                                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
+                                        <div className="text-xs text-left font-medium">Inverter Rating</div>
+                                        <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
+                                            <span className="text-sm text-center break-words leading-tight">{bundle.inver_rating || "—"}</span>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="bg-[#273E8E] text-white px-4 py-3 h-[110px] rounded-2xl flex justify-between items-center">
-                                    <div className="text-lg font-bold">Total Output</div>
-                                    <div className="text-lg bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center w-[50%] h-[60%] mt-1 px-1">
-                                        <span className="truncate">{bundle.total_output || "—"}</span>
-                                        <span className="text-xs ml-1 mt-2 whitespace-nowrap">Watts</span>
+                                <div className="bg-[#273E8E] text-white px-4 py-3 rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 min-h-0">
+                                    <div className="text-sm font-bold shrink-0">Total Output</div>
+                                    <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] px-2 py-1 flex-1 min-w-0">
+                                        <span className="text-sm text-center break-words leading-tight">{bundle.total_output || "—"}</span>
                                     </div>
                                 </div>
 
-                                <div className="bg-white border rounded-2xl p-4">
+                                <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
                                     <h3 className="text-base font-semibold text-gray-800 mb-4">Order Summary</h3>
                                     
                                     <div className="space-y-3 mb-4">
                                         <div className="flex justify-between text-sm">
                                             <span className="text-gray-600">Items</span>
-                                            <span className="font-medium">{itemsIncluded.length}</span>
+                                            <span className="font-medium">1</span>
                                         </div>
                                         <div className="flex justify-between text-sm">
                                             <span className="text-gray-600">Bundle Price</span>
@@ -2743,9 +2722,9 @@ const BuyNowFlow = () => {
 
                     {/* Mobile Layout */}
                     <div className="sm:hidden">
-                        <div className="mx-3 mb-4 rounded-[18px] border border-[#800080] bg-white p-3">
+                        <div className="mx-3 mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                             {/* Image */}
-                            <div className="relative h-[190px] rounded-[14px] bg-[#F3F3F3] flex items-center justify-center overflow-hidden">
+                            <div className="relative h-[200px] rounded-xl bg-[#F8FAFC] flex items-center justify-center overflow-hidden">
                                 <img
                                     src={getBundleImage(bundle)}
                                     alt={bundle.title || 'Bundle'}
@@ -2761,115 +2740,104 @@ const BuyNowFlow = () => {
                                 <h2 className="text-[12px] lg:text-[16px] font-semibold text-[#0F172A]">
                                     {bundle.title || `Bundle #${bundle.id}`}
                                 </h2>
-                                {bundle.bundle_type && (
-                                    <p className="text-[12px] text-gray-500 mt-[2px]">
-                                        {bundle.bundle_type}
-                                    </p>
-                                )}
-                                {bundle.backup_info && (
-                                    <p className="text-[12px] text-gray-500 mt-[2px]">
-                                        {bundle.backup_info}
-                                    </p>
-                                )}
-
-                                <div className="mt-2 flex items-start justify-between">
-                                    <div>
-                                        <div className="text-[12px] lg:text-[18px] font-bold text-[#273E8E] leading-5">
-                                            {formatPrice(totalPrice)}
-                                        </div>
-                                        <div className="mt-1 flex items-center gap-2">
-                                            {oldPrice && (
-                                                <span className="text-[10px] lg:text-[12px] text-gray-400 line-through">
-                                                    {formatPrice(oldPrice)}
-                                                </span>
-                                            )}
-                                            {discount > 0 && (
-                                                <span className="px-2 py-[2px] rounded-full text-[11px] text-orange-600 bg-orange-100">
-                                                    -{discount}%
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* What's inside */}
-                            <div className="mt-3">
-                                <p className="text-[12px] lg:text-[14px] font-medium mb-2">
-                                    What is inside the bundle ?
-                                </p>
-                                <div className="space-y-2">
-                                    {itemsIncluded.length > 0 ? itemsIncluded.map((item, idx) => {
-                                        const product = item.product || item;
-                                        const itemName = product?.name || product?.title || item?.name || `Item #${idx + 1}`;
-                                        const rawPrice = Number(product?.price || item?.selling_rate || item?.rate || 0);
-                                        const itemPrice = rawPrice === 0 ? 1000 : rawPrice;
-                                        const itemQuantity = item.quantity || 1;
-                                        
-                                        return (
-                                            <div
-                                                key={idx}
-                                                className="flex items-center justify-between bg-[#E8EDF8] rounded-[12px] px-3 py-3"
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-[44px] h-[44px] rounded-md bg-[#C9D0E6] flex items-center justify-center overflow-hidden">
-                                                        <img
-                                                            src={getItemIcon(item)}
-                                                            alt={itemName}
-                                                            className="max-w-[70%] max-h-[70%] object-contain"
-                                                            onError={(e) => {
-                                                                if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
-                                                                    e.target.src = FALLBACK_IMAGE;
-                                                                }
-                                                            }}
-                                                        />
-                                                    </div>
-                                                    <div className="text-[10px] lg:text-[13px] text-[#273E8E]">
-                                                        <div className="font-medium leading-4">
-                                                            {itemName}
-                                                            {itemQuantity > 1 && <span className="text-gray-500 ml-1">(× {itemQuantity})</span>}
-                                                        </div>
-                                                        <div className="font-semibold mt-[2px]">
-                                                            {formatPrice(itemPrice)}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    }) : (
-                                        <div className="text-gray-500 bg-white border rounded-xl p-4 text-xs lg:text-sm">
-                                            No items attached to this bundle.
-                                        </div>
+                                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 mt-[2px]">
+                                    {bundle.bundle_type && (
+                                        <p className="text-[12px] text-gray-500">{bundle.bundle_type}</p>
+                                    )}
+                                    {(bundle.category || bundle.product_category || bundle.category_type) && (
+                                        <>
+                                            <span className="text-[12px] text-gray-400">·</span>
+                                            <p className="text-[12px] text-gray-500">{bundle.category || bundle.product_category || bundle.category_type}</p>
+                                        </>
                                     )}
                                 </div>
-                            </div>
+                                {bundle.backup_info && (
+                                    <p className="text-[12px] text-gray-500 mt-[2px]">{bundle.backup_info}</p>
+                                )}
 
-                            {/* Fees - Mobile */}
-                            {bundle.fees && (
-                                <div className="mt-3">
-                                    <p className="text-[12px] lg:text-[14px] font-medium mb-2">Additional Fees</p>
-                                    <div className="space-y-2 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                                        {bundle.fees.installation_fee && (
-                                            <div className="flex justify-between text-xs">
-                                                <span className="text-gray-600">Installation Fee</span>
-                                                <span className="font-semibold">{formatPrice(Number(bundle.fees.installation_fee))}</span>
-                                            </div>
+                                <div className="mt-3 flex flex-col gap-0.5">
+                                    <span className="text-[10px] text-gray-500 uppercase tracking-wide">Bundle Price</span>
+                                    <div className="text-[12px] lg:text-[18px] font-bold text-[#273E8E] leading-5">
+                                        {formatPrice(totalPrice)}
+                                    </div>
+                                    <div className="mt-1 flex items-center gap-2">
+                                        {oldPrice && (
+                                            <span className="text-[10px] lg:text-[12px] text-gray-400 line-through">
+                                                {formatPrice(oldPrice)}
+                                            </span>
                                         )}
-                                        {bundle.fees.delivery_fee && (
-                                            <div className="flex justify-between text-xs">
-                                                <span className="text-gray-600">Delivery Fee</span>
-                                                <span className="font-semibold">{formatPrice(Number(bundle.fees.delivery_fee))}</span>
-                                            </div>
-                                        )}
-                                        {bundle.fees.inspection_fee && (
-                                            <div className="flex justify-between text-xs">
-                                                <span className="text-gray-600">Inspection Fee</span>
-                                                <span className="font-semibold">{formatPrice(Number(bundle.fees.inspection_fee))}</span>
-                                            </div>
+                                        {discount > 0 && (
+                                            <span className="px-2 py-[2px] rounded-full text-[11px] text-orange-600 bg-orange-100">
+                                                -{discount}%
+                                            </span>
                                         )}
                                     </div>
                                 </div>
-                            )}
+                            </div>
+
+                            {/* Tabs: Description | Specifications - Mobile */}
+                            <div className="mt-4">
+                                <div className="flex border-b border-gray-200 mb-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setBundleDetailTab('description')}
+                                        className={`px-3 py-2 text-[12px] font-medium border-b-2 -mb-px transition-colors ${bundleDetailTab === 'description' ? 'border-[#273E8E] text-[#273E8E]' : 'border-transparent text-gray-500'}`}
+                                    >
+                                        Description
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setBundleDetailTab('specs')}
+                                        className={`px-3 py-2 text-[12px] font-medium border-b-2 -mb-px transition-colors ${bundleDetailTab === 'specs' ? 'border-[#273E8E] text-[#273E8E]' : 'border-transparent text-gray-500'}`}
+                                    >
+                                        Specifications
+                                    </button>
+                                </div>
+
+                                {bundleDetailTab === 'description' && (
+                                    <div className="min-h-[60px]">
+                                        {descriptionText ? (
+                                            <p className="text-[11px] lg:text-[13px] text-gray-600 leading-relaxed whitespace-pre-wrap">
+                                                {descriptionText}
+                                            </p>
+                                        ) : (
+                                            <p className="text-[11px] text-gray-400 italic">No description found.</p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {bundleDetailTab === 'specs' && (
+                                    <div className="overflow-x-auto -mx-1">
+                                        {itemsIncluded.length > 0 ? (
+                                            <table className="w-full text-[11px] lg:text-[12px] border-collapse">
+                                                <thead>
+                                                    <tr className="border-b border-gray-200">
+                                                        <th className="text-left py-2 pr-2 text-gray-500 font-medium w-8">#</th>
+                                                        <th className="text-left py-2 pr-2 text-gray-700 font-medium">Item</th>
+                                                        <th className="text-right py-2 text-gray-500 font-medium w-10">Qty</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {itemsIncluded.map((item, idx) => {
+                                                        const product = item.product || item;
+                                                        const itemName = product?.name || product?.title || item?.name || `Item #${idx + 1}`;
+                                                        const itemQuantity = item.quantity || 1;
+                                                        return (
+                                                            <tr key={idx} className="border-b border-gray-100">
+                                                                <td className="py-2 pr-2 text-gray-500">{idx + 1}</td>
+                                                                <td className="py-2 pr-2 text-[#273E8E] font-medium">{itemName}</td>
+                                                                <td className="py-2 text-right text-gray-600">{itemQuantity}</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        ) : (
+                                            <p className="text-[11px] text-gray-500 py-3">No items attached to this bundle.</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
 
                             {/* Actions - Mobile */}
                             <div className="mt-4">
