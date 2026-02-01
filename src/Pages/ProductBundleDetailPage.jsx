@@ -39,8 +39,8 @@ const toAbsolute = (path) => {
   return `${API_ORIGIN}/storage/${cleaned}`;
 };
 
-// robustly read {data: {...}} or plain {...}
-const extractObject = (payload) => payload?.data ?? payload ?? null;
+// robustly read bundle from API: { data: bundle } or { data: { data: bundle } } or plain bundle
+const extractObject = (payload) => payload?.data?.data ?? payload?.data ?? payload ?? null;
 
 // Map API bundle -> props
 const mapBundleDetail = (b) => {
@@ -49,7 +49,7 @@ const mapBundleDetail = (b) => {
   const id = b.id;
   const title = b.title || `Bundle #${id}`;
   const label = b.bundle_type || "";
-  const image = b.featured_image ? toAbsolute(b.featured_image) : null;
+  const image = (b.featured_image && toAbsolute(b.featured_image)) || (b.featured_image_url && toAbsolute(b.featured_image_url)) || null;
 
   const total = toNumber(b.total_price);
   const discount = toNumber(b.discount_price);
@@ -81,26 +81,18 @@ const mapBundleDetail = (b) => {
         };
       })
       .filter(Boolean),
-    // Materials from materials array
+    // Materials from API materials array: { id, name, quantity, unit, rate, selling_rate, category }
     ...relMaterials.map((m) => {
-      // Handle both direct material objects and nested material.material structure
       const material = m?.material || m;
-      const materialImage = material?.featured_image || 
-                           material?.featured_image_url || 
-                           material?.image ||
-                           null;
+      const materialImage = material?.featured_image || material?.featured_image_url || material?.image || null;
       const materialPrice = toNumber(material?.selling_rate || material?.rate || material?.price || 0);
-      // If price is 0, show 1000 as per previous requirement
       const displayPrice = materialPrice === 0 ? 1000 : materialPrice;
-      
       return {
-        icon: materialImage
-          ? toAbsolute(materialImage)
-          : FALLBACK_IMAGE,
-        title: material?.name || `Material #${material?.id ?? ""}`,
+        icon: materialImage ? toAbsolute(materialImage) : FALLBACK_IMAGE,
+        title: material?.name || m?.name || `Material #${material?.id ?? m?.id ?? ""}`,
         price: displayPrice,
-        quantity: m?.quantity || 1,
-        unit: material?.unit || "",
+        quantity: m?.quantity ?? material?.quantity ?? 1,
+        unit: material?.unit || m?.unit || "",
       };
     }),
     // Custom services
@@ -135,17 +127,40 @@ const mapBundleDetail = (b) => {
   const inverterRating = b.inver_rating ?? "";
   const totalOutput = b.total_output ?? "";
 
-  // Prefer detailed_description like BNPL/Buy Now flow
-  const description = (b.detailed_description && String(b.detailed_description).trim()) || (b.description && String(b.description).trim()) || (b.desc && String(b.desc).trim())
-    ? ((b.detailed_description && String(b.detailed_description).trim()) ? b.detailed_description : (b.description && String(b.description).trim()) ? b.description : b.desc)
-    : "";
+  // API: detailed_description, description, desc – prefer detailed_description for display
+  const description = (b.detailed_description && String(b.detailed_description).trim())
+    ? b.detailed_description
+    : (b.description && String(b.description).trim())
+      ? b.description
+      : (b.desc && String(b.desc).trim())
+        ? b.desc
+        : "";
+
+  // API fields: backup_time_description, what_is_inside_bundle_text, what_bundle_powers_text, system_capacity_display, product_model, fees
+  const backupInfo = (b.backup_time_description && String(b.backup_time_description).trim()) || b.backup_info || "";
+  const whatIsInsideBundle = (b.what_is_inside_bundle_text && String(b.what_is_inside_bundle_text).trim()) || "";
+  const whatBundlePowers = (b.what_bundle_powers_text && String(b.what_bundle_powers_text).trim()) || "";
+  const systemCapacityDisplay = (b.system_capacity_display && String(b.system_capacity_display).trim()) || "";
+  const productModel = (b.product_model && String(b.product_model).trim()) || "";
+  const fees = b.fees && typeof b.fees === "object"
+    ? {
+        installation_fee: toNumber(b.fees.installation_fee),
+        delivery_fee: toNumber(b.fees.delivery_fee),
+        inspection_fee: toNumber(b.fees.inspection_fee),
+      }
+    : { installation_fee: 0, delivery_fee: 0, inspection_fee: 0 };
 
   return {
     id,
     label,
     bundleTitle: title,
-    backupInfo: b.backup_info ?? "",
+    backupInfo,
     description,
+    whatIsInsideBundle,
+    whatBundlePowers,
+    systemCapacityDisplay,
+    productModel,
+    fees,
     price,
     oldPrice,
     discount: discountBadge,
@@ -504,13 +519,43 @@ const ProductBundle = () => {
                     </div>
 
                     {bundleDetailTab === "description" && (
-                      <div className="min-h-[80px]">
+                      <div className="min-h-[80px] space-y-4">
                         {productData.description && String(productData.description).trim() ? (
                           <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
                             {productData.description}
                           </p>
                         ) : (
-                          <p className="text-sm text-gray-400 italic">No description found.</p>
+                          <p className="text-sm text-gray-400 italic">No description available.</p>
+                        )}
+                        {productData.backupInfo && (
+                          <>
+                            <h4 className="text-sm font-semibold text-gray-800 mt-3">Backup time</h4>
+                            <p className="text-sm text-gray-600 whitespace-pre-wrap">{productData.backupInfo}</p>
+                          </>
+                        )}
+                        {productData.systemCapacityDisplay && (
+                          <>
+                            <h4 className="text-sm font-semibold text-gray-800 mt-3">System capacity</h4>
+                            <p className="text-sm text-gray-600 whitespace-pre-wrap">{productData.systemCapacityDisplay}</p>
+                          </>
+                        )}
+                        {productData.whatIsInsideBundle && (
+                          <>
+                            <h4 className="text-sm font-semibold text-gray-800 mt-3">What&apos;s inside this bundle</h4>
+                            <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{productData.whatIsInsideBundle}</p>
+                          </>
+                        )}
+                        {productData.whatBundlePowers && (
+                          <>
+                            <h4 className="text-sm font-semibold text-gray-800 mt-3">What this bundle powers</h4>
+                            <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{productData.whatBundlePowers}</p>
+                          </>
+                        )}
+                        {productData.productModel && (
+                          <>
+                            <h4 className="text-sm font-semibold text-gray-800 mt-3">Product model</h4>
+                            <p className="text-sm text-gray-600">{productData.productModel}</p>
+                          </>
                         )}
                       </div>
                     )}
@@ -523,7 +568,8 @@ const ProductBundle = () => {
                               <tr className="border-b border-gray-200">
                                 <th className="text-left py-2 pr-4 text-gray-500 font-medium w-10">#</th>
                                 <th className="text-left py-2 pr-4 text-gray-700 font-medium">Item</th>
-                                <th className="text-right py-2 text-gray-500 font-medium w-16">Qty</th>
+                                <th className="text-right py-2 pr-4 text-gray-500 font-medium w-16">Qty</th>
+                                <th className="text-left py-2 text-gray-500 font-medium w-16">Unit</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -531,7 +577,8 @@ const ProductBundle = () => {
                                 <tr key={index} className="border-b border-gray-100">
                                   <td className="py-2.5 pr-4 text-gray-500">{index + 1}</td>
                                   <td className="py-2.5 pr-4 text-[#273E8E] font-medium">{item.title}</td>
-                                  <td className="py-2.5 text-right text-gray-600">{item.quantity ?? 1}</td>
+                                  <td className="py-2.5 pr-4 text-right text-gray-600">{item.quantity ?? 1}</td>
+                                  <td className="py-2.5 text-gray-600">{item.unit || "—"}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -542,51 +589,6 @@ const ProductBundle = () => {
                       </div>
                     )}
                   </div>
-
-                  {/* Appliances from Load Calculator - Only show if appliances exist */}
-                  {productData?.appliances && productData.appliances.length > 0 && (
-                    <div className="p-4">
-                      <h3 className="text-lg font-medium mb-3">
-                        Appliances from Load Calculator
-                      </h3>
-                      <div className="space-y-2">
-                        {productData.appliances.map((appliance, index) => {
-                          const applianceImage = appliance.image 
-                            ? (appliance.image.startsWith('http') ? appliance.image : toAbsolute(appliance.image))
-                            : FALLBACK_IMAGE;
-                          return (
-                            <div
-                              key={index}
-                              className="flex justify-between items-center bg-gray-100 h-[80px] px-3 py-2 rounded-md"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="bg-[#B0B7D0] rounded-md w-[60px] h-[60px] flex items-center justify-center overflow-hidden">
-                                  <img
-                                    src={applianceImage}
-                                    alt={appliance.name}
-                                    className="max-w-[60%] max-h-[60%] object-contain"
-                                    onError={(e) => {
-                                      if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
-                                        e.target.src = FALLBACK_IMAGE;
-                                      }
-                                    }}
-                                  />
-                                </div>
-                                <div>
-                                  <div className="text-[#273E8E] text-base font-semibold">
-                                    {appliance.name}
-                                  </div>
-                                  <div className="text-sm text-[#273E8E]">
-                                    {appliance.power}W
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {/* Actions */}
@@ -647,32 +649,37 @@ const ProductBundle = () => {
                         <span className="text-gray-600">Bundle Price</span>
                         <span className="font-medium">{productData.price}</span>
                       </div>
-                    </div>
-
-                    <hr className="my-4 border-gray-200" />
-
-                    {/* What the bundle is powering - Only show if appliances exist */}
-                    {productData?.appliances && productData.appliances.length > 0 && (
-                      <div className="mb-4">
-                        <h4 className="text-sm font-semibold text-gray-800 mb-2">What this bundle powers:</h4>
-                        <div className="space-y-1 max-h-[120px] overflow-y-auto">
-                          {productData.appliances.map((appliance, idx) => (
-                            <div key={idx} className="text-xs text-gray-600 flex items-center gap-2">
-                              <span className="w-1.5 h-1.5 bg-[#273E8E] rounded-full"></span>
-                              <span>{appliance.name} ({appliance.power}W)</span>
+                      {productData.fees && (productData.fees.installation_fee > 0 || productData.fees.delivery_fee > 0 || productData.fees.inspection_fee > 0) && (
+                        <>
+                          {productData.fees.installation_fee > 0 && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">Installation</span>
+                              <span className="font-medium">{formatNGN(productData.fees.installation_fee)}</span>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                          )}
+                          {productData.fees.delivery_fee > 0 && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">Delivery</span>
+                              <span className="font-medium">{formatNGN(productData.fees.delivery_fee)}</span>
+                            </div>
+                          )}
+                          {productData.fees.inspection_fee > 0 && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">Inspection</span>
+                              <span className="font-medium">{formatNGN(productData.fees.inspection_fee)}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
 
                     <hr className="my-4 border-gray-200" />
 
                     {/* Backup Time */}
                     <div>
                       <h4 className="text-sm font-semibold text-gray-800 mb-2">Backup Time</h4>
-                      <p className="text-xs text-gray-600">
-                        {productData.backupInfo || "8-12 hours (depending on usage)"}
+                      <p className="text-xs text-gray-600 whitespace-pre-wrap">
+                        {productData.backupInfo || "Depending on usage and load."}
                       </p>
                     </div>
                   </div>
@@ -793,13 +800,43 @@ const ProductBundle = () => {
                   </div>
 
                   {bundleDetailTab === "description" && (
-                    <div className="min-h-[60px]">
+                    <div className="min-h-[60px] space-y-3">
                       {productData.description && String(productData.description).trim() ? (
                         <p className="text-[11px] lg:text-[13px] text-gray-600 leading-relaxed whitespace-pre-wrap">
                           {productData.description}
                         </p>
                       ) : (
-                        <p className="text-[11px] text-gray-400 italic">No description found.</p>
+                        <p className="text-[11px] text-gray-400 italic">No description available.</p>
+                      )}
+                      {productData.backupInfo && (
+                        <>
+                          <h4 className="text-[11px] font-semibold text-gray-800 mt-2">Backup time</h4>
+                          <p className="text-[11px] text-gray-600 whitespace-pre-wrap">{productData.backupInfo}</p>
+                        </>
+                      )}
+                      {productData.systemCapacityDisplay && (
+                        <>
+                          <h4 className="text-[11px] font-semibold text-gray-800 mt-2">System capacity</h4>
+                          <p className="text-[11px] text-gray-600 whitespace-pre-wrap">{productData.systemCapacityDisplay}</p>
+                        </>
+                      )}
+                      {productData.whatIsInsideBundle && (
+                        <>
+                          <h4 className="text-[11px] font-semibold text-gray-800 mt-2">What&apos;s inside</h4>
+                          <p className="text-[11px] text-gray-600 whitespace-pre-wrap">{productData.whatIsInsideBundle}</p>
+                        </>
+                      )}
+                      {productData.whatBundlePowers && (
+                        <>
+                          <h4 className="text-[11px] font-semibold text-gray-800 mt-2">What it powers</h4>
+                          <p className="text-[11px] text-gray-600 whitespace-pre-wrap">{productData.whatBundlePowers}</p>
+                        </>
+                      )}
+                      {productData.productModel && (
+                        <>
+                          <h4 className="text-[11px] font-semibold text-gray-800 mt-2">Product model</h4>
+                          <p className="text-[11px] text-gray-600">{productData.productModel}</p>
+                        </>
                       )}
                     </div>
                   )}
@@ -812,7 +849,8 @@ const ProductBundle = () => {
                             <tr className="border-b border-gray-200">
                               <th className="text-left py-2 pr-2 text-gray-500 font-medium w-8">#</th>
                               <th className="text-left py-2 pr-2 text-gray-700 font-medium">Item</th>
-                              <th className="text-right py-2 text-gray-500 font-medium w-10">Qty</th>
+                              <th className="text-right py-2 pr-2 text-gray-500 font-medium w-10">Qty</th>
+                              <th className="text-left py-2 text-gray-500 font-medium w-10">Unit</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -820,7 +858,8 @@ const ProductBundle = () => {
                               <tr key={idx} className="border-b border-gray-100">
                                 <td className="py-2 pr-2 text-gray-500">{idx + 1}</td>
                                 <td className="py-2 pr-2 text-[#273E8E] font-medium">{item.title}</td>
-                                <td className="py-2 text-right text-gray-600">{item.quantity ?? 1}</td>
+                                <td className="py-2 pr-2 text-right text-gray-600">{item.quantity ?? 1}</td>
+                                <td className="py-2 text-gray-600">{item.unit || "—"}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -831,52 +870,6 @@ const ProductBundle = () => {
                     </div>
                   )}
                 </div>
-
-                {/* Appliances from Load Calculator - Mobile - Only show if appliances exist */}
-                {productData?.appliances && productData.appliances.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-[12px] lg:text-[14px] font-medium mb-2">
-                      Appliances from Load Calculator
-                    </p>
-
-                    <div className="space-y-2">
-                      {productData.appliances.map((appliance, idx) => {
-                        const applianceImage = appliance.image 
-                          ? (appliance.image.startsWith('http') ? appliance.image : toAbsolute(appliance.image))
-                          : FALLBACK_IMAGE;
-                        return (
-                          <div
-                            key={idx}
-                            className="flex items-center justify-between bg-[#E8EDF8] rounded-[12px] px-3 py-3"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="w-[44px] h-[44px] rounded-md bg-[#C9D0E6] flex items-center justify-center overflow-hidden">
-                                <img
-                                  src={applianceImage}
-                                  alt={appliance.name}
-                                  className="max-w-[70%] max-h-[70%] object-contain"
-                                  onError={(e) => {
-                                    if (e.target.src && !e.target.src.includes(FALLBACK_IMAGE)) {
-                                      e.target.src = FALLBACK_IMAGE;
-                                    }
-                                  }}
-                                />
-                              </div>
-                              <div className="text-[10px] lg:text-[13px] text-[#273E8E]">
-                                <div className="font-medium leading-4">
-                                  {appliance.name}
-                                </div>
-                                <div className="font-semibold mt-[2px]">
-                                  {appliance.power}W
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
 
                 {/* Actions */}
                 <div className="mt-4 flex flex-col gap-3">

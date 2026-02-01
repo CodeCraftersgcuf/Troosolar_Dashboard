@@ -3,14 +3,15 @@ import React, { useState } from "react";
 import HrLine from "../Component/MobileSectionResponsive/HrLine";
 
 const SolarSavingCalculator = () => {
-  // State management for form inputs
+  // State management for form inputs (aligned with spreadsheet: fuel/litre, daily hours, etc.)
   const [formData, setFormData] = useState({
     generatorSize: '',
-    hoursPerDay: '',
+    fuelCostPerLitre: '750',       // Petrol default 750; use 1000 for diesel (12kVA)
+    hoursPerDay: '4',              // Daily hours of usage (spreadsheet uses 4)
     maintenanceCost: '',
     gridSpend: '',
     solarBudget: '',
-    duration: ''
+    duration: '60'                 // Default 5 years
   });
 
   // State for calculation results
@@ -31,14 +32,14 @@ const SolarSavingCalculator = () => {
     duration: false
   });
 
-  // Generator size options matching the Excel spreadsheet
+  // Generator size options matching the spreadsheet (SOLAR/GENERATOR COST SAVINGS ANALYSIS)
   const generatorSizes = [
-    { value: '1.5kva', label: '1.5 KVA' },
-    { value: '3.6kva', label: '3.6 KVA' },
-    { value: '6.5kva', label: '6.5 KVA' },
-    { value: '8.5kva', label: '8.5 KVA' },
-    { value: '11kva', label: '11 KVA' },
-    { value: '12kva-diesel', label: '12 KVA - Diesel' }
+    { value: '1.2kva', label: '1.2kVA / 1.5kVA / 1.8kVA' },
+    { value: '3.6kva', label: '3.6kVA / 4kVA' },
+    { value: '6.5kva', label: '5kVA / 6kVA / 6.5kVA' },
+    { value: '8.5kva', label: '7.5kVA / 8kVA / 8.5kVA' },
+    { value: '11kva', label: '10kVA / 11kVA' },
+    { value: '12kva-diesel', label: '12kVA - Diesel' }
   ];
 
   // Handle input changes
@@ -57,10 +58,11 @@ const SolarSavingCalculator = () => {
     }
   };
 
-  // Calculate solar savings
+  // Calculate solar savings (formulas aligned with SOLAR/GENERATOR COST SAVINGS ANALYSIS spreadsheet)
   const calculateSavings = () => {
     const {
       generatorSize,
+      fuelCostPerLitre,
       hoursPerDay,
       maintenanceCost,
       gridSpend,
@@ -68,147 +70,116 @@ const SolarSavingCalculator = () => {
       duration
     } = formData;
 
-    // Validate required fields and highlight missing ones
     const errors = {
       generatorSize: !generatorSize,
       hoursPerDay: !hoursPerDay,
-      maintenanceCost: !maintenanceCost,
+      maintenanceCost: false,
       solarBudget: !solarBudget,
       duration: !duration
     };
-    
     setFieldErrors(errors);
-    
-    // Check if any field is missing
-    if (Object.values(errors).some(error => error)) {
-      return;
-    }
+    if (Object.values(errors).some(error => error)) return;
 
-    // Convert string values to numbers
-    const hours = parseFloat(hoursPerDay) || 2.0; // Default 2 hours as per spreadsheet
+    const hours = parseFloat(hoursPerDay) || 4;
+    const fuelPricePerLitre = parseFloat(fuelCostPerLitre) || 750;
     const maintenance = parseFloat(maintenanceCost) || 0;
     const grid = parseFloat(gridSpend) || 0;
     const budget = parseFloat(solarBudget) || 0;
-    const months = parseInt(duration) || 60; // Default to 60 months (5 years) as per spreadsheet
+    const months = parseInt(duration) || 60;
 
-    // Generator data from Excel spreadsheet
+    // Spreadsheet data: Hourly Fuel Consumption (L), Monthly Service (1.2kVA only), PHCN (1.2kVA only), Cost of Generator (1.2kVA only), Cost of Solar System
     const generatorData = {
-      '1.5kva': {
-        fuelConsumption: 0.65, // liters per hour
-        fuelPrice: 865, // Naira per liter (petrol)
+      '1.2kva': {
+        hourlyFuelL: 0.65,
         monthlyServiceCost: 20000,
-        monthlyPHCNBill: 2500,
+        monthlyPHCNBill: 5000,
         generatorCapEx: 130000,
-        solarCapEx: 1300000,
-        solarYearlyOpEx: 20000
+        solarCapEx: null, // not in spreadsheet; use user budget
+        solarMaintenancePerYear: 30000
       },
       '3.6kva': {
-        fuelConsumption: 1.50,
-        fuelPrice: 865,
-        monthlyServiceCost: 30000,
-        monthlyPHCNBill: 3500,
-        generatorCapEx: 500000,
+        hourlyFuelL: 1.50,
+        monthlyServiceCost: 0,
+        monthlyPHCNBill: 0,
+        generatorCapEx: 0,
         solarCapEx: 2600000,
-        solarYearlyOpEx: 30000
+        solarMaintenancePerYear: 30000
       },
       '6.5kva': {
-        fuelConsumption: 3.00,
-        fuelPrice: 865,
-        monthlyServiceCost: 40000,
-        monthlyPHCNBill: 5000,
-        generatorCapEx: 700000,
+        hourlyFuelL: 3.00,
+        monthlyServiceCost: 0,
+        monthlyPHCNBill: 0,
+        generatorCapEx: 0,
         solarCapEx: 4500000,
-        solarYearlyOpEx: 50000
+        solarMaintenancePerYear: 30000
       },
       '8.5kva': {
-        fuelConsumption: 4.75,
-        fuelPrice: 865,
-        monthlyServiceCost: 50000,
-        monthlyPHCNBill: 12500,
-        generatorCapEx: 1000000,
+        hourlyFuelL: 4.75,
+        monthlyServiceCost: 0,
+        monthlyPHCNBill: 0,
+        generatorCapEx: 0,
         solarCapEx: 7500000,
-        solarYearlyOpEx: 65000
+        solarMaintenancePerYear: 30000
       },
       '11kva': {
-        fuelConsumption: 6.25,
-        fuelPrice: 865,
-        monthlyServiceCost: 50000,
-        monthlyPHCNBill: 15000,
-        generatorCapEx: 1100000,
+        hourlyFuelL: 6.25,
+        monthlyServiceCost: 0,
+        monthlyPHCNBill: 0,
+        generatorCapEx: 0,
         solarCapEx: 11000000,
-        solarYearlyOpEx: 90000
+        solarMaintenancePerYear: 30000
       },
       '12kva-diesel': {
-        fuelConsumption: 2.90,
-        fuelPrice: 1750, // Diesel price
-        monthlyServiceCost: 60000,
-        monthlyPHCNBill: 15000,
-        generatorCapEx: 1850000,
-        solarCapEx: 11000000,
-        solarYearlyOpEx: 90000
+        hourlyFuelL: 2.90,
+        monthlyServiceCost: 0,
+        monthlyPHCNBill: 0,
+        generatorCapEx: 0,
+        solarCapEx: 14000000,
+        solarMaintenancePerYear: 30000
       }
     };
 
-    // Get generator data for selected size
-    const genData = generatorData[generatorSize] || generatorData['1.5kva'];
-    
-    // Use provided values or defaults from spreadsheet
-    const fuelRate = genData.fuelConsumption;
-    const fuelPricePerLiter = genData.fuelPrice;
+    const genData = generatorData[generatorSize] || generatorData['1.2kva'];
+    // 12kVA Diesel uses 1000 N/L per spreadsheet; others use user input (default 750)
+    const fuelPerLitre = generatorSize === '12kva-diesel' ? (fuelPricePerLitre || 1000) : (fuelPricePerLitre || 750);
     const monthlyService = maintenance || genData.monthlyServiceCost;
     const monthlyPHCN = grid || genData.monthlyPHCNBill;
-    const generatorCapEx = genData.generatorCapEx;
-    const solarCapEx = budget || genData.solarCapEx;
-    const solarYearlyOpEx = genData.solarYearlyOpEx;
-    
-    // Calculate daily fuel cost
-    const dailyFuelCost = hours * fuelRate * fuelPricePerLiter;
-    
-    // Calculate monthly fuel cost
-    const monthlyFuelCost = dailyFuelCost * 30;
-    
-    // Calculate total monthly generator operational cost
-    const totalMonthlyGenOpExCost = monthlyFuelCost + monthlyService;
-    
-    // Calculate total monthly energy bill (Generator + PHCN)
-    const totalMonthlyEnergyBill = totalMonthlyGenOpExCost + monthlyPHCN;
-    
-    // Calculate total energy cost over the period (in months)
-    const totalEnergyBillOverPeriod = totalMonthlyEnergyBill * months;
-    
-    // Calculate total generator cost (CapEx + OpEx over period)
-    const totalGenSpend = generatorCapEx + totalEnergyBillOverPeriod;
-    
-    // Calculate solar costs
-    const solar5YearOpEx = solarYearlyOpEx * 5; // 5 years as per spreadsheet
-    const totalSolarSpend = solarCapEx + solar5YearOpEx;
-    
-    // Calculate savings based on selected duration
-    // For comparison with spreadsheet (5 years), we'll calculate both
-    const totalEnergyBill5Years = totalMonthlyEnergyBill * 60; // 60 months = 5 years
-    const totalGenSpend5Years = generatorCapEx + totalEnergyBill5Years;
-    
-    // Calculate for selected duration
-    const totalGenSpendForPeriod = generatorCapEx + totalEnergyBillOverPeriod;
-    
-    // Calculate savings - use 5-year comparison as per spreadsheet
-    const totalSavings = totalGenSpend5Years - totalSolarSpend;
-    
-    // Calculate break-even period (when solar savings equal solar investment)
-    const monthlySavings = totalMonthlyEnergyBill - (solarYearlyOpEx / 12);
-    const breakEvenPeriod = monthlySavings > 0 ? Math.ceil(solarCapEx / monthlySavings) : 0;
+    const generatorCapEx = genData.generatorCapEx || 0;
+    const solarCapEx = budget || genData.solarCapEx || 0;
+    const solarMaintenancePerYear = genData.solarMaintenancePerYear || 30000;
 
-    // Update results
+    // Spreadsheet: Total Daily Cost of Fuel = Hourly Fuel Consumption * Daily Hours * Cost Per Litre
+    const totalDailyFuelCost = genData.hourlyFuelL * hours * fuelPerLitre;
+    // Total Monthly Cost of Fuel = Total Daily Cost of Fuel * 30
+    const totalMonthlyFuelCost = totalDailyFuelCost * 30;
+    // Total Monthly Generator Expenses = Total Monthly Cost of Fuel + Monthly Service Cost
+    const totalMonthlyGenExpenses = totalMonthlyFuelCost + monthlyService;
+    // Total Monthly Energy Bill = Total Monthly Generator Expenses + Monthly PHCN Bill
+    const totalMonthlyEnergyBill = totalMonthlyGenExpenses + monthlyPHCN;
+
+    // Estimated Total Energy Cost for 5 Years (Generator): (Total Monthly Energy Bill * 60) + Cost of Generator (only for 1.2kVA)
+    const totalEnergyBill5Years = totalMonthlyEnergyBill * 60;
+    const totalGenSpend5Years = totalEnergyBill5Years + generatorCapEx;
+
+    // Total Cost of Solar System & Maintenance for 5 Years = Cost of Solar System + (30,000 * 5)
+    const solarMaintenance5Years = solarMaintenancePerYear * 5;
+    const totalSolarSpend5Years = solarCapEx + solarMaintenance5Years;
+
+    // Cost Savings after 5 years = Estimated Total Energy Cost for 5 Years (Generator) - Total Cost of Solar & Maintenance for 5 Years
+    const totalSavings = totalGenSpend5Years - totalSolarSpend5Years;
+
+    // Break-even: months until solar investment is recovered
+    const monthlySavingsFromSolar = totalMonthlyEnergyBill - (solarMaintenancePerYear / 12);
+    const breakEvenPeriod = monthlySavingsFromSolar > 0 ? Math.ceil(solarCapEx / monthlySavingsFromSolar) : 0;
+
     const years = months / 12;
-    const displayDuration = years >= 1 
-      ? `${years} Year${years > 1 ? 's' : ''}` 
-      : `${months} month${months > 1 ? 's' : ''}`;
-    
+    const displayDuration = years >= 1 ? `${years} Year${years > 1 ? 's' : ''}` : `${months} month${months > 1 ? 's' : ''}`;
+
     setResults({
       totalSavings: Math.max(0, totalSavings),
-      genSpend: totalGenSpend5Years, // Show 5-year generator cost for comparison
-      solarSpend: totalSolarSpend,
-      breakEvenPeriod: breakEvenPeriod,
+      genSpend: totalGenSpend5Years,
+      solarSpend: totalSolarSpend5Years,
+      breakEvenPeriod,
       duration: displayDuration
     });
   };
@@ -275,11 +246,25 @@ const SolarSavingCalculator = () => {
 
                   <div>
                     <label className="block mb-2 text-[17px]">
-                      Hours you run your gen/day
+                      Current cost of fuel per litre (Naira) – Petrol / Diesel
                     </label>
                     <input
                       type="number"
-                      placeholder="2.0"
+                      placeholder="750 (Petrol) or 1000 (Diesel)"
+                      min="0"
+                      className="w-full border border-gray-300 rounded-lg px-4 py-4 bg-white outline-none"
+                      value={formData.fuelCostPerLitre}
+                      onChange={(e) => handleInputChange('fuelCostPerLitre', e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-2 text-[17px]">
+                      Daily hours of usage of generator (hours)
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="4"
                       step="0.5"
                       min="0"
                       className={`w-full border rounded-lg px-4 py-4 bg-white outline-none ${
@@ -294,11 +279,11 @@ const SolarSavingCalculator = () => {
 
                   <div>
                     <label className="block mb-2 text-[17px]">
-                      Gen maintenance cost/month (in Naira)
+                      Gen maintenance cost/month (in Naira) – e.g. 20,000 for 1.2kVA
                     </label>
                     <input
                       type="number"
-                      placeholder="Type answer (in naira)"
+                      placeholder="Optional"
                       className={`w-full border rounded-lg px-4 py-4 bg-white outline-none ${
                         fieldErrors.maintenanceCost 
                           ? 'border-red-500 ring-2 ring-red-200' 
@@ -311,11 +296,11 @@ const SolarSavingCalculator = () => {
 
                   <div>
                     <label className="block mb-2 text-[17px] ">
-                      Monthly Spend on grid in Naira (Optional)
+                      Monthly PHCN bill (Naira) – e.g. 5,000 for 1.2kVA (Optional)
                     </label>
                     <input
                       type="number"
-                      placeholder="Type answer (in naira)"
+                      placeholder="Optional"
                       className="w-full border border-gray-300 rounded-lg px-4  py-4  bg-white outline-none"
                       value={formData.gridSpend}
                       onChange={(e) => handleInputChange('gridSpend', e.target.value)}
@@ -492,11 +477,25 @@ const SolarSavingCalculator = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Hours you run your gen/day
+                  Current cost of fuel per litre (Naira)
                 </label>
                 <input
                   type="number"
-                  placeholder="2.0"
+                  placeholder="750 (Petrol) or 1000 (Diesel)"
+                  min="0"
+                  className="w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
+                  value={formData.fuelCostPerLitre}
+                  onChange={(e) => handleInputChange('fuelCostPerLitre', e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Daily hours of usage of generator (hours)
+                </label>
+                <input
+                  type="number"
+                  placeholder="4"
                   step="0.5"
                   min="0"
                   className={`w-full bg-white border rounded-lg px-3 py-3 text-sm outline-none ${
@@ -511,7 +510,7 @@ const SolarSavingCalculator = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Gen maintenance cost/month (in Naira)
+                  Gen maintenance cost/month (in Naira) – optional
                 </label>
                 <input
                   type="number"
@@ -528,11 +527,11 @@ const SolarSavingCalculator = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Monthly Spend on grid in Naira (Optional)
+                  Monthly PHCN bill (Naira) – optional
                 </label>
                 <input
                   type="number"
-                  placeholder="Type answer (in naira)"
+                  placeholder="Optional"
                   className="w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
                   value={formData.gridSpend}
                   onChange={(e) => handleInputChange('gridSpend', e.target.value)}

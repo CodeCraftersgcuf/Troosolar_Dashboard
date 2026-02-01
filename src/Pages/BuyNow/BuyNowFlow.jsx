@@ -232,10 +232,11 @@ const BuyNowFlow = () => {
         }
     };
 
-    // Handle bundleId and editBundle parameters
+    // Handle bundleId and editBundle / fromBundle parameters
     React.useEffect(() => {
         const bundleId = searchParams.get('bundleId');
         const editBundle = searchParams.get('editBundle');
+        const fromBundle = searchParams.get('fromBundle');
         const stepParam = searchParams.get('step');
         
         if (bundleId && editBundle === 'true') {
@@ -288,6 +289,43 @@ const BuyNowFlow = () => {
             };
             
             loadBundleForEditing();
+        } else if (bundleId && (stepParam === '7' || fromBundle === 'true')) {
+            // Coming from ProductBundle detail page (Buy Now): load bundle details and show order summary with price
+            const loadBundleForOrderSummary = async () => {
+                try {
+                    const token = localStorage.getItem('access_token');
+                    const response = await axios.get(API.BUNDLE_DETAILS(bundleId), {
+                        headers: {
+                            Accept: 'application/json',
+                            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                        },
+                    });
+                    const bundleData = response.data?.data ?? response.data?.data ?? response.data;
+                    if (bundleData) {
+                        const totalPrice = Number(bundleData.discount_price || bundleData.total_price || 0);
+                        const bundleForSelection = {
+                            id: bundleData.id,
+                            bundle: bundleData,
+                            price: totalPrice,
+                            quantity: 1,
+                        };
+                        setFormData(prev => ({
+                            ...prev,
+                            selectedBundles: [bundleForSelection],
+                            selectedBundleId: Number(bundleId),
+                            selectedBundle: bundleData,
+                            selectedProductPrice: totalPrice,
+                            optionType: prev.optionType || 'choose-system',
+                            productCategory: prev.productCategory || 'full-kit',
+                        }));
+                        setStep(7);
+                    }
+                } catch (error) {
+                    console.error('Failed to load bundle for order summary:', error);
+                    alert('Failed to load bundle details. Please try again.');
+                }
+            };
+            loadBundleForOrderSummary();
         } else if (stepParam) {
             setStep(Number(stepParam));
             // When coming from Load Calculator with step=3.5 and q, set defaults so bundle list shows
@@ -1193,9 +1231,11 @@ const BuyNowFlow = () => {
                 include_insurance: formData.includeInsurance || false,
             };
 
-            // For pre-packaged bundles: send bundle_id
+            // For pre-packaged bundles: send bundle_id and amount (so backend has correct price even if bundle record is stale)
             if (formData.selectedBundleId && formData.optionType === 'choose-system') {
                 payload.bundle_id = formData.selectedBundleId;
+                const bundleTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+                if (bundleTotal > 0) payload.amount = bundleTotal;
             }
             // For custom bundles (build-system): send amount and custom_materials
             else if (formData.optionType === 'build-system' && formData.selectedProducts.length > 0) {
@@ -1309,7 +1349,15 @@ const BuyNowFlow = () => {
         try {
             await ensureFlutterwave();
 
-            const amount = Number(invoiceDetails.total || 0);
+            // Use same logic as invoice display: correct total when API underreports product price
+            const basePriceFromItems = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0)
+                + formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
+            const basePrice = basePriceFromItems > 0 ? basePriceFromItems : (formData.selectedProductPrice * (formData.singleItemQuantity || 1));
+            const fees = (invoiceDetails.installation_fee || 0) + (invoiceDetails.material_cost || 0) + (invoiceDetails.delivery_fee || 0)
+                + (invoiceDetails.inspection_fee || 0) + (invoiceDetails.insurance_fee || 0) + (invoiceDetails.add_ons_total || 0);
+            const calculatedTotal = basePrice + fees;
+            const apiTotal = invoiceDetails.total != null ? Number(invoiceDetails.total) : null;
+            const amount = (basePrice > 0 && (apiTotal == null || apiTotal < basePrice)) ? calculatedTotal : (apiTotal ?? calculatedTotal ?? 0);
             const txRef = "buynow_" + Date.now() + "_" + orderId;
 
             // Get user info from localStorage or API
@@ -2554,9 +2602,9 @@ const BuyNowFlow = () => {
                                             </p>
                                         )}
                                     </div>
-                                    {bundle.backup_info && (
-                                        <p className="text-sm text-gray-500 pt-1">
-                                            {bundle.backup_info}
+                                    {(bundle.backup_time_description || bundle.backup_info) && (
+                                        <p className="text-sm text-gray-500 pt-1 whitespace-pre-wrap">
+                                            {bundle.backup_time_description || bundle.backup_info}
                                         </p>
                                     )}
 
@@ -2605,13 +2653,37 @@ const BuyNowFlow = () => {
                                     </div>
 
                                     {bundleDetailTab === 'description' && (
-                                        <div className="min-h-[80px]">
+                                        <div className="min-h-[80px] space-y-4">
                                             {descriptionText ? (
                                                 <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
                                                     {descriptionText}
                                                 </p>
                                             ) : (
                                                 <p className="text-sm text-gray-400 italic">No description found.</p>
+                                            )}
+                                            {(bundle.system_capacity_display && String(bundle.system_capacity_display).trim()) && (
+                                                <>
+                                                    <h4 className="text-sm font-semibold text-gray-800 mt-3">System capacity</h4>
+                                                    <p className="text-sm text-gray-600 whitespace-pre-wrap">{bundle.system_capacity_display}</p>
+                                                </>
+                                            )}
+                                            {(bundle.what_is_inside_bundle_text && String(bundle.what_is_inside_bundle_text).trim()) && (
+                                                <>
+                                                    <h4 className="text-sm font-semibold text-gray-800 mt-3">What&apos;s inside this bundle</h4>
+                                                    <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{bundle.what_is_inside_bundle_text}</p>
+                                                </>
+                                            )}
+                                            {(bundle.what_bundle_powers_text && String(bundle.what_bundle_powers_text).trim()) && (
+                                                <>
+                                                    <h4 className="text-sm font-semibold text-gray-800 mt-3">What this bundle powers</h4>
+                                                    <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{bundle.what_bundle_powers_text}</p>
+                                                </>
+                                            )}
+                                            {(bundle.product_model && String(bundle.product_model).trim()) && (
+                                                <>
+                                                    <h4 className="text-sm font-semibold text-gray-800 mt-3">Product model</h4>
+                                                    <p className="text-sm text-gray-600">{bundle.product_model}</p>
+                                                </>
                                             )}
                                         </div>
                                     )}
@@ -2624,19 +2696,22 @@ const BuyNowFlow = () => {
                                                         <tr className="border-b border-gray-200">
                                                             <th className="text-left py-2 pr-4 text-gray-500 font-medium w-10">#</th>
                                                             <th className="text-left py-2 pr-4 text-gray-700 font-medium">Item</th>
-                                                            <th className="text-right py-2 text-gray-500 font-medium w-16">Qty</th>
+                                                            <th className="text-right py-2 pr-4 text-gray-500 font-medium w-16">Qty</th>
+                                                            <th className="text-left py-2 text-gray-500 font-medium w-16">Unit</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
                                                         {itemsIncluded.map((item, index) => {
                                                             const product = item.product || item;
                                                             const itemName = product?.name || product?.title || item?.name || `Item #${index + 1}`;
-                                                            const itemQuantity = item.quantity || 1;
+                                                            const itemQuantity = item.quantity ?? product?.quantity ?? 1;
+                                                            const itemUnit = item.unit ?? product?.unit ?? "—";
                                                             return (
                                                                 <tr key={index} className="border-b border-gray-100">
                                                                     <td className="py-2.5 pr-4 text-gray-500">{index + 1}</td>
                                                                     <td className="py-2.5 pr-4 text-[#273E8E] font-medium">{itemName}</td>
-                                                                    <td className="py-2.5 text-right text-gray-600">{itemQuantity}</td>
+                                                                    <td className="py-2.5 pr-4 text-right text-gray-600">{itemQuantity}</td>
+                                                                    <td className="py-2.5 text-gray-600">{itemUnit}</td>
                                                                 </tr>
                                                             );
                                                         })}
@@ -2707,12 +2782,37 @@ const BuyNowFlow = () => {
 
                                     <hr className="my-4 border-gray-200" />
 
-                                    {bundle.backup_info && (
+                                    {(bundle.backup_time_description || bundle.backup_info) && (
                                         <div>
                                             <h4 className="text-sm font-semibold text-gray-800 mb-2">Backup Time</h4>
-                                            <p className="text-xs text-gray-600">
-                                                {bundle.backup_info}
+                                            <p className="text-xs text-gray-600 whitespace-pre-wrap">
+                                                {bundle.backup_time_description || bundle.backup_info}
                                             </p>
+                                        </div>
+                                    )}
+                                    {bundle.fees && (bundle.fees.installation_fee > 0 || bundle.fees.delivery_fee > 0 || bundle.fees.inspection_fee > 0) && (
+                                        <div className="mt-4">
+                                            <h4 className="text-sm font-semibold text-gray-800 mb-2">Fees</h4>
+                                            <div className="space-y-1 text-xs text-gray-600">
+                                                {bundle.fees.installation_fee > 0 && (
+                                                    <div className="flex justify-between">
+                                                        <span>Installation</span>
+                                                        <span>{formatPrice(bundle.fees.installation_fee)}</span>
+                                                    </div>
+                                                )}
+                                                {bundle.fees.delivery_fee > 0 && (
+                                                    <div className="flex justify-between">
+                                                        <span>Delivery</span>
+                                                        <span>{formatPrice(bundle.fees.delivery_fee)}</span>
+                                                    </div>
+                                                )}
+                                                {bundle.fees.inspection_fee > 0 && (
+                                                    <div className="flex justify-between">
+                                                        <span>Inspection</span>
+                                                        <span>{formatPrice(bundle.fees.inspection_fee)}</span>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -2751,8 +2851,8 @@ const BuyNowFlow = () => {
                                         </>
                                     )}
                                 </div>
-                                {bundle.backup_info && (
-                                    <p className="text-[12px] text-gray-500 mt-[2px]">{bundle.backup_info}</p>
+                                {(bundle.backup_time_description || bundle.backup_info) && (
+                                    <p className="text-[12px] text-gray-500 mt-[2px] whitespace-pre-wrap">{bundle.backup_time_description || bundle.backup_info}</p>
                                 )}
 
                                 <div className="mt-3 flex flex-col gap-0.5">
@@ -2814,19 +2914,22 @@ const BuyNowFlow = () => {
                                                     <tr className="border-b border-gray-200">
                                                         <th className="text-left py-2 pr-2 text-gray-500 font-medium w-8">#</th>
                                                         <th className="text-left py-2 pr-2 text-gray-700 font-medium">Item</th>
-                                                        <th className="text-right py-2 text-gray-500 font-medium w-10">Qty</th>
+                                                        <th className="text-right py-2 pr-2 text-gray-500 font-medium w-10">Qty</th>
+                                                        <th className="text-left py-2 text-gray-500 font-medium w-10">Unit</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {itemsIncluded.map((item, idx) => {
                                                         const product = item.product || item;
                                                         const itemName = product?.name || product?.title || item?.name || `Item #${idx + 1}`;
-                                                        const itemQuantity = item.quantity || 1;
+                                                        const itemQuantity = item.quantity ?? product?.quantity ?? 1;
+                                                        const itemUnit = item.unit ?? product?.unit ?? "—";
                                                         return (
                                                             <tr key={idx} className="border-b border-gray-100">
                                                                 <td className="py-2 pr-2 text-gray-500">{idx + 1}</td>
                                                                 <td className="py-2 pr-2 text-[#273E8E] font-medium">{itemName}</td>
-                                                                <td className="py-2 text-right text-gray-600">{itemQuantity}</td>
+                                                                <td className="py-2 pr-2 text-right text-gray-600">{itemQuantity}</td>
+                                                                <td className="py-2 text-gray-600">{itemUnit}</td>
                                                             </tr>
                                                         );
                                                     })}
@@ -3797,9 +3900,13 @@ const BuyNowFlow = () => {
         const insuranceFee = invoiceDetails?.insurance_fee || 0;
         const addOnsTotal = invoiceDetails?.add_ons_total || 0;
         
-        // Calculate total (use API total if available, otherwise calculate)
+        // Calculate total (use API total only if it includes product price; otherwise use frontend calculation)
         const calculatedTotal = basePrice + materialCost + installationFee + deliveryFee + inspectionFee + insuranceFee + addOnsTotal;
-        const invoiceTotal = invoiceDetails?.total || calculatedTotal;
+        const apiTotal = invoiceDetails?.total != null ? Number(invoiceDetails.total) : null;
+        // When we have items (basePrice > 0), prefer calculatedTotal if API total is missing or less than basePrice (backend may have missed product price)
+        const invoiceTotal = (basePrice > 0 && (apiTotal == null || apiTotal < basePrice))
+            ? calculatedTotal
+            : (apiTotal ?? calculatedTotal);
         
         return (
         <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">

@@ -386,19 +386,18 @@ const BNPLFlow = () => {
         }
     }, [searchParams]);
     
-    // Load bundle and skip to order summary step
+    // Load bundle and skip to order summary step (use BUNDLE_DETAILS for full data including price)
     const loadBundleAndSkipToStep = async (bundleId, targetStep) => {
         setLoading(true);
         try {
             const token = localStorage.getItem('access_token');
-            const response = await axios.get(API.BUNDLE_BY_ID(bundleId), {
+            const response = await axios.get(API.BUNDLE_DETAILS(bundleId), {
                 headers: {
                     Accept: 'application/json',
                     ...(token ? { Authorization: `Bearer ${token}` } : {}),
                 },
             });
-            
-            const bundle = response.data?.data ?? response.data;
+            const bundle = response.data?.data ?? response.data?.data ?? response.data;
             if (bundle) {
                 const price = Number(bundle.discount_price || bundle.total_price || 0);
                 
@@ -1840,9 +1839,9 @@ const BNPLFlow = () => {
                                             </p>
                                         )}
                                     </div>
-                                    {bundle.backup_info && (
-                                        <p className="text-sm text-gray-500 pt-1">
-                                            {bundle.backup_info}
+                                    {(bundle.backup_time_description || bundle.backup_info) && (
+                                        <p className="text-sm text-gray-500 pt-1 whitespace-pre-wrap">
+                                            {bundle.backup_time_description || bundle.backup_info}
                                         </p>
                                     )}
 
@@ -1891,13 +1890,37 @@ const BNPLFlow = () => {
                                     </div>
 
                                     {bundleDetailTab === 'description' && (
-                                        <div className="min-h-[80px]">
+                                        <div className="min-h-[80px] space-y-4">
                                             {descriptionText ? (
                                                 <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
                                                     {descriptionText}
                                                 </p>
                                             ) : (
                                                 <p className="text-sm text-gray-400 italic">No description found.</p>
+                                            )}
+                                            {(bundle.system_capacity_display && String(bundle.system_capacity_display).trim()) && (
+                                                <>
+                                                    <h4 className="text-sm font-semibold text-gray-800 mt-3">System capacity</h4>
+                                                    <p className="text-sm text-gray-600 whitespace-pre-wrap">{bundle.system_capacity_display}</p>
+                                                </>
+                                            )}
+                                            {(bundle.what_is_inside_bundle_text && String(bundle.what_is_inside_bundle_text).trim()) && (
+                                                <>
+                                                    <h4 className="text-sm font-semibold text-gray-800 mt-3">What&apos;s inside this bundle</h4>
+                                                    <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{bundle.what_is_inside_bundle_text}</p>
+                                                </>
+                                            )}
+                                            {(bundle.what_bundle_powers_text && String(bundle.what_bundle_powers_text).trim()) && (
+                                                <>
+                                                    <h4 className="text-sm font-semibold text-gray-800 mt-3">What this bundle powers</h4>
+                                                    <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{bundle.what_bundle_powers_text}</p>
+                                                </>
+                                            )}
+                                            {(bundle.product_model && String(bundle.product_model).trim()) && (
+                                                <>
+                                                    <h4 className="text-sm font-semibold text-gray-800 mt-3">Product model</h4>
+                                                    <p className="text-sm text-gray-600">{bundle.product_model}</p>
+                                                </>
                                             )}
                                         </div>
                                     )}
@@ -1910,19 +1933,22 @@ const BNPLFlow = () => {
                                                         <tr className="border-b border-gray-200">
                                                             <th className="text-left py-2 pr-4 text-gray-500 font-medium w-10">#</th>
                                                             <th className="text-left py-2 pr-4 text-gray-700 font-medium">Item</th>
-                                                            <th className="text-right py-2 text-gray-500 font-medium w-16">Qty</th>
+                                                            <th className="text-right py-2 pr-4 text-gray-500 font-medium w-16">Qty</th>
+                                                            <th className="text-left py-2 text-gray-500 font-medium w-16">Unit</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
                                                         {itemsIncluded.map((item, index) => {
                                                             const product = item.product || item;
                                                             const itemName = product?.name || product?.title || item?.name || `Item #${index + 1}`;
-                                                            const itemQuantity = item.quantity || 1;
+                                                            const itemQuantity = item.quantity ?? product?.quantity ?? 1;
+                                                            const itemUnit = item.unit ?? product?.unit ?? "—";
                                                             return (
                                                                 <tr key={index} className="border-b border-gray-100">
                                                                     <td className="py-2.5 pr-4 text-gray-500">{index + 1}</td>
                                                                     <td className="py-2.5 pr-4 text-[#273E8E] font-medium">{itemName}</td>
-                                                                    <td className="py-2.5 text-right text-gray-600">{itemQuantity}</td>
+                                                                    <td className="py-2.5 pr-4 text-right text-gray-600">{itemQuantity}</td>
+                                                                    <td className="py-2.5 text-gray-600">{itemUnit}</td>
                                                                 </tr>
                                                             );
                                                         })}
@@ -1993,12 +2019,37 @@ const BNPLFlow = () => {
 
                                     <hr className="my-4 border-gray-200" />
 
-                                    {bundle.backup_info && (
+                                    {(bundle.backup_time_description || bundle.backup_info) && (
                                         <div>
                                             <h4 className="text-sm font-semibold text-gray-800 mb-2">Backup Time</h4>
-                                            <p className="text-xs text-gray-600">
-                                                {bundle.backup_info}
+                                            <p className="text-xs text-gray-600 whitespace-pre-wrap">
+                                                {bundle.backup_time_description || bundle.backup_info}
                                             </p>
+                                        </div>
+                                    )}
+                                    {bundle.fees && (bundle.fees.installation_fee > 0 || bundle.fees.delivery_fee > 0 || bundle.fees.inspection_fee > 0) && (
+                                        <div className="mt-4">
+                                            <h4 className="text-sm font-semibold text-gray-800 mb-2">Fees</h4>
+                                            <div className="space-y-1 text-xs text-gray-600">
+                                                {bundle.fees.installation_fee > 0 && (
+                                                    <div className="flex justify-between">
+                                                        <span>Installation</span>
+                                                        <span>{formatPrice(bundle.fees.installation_fee)}</span>
+                                                    </div>
+                                                )}
+                                                {bundle.fees.delivery_fee > 0 && (
+                                                    <div className="flex justify-between">
+                                                        <span>Delivery</span>
+                                                        <span>{formatPrice(bundle.fees.delivery_fee)}</span>
+                                                    </div>
+                                                )}
+                                                {bundle.fees.inspection_fee > 0 && (
+                                                    <div className="flex justify-between">
+                                                        <span>Inspection</span>
+                                                        <span>{formatPrice(bundle.fees.inspection_fee)}</span>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -2081,13 +2132,37 @@ const BNPLFlow = () => {
                                 </div>
 
                                 {bundleDetailTab === 'description' && (
-                                    <div className="min-h-[60px]">
+                                    <div className="min-h-[60px] space-y-3">
                                         {descriptionText ? (
                                             <p className="text-[11px] lg:text-[13px] text-gray-600 leading-relaxed whitespace-pre-wrap">
                                                 {descriptionText}
                                             </p>
                                         ) : (
                                             <p className="text-[11px] text-gray-400 italic">No description found.</p>
+                                        )}
+                                        {bundle.system_capacity_display && (
+                                            <>
+                                                <h4 className="text-[11px] font-semibold text-gray-800 mt-2">System capacity</h4>
+                                                <p className="text-[11px] text-gray-600 whitespace-pre-wrap">{bundle.system_capacity_display}</p>
+                                            </>
+                                        )}
+                                        {bundle.what_is_inside_bundle_text && (
+                                            <>
+                                                <h4 className="text-[11px] font-semibold text-gray-800 mt-2">What&apos;s inside</h4>
+                                                <p className="text-[11px] text-gray-600 whitespace-pre-wrap">{bundle.what_is_inside_bundle_text}</p>
+                                            </>
+                                        )}
+                                        {bundle.what_bundle_powers_text && (
+                                            <>
+                                                <h4 className="text-[11px] font-semibold text-gray-800 mt-2">What it powers</h4>
+                                                <p className="text-[11px] text-gray-600 whitespace-pre-wrap">{bundle.what_bundle_powers_text}</p>
+                                            </>
+                                        )}
+                                        {bundle.product_model && (
+                                            <>
+                                                <h4 className="text-[11px] font-semibold text-gray-800 mt-2">Product model</h4>
+                                                <p className="text-[11px] text-gray-600">{bundle.product_model}</p>
+                                            </>
                                         )}
                                     </div>
                                 )}
@@ -2100,19 +2175,22 @@ const BNPLFlow = () => {
                                                     <tr className="border-b border-gray-200">
                                                         <th className="text-left py-2 pr-2 text-gray-500 font-medium w-8">#</th>
                                                         <th className="text-left py-2 pr-2 text-gray-700 font-medium">Item</th>
-                                                        <th className="text-right py-2 text-gray-500 font-medium w-10">Qty</th>
+                                                        <th className="text-right py-2 pr-2 text-gray-500 font-medium w-10">Qty</th>
+                                                        <th className="text-left py-2 text-gray-500 font-medium w-10">Unit</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {itemsIncluded.map((item, idx) => {
                                                         const product = item.product || item;
                                                         const itemName = product?.name || product?.title || item?.name || `Item #${idx + 1}`;
-                                                        const itemQuantity = item.quantity || 1;
+                                                        const itemQuantity = item.quantity ?? product?.quantity ?? 1;
+                                                        const itemUnit = item.unit ?? product?.unit ?? "—";
                                                         return (
                                                             <tr key={idx} className="border-b border-gray-100">
                                                                 <td className="py-2 pr-2 text-gray-500">{idx + 1}</td>
                                                                 <td className="py-2 pr-2 text-[#273E8E] font-medium">{itemName}</td>
-                                                                <td className="py-2 text-right text-gray-600">{itemQuantity}</td>
+                                                                <td className="py-2 pr-2 text-right text-gray-600">{itemQuantity}</td>
+                                                                <td className="py-2 text-gray-600">{itemUnit}</td>
                                                             </tr>
                                                         );
                                                     })}
