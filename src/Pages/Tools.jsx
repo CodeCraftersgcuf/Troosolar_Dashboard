@@ -65,12 +65,17 @@ const Tools = () => {
   const searchParams = new URLSearchParams(location.search);
   const fromBundles = searchParams.get("fromBundles") === "true";
   const solarPanelParam = searchParams.get("solarPanel") === "true";
+  const inverterParam = searchParams.get("inverter") === "true";
   const returnTo = searchParams.get("returnTo"); // "buy-now" | "bnpl" – from BN/BNPL flow
   const qParam = searchParams.get("q");
   
-  const openSolarPanel = solarPanelParam || fromBundles || returnTo === "buy-now" || returnTo === "bnpl";
+  const openLoadCalculator = inverterParam || returnTo === "buy-now" || returnTo === "bnpl";
+  const openSolarPanel = solarPanelParam || fromBundles;
   
   const getInitialTool = () => {
+    if (openLoadCalculator) {
+      return "inverter";
+    }
     if (openSolarPanel) {
       return "solarPanel";
     }
@@ -78,15 +83,18 @@ const Tools = () => {
   };
 
   const [activeTool, setActiveTool] = useState(getInitialTool());
-  const [mobileView, setMobileView] = useState(openSolarPanel ? "tool" : "tabs");
+  const [mobileView, setMobileView] = useState((openLoadCalculator || openSolarPanel) ? "tool" : "tabs");
   const selectedTool = toolsData.find((tool) => tool.id === activeTool);
 
   useEffect(() => {
-    if (openSolarPanel) {
+    if (openLoadCalculator) {
+      setActiveTool("inverter");
+      setMobileView("tool");
+    } else if (openSolarPanel) {
       setActiveTool("solarPanel");
       setMobileView("tool");
     }
-  }, [solarPanelParam, fromBundles, returnTo]);
+  }, [inverterParam, solarPanelParam, fromBundles, returnTo]);
 
   const handleMobileToolSelect = (toolId) => {
     setActiveTool(toolId);

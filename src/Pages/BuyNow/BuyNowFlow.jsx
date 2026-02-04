@@ -37,7 +37,18 @@ const ensureFlutterwave = () =>
 
 // Fallback image URL
 const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
-    
+
+// Format backup time text - split sentences by periods and display on separate lines with blank line between
+const formatBackupTime = (text) => {
+  if (!text) return "";
+  // Split by periods followed by space, keep periods with sentences
+  return text
+    .split(/\.\s+/)
+    .filter(s => s.trim().length > 0)
+    .map(s => s.trim() + ".")
+    .join("\n\n"); // Two newlines for blank line between sentences
+};
+
 // Helper to get bundle image (moved to component level for modal access)
 const getBundleImage = (bundle) => {
     if (!bundle) return FALLBACK_IMAGE;
@@ -970,7 +981,16 @@ const BuyNowFlow = () => {
                 
                 // Handle different response formats
                 const root = response.data?.data ?? response.data;
-                const arr = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+                // Handle both array and single object responses
+                let arr = [];
+                if (Array.isArray(root)) {
+                    arr = root;
+                } else if (Array.isArray(root?.data)) {
+                    arr = root.data;
+                } else if (root && typeof root === "object" && root.id) {
+                    // Single bundle object - wrap in array
+                    arr = [root];
+                }
                 setBundles(arr);
             } catch (error) {
                 console.error("Failed to fetch bundles:", error);
@@ -984,7 +1004,16 @@ const BuyNowFlow = () => {
                         },
                     });
                     const root = fallbackResponse.data?.data ?? fallbackResponse.data;
-                    const arr = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+                    // Handle both array and single object responses
+                    let arr = [];
+                    if (Array.isArray(root)) {
+                        arr = root;
+                    } else if (Array.isArray(root?.data)) {
+                        arr = root.data;
+                    } else if (root && typeof root === "object" && root.id) {
+                        // Single bundle object - wrap in array
+                        arr = [root];
+                    }
                     setBundles(arr);
                 } catch (fallbackError) {
                     console.error("Fallback bundle fetch also failed:", fallbackError);
@@ -1269,10 +1298,8 @@ const BuyNowFlow = () => {
             if (formData.deliveryLocationId) payload.delivery_location_id = formData.deliveryLocationId;
             if (selectedAddOns.length > 0) payload.add_on_ids = selectedAddOns;
             
-            // Add include_inspection if available (from checkout options)
-            if (formData.includeInspection !== undefined) {
-                payload.include_inspection = formData.includeInspection;
-            }
+            // Always include inspection fee (it's a standard fee for all orders)
+            payload.include_inspection = formData.includeInspection !== undefined ? formData.includeInspection : true;
 
             const response = await axios.post(API.BUY_NOW_CHECKOUT, payload, {
                 headers: { 
@@ -1489,7 +1516,16 @@ const BuyNowFlow = () => {
                         },
                     });
                     const root = response.data?.data ?? response.data;
-                    const arr = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+                    // Handle both array and single object responses
+                    let arr = [];
+                    if (Array.isArray(root)) {
+                        arr = root;
+                    } else if (Array.isArray(root?.data)) {
+                        arr = root.data;
+                    } else if (root && typeof root === "object" && root.id) {
+                        // Single bundle object - wrap in array
+                        arr = [root];
+                    }
                     setBundles(arr);
                 } catch (error) {
                     console.error("Failed to fetch bundles:", error);
@@ -2257,7 +2293,7 @@ const BuyNowFlow = () => {
                     </div>
                     <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose My Solar Bundle</h3>
                 </button>
-                <button onClick={() => navigate('/tools?solarPanel=true&returnTo=buy-now')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                <button onClick={() => navigate('/tools?inverter=true&returnTo=buy-now')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <Wrench size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
@@ -2327,7 +2363,7 @@ const BuyNowFlow = () => {
                 </p>
                 {searchParams.get('q') && (
                     <p className="text-center mb-8">
-                        <a href="/tools?solarPanel=true&returnTo=buy-now" className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
+                        <a href="/tools?inverter=true&returnTo=buy-now" className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
                     </p>
                 )}
                 {!searchParams.get('q') && <div className="mb-8" />}
@@ -2568,7 +2604,7 @@ const BuyNowFlow = () => {
                     {/* Desktop Layout */}
                     <div className="hidden sm:flex justify-between items-start gap-6">
                         {/* Left Column - Main Content */}
-                        <div className="min-w-[66%]">
+                        <div className="flex-1 min-w-0">
                             <div className="bg-white w-full border border-gray-200 rounded-xl mt-3 shadow-sm overflow-hidden">
                                 {/* Image */}
                                 <div className="relative h-[350px] bg-[#F8FAFC] m-3 rounded-lg flex justify-center items-center overflow-hidden">
@@ -2603,8 +2639,8 @@ const BuyNowFlow = () => {
                                         )}
                                     </div>
                                     {(bundle.backup_time_description || bundle.backup_info) && (
-                                        <p className="text-sm text-gray-500 pt-1 whitespace-pre-wrap">
-                                            {bundle.backup_time_description || bundle.backup_info}
+                                        <p className="text-sm text-gray-500 pt-1 whitespace-pre-line">
+                                            {formatBackupTime(bundle.backup_time_description || bundle.backup_info)}
                                         </p>
                                     )}
 
@@ -2741,7 +2777,7 @@ const BuyNowFlow = () => {
                         </div>
 
                         {/* Right Column - Stats */}
-                        <div className="w-[34%]">
+                        <div className="w-[380px] flex-shrink-0">
                             <div className="flex flex-col gap-3 rounded-2xl">
                                 <div className="grid grid-cols-2 gap-2 rounded-2xl overflow-hidden">
                                     <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
@@ -2785,8 +2821,8 @@ const BuyNowFlow = () => {
                                     {(bundle.backup_time_description || bundle.backup_info) && (
                                         <div>
                                             <h4 className="text-sm font-semibold text-gray-800 mb-2">Backup Time</h4>
-                                            <p className="text-xs text-gray-600 whitespace-pre-wrap">
-                                                {bundle.backup_time_description || bundle.backup_info}
+                                            <p className="text-xs text-gray-600 whitespace-pre-line">
+                                                {formatBackupTime(bundle.backup_time_description || bundle.backup_info)}
                                             </p>
                                         </div>
                                     )}
@@ -2851,9 +2887,9 @@ const BuyNowFlow = () => {
                                         </>
                                     )}
                                 </div>
-                                {(bundle.backup_time_description || bundle.backup_info) && (
-                                    <p className="text-[12px] text-gray-500 mt-[2px] whitespace-pre-wrap">{bundle.backup_time_description || bundle.backup_info}</p>
-                                )}
+                                    {(bundle.backup_time_description || bundle.backup_info) && (
+                                        <p className="text-[12px] text-gray-500 mt-[2px] whitespace-pre-line">{formatBackupTime(bundle.backup_time_description || bundle.backup_info)}</p>
+                                    )}
 
                                 <div className="mt-3 flex flex-col gap-0.5">
                                     <span className="text-[10px] text-gray-500 uppercase tracking-wide">Bundle Price</span>
@@ -3896,7 +3932,8 @@ const BuyNowFlow = () => {
         const installationFee = invoiceDetails?.installation_fee || (formData.installerChoice === 'troosolar' ? 50000 : 0);
         const materialCost = invoiceDetails?.material_cost || 0;
         const deliveryFee = invoiceDetails?.delivery_fee || 0;
-        const inspectionFee = invoiceDetails?.inspection_fee || 0;
+        // Inspection fee should always be included (default ₦10,000 if not in API response)
+        const inspectionFee = invoiceDetails?.inspection_fee || 10000;
         const insuranceFee = invoiceDetails?.insurance_fee || 0;
         const addOnsTotal = invoiceDetails?.add_ons_total || 0;
         
@@ -4122,13 +4159,11 @@ const BuyNowFlow = () => {
                     </div>
                 )}
                 
-                {/* Inspection Fee - optional */}
-                {inspectionFee > 0 && (
-                    <div className="flex justify-between text-sm text-gray-600">
-                        <span>Inspection Fees (Optional)</span>
-                        <span>₦{Number(inspectionFee).toLocaleString()}</span>
-                    </div>
-                )}
+                {/* Inspection Fee - always included */}
+                <div className="flex justify-between text-sm text-gray-600">
+                    <span>Inspection Fees</span>
+                    <span>₦{Number(inspectionFee).toLocaleString()}</span>
+                </div>
                 
                 {/* Insurance Fee - optional */}
                 {insuranceFee > 0 && (

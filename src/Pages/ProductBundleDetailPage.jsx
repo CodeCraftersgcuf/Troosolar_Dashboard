@@ -39,6 +39,17 @@ const toAbsolute = (path) => {
   return `${API_ORIGIN}/storage/${cleaned}`;
 };
 
+// Format backup time text - split sentences by periods and display on separate lines with blank line between
+const formatBackupTime = (text) => {
+  if (!text) return "";
+  // Split by periods followed by space, keep periods with sentences
+  return text
+    .split(/\.\s+/)
+    .filter(s => s.trim().length > 0)
+    .map(s => s.trim() + ".")
+    .join("\n\n"); // Two newlines for blank line between sentences
+};
+
 // robustly read bundle from API: { data: bundle } or { data: { data: bundle } } or plain bundle
 const extractObject = (payload) => payload?.data?.data ?? payload?.data ?? payload ?? null;
 
@@ -419,7 +430,7 @@ const ProductBundle = () => {
             {/* Desktop two-column layout - aligned with BNPL/Buy Now flow */}
             <div className="hidden sm:flex justify-between items-start gap-6">
               {/* Left column */}
-              <div className="min-w-[66%]">
+              <div className="flex-1 min-w-0">
                 <div className="bg-white w-full border border-gray-200 rounded-xl mt-3 shadow-sm overflow-hidden">
                   {/* Image */}
                   <div className="relative h-[350px] bg-[#F8FAFC] m-3 rounded-lg flex justify-center items-center overflow-hidden">
@@ -530,7 +541,7 @@ const ProductBundle = () => {
                         {productData.backupInfo && (
                           <>
                             <h4 className="text-sm font-semibold text-gray-800 mt-3">Backup time</h4>
-                            <p className="text-sm text-gray-600 whitespace-pre-wrap">{productData.backupInfo}</p>
+                            <p className="text-sm text-gray-600 whitespace-pre-line">{formatBackupTime(productData.backupInfo)}</p>
                           </>
                         )}
                         {productData.systemCapacityDisplay && (
@@ -611,7 +622,7 @@ const ProductBundle = () => {
               </div>
 
               {/* Right column (stats) - aligned with BNPL/Buy Now flow */}
-              <div className="w-[34%]">
+              <div className="w-[380px] flex-shrink-0">
                 <div className="flex flex-col gap-3 rounded-2xl">
                   <div className="grid grid-cols-2 gap-2 rounded-2xl overflow-hidden">
                     <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
@@ -678,8 +689,8 @@ const ProductBundle = () => {
                     {/* Backup Time */}
                     <div>
                       <h4 className="text-sm font-semibold text-gray-800 mb-2">Backup Time</h4>
-                      <p className="text-xs text-gray-600 whitespace-pre-wrap">
-                        {productData.backupInfo || "Depending on usage and load."}
+                      <p className="text-xs text-gray-600 whitespace-pre-line">
+                        {formatBackupTime(productData.backupInfo || "Depending on usage and load.")}
                       </p>
                     </div>
                   </div>
@@ -811,7 +822,7 @@ const ProductBundle = () => {
                       {productData.backupInfo && (
                         <>
                           <h4 className="text-[11px] font-semibold text-gray-800 mt-2">Backup time</h4>
-                          <p className="text-[11px] text-gray-600 whitespace-pre-wrap">{productData.backupInfo}</p>
+                          <p className="text-[11px] text-gray-600 whitespace-pre-line">{formatBackupTime(productData.backupInfo)}</p>
                         </>
                       )}
                       {productData.systemCapacityDisplay && (

@@ -44,7 +44,7 @@ const ServiceCards = ({ hasActiveLoan = false }) => {
                 <div className="bg-purple-50 p-4 rounded-full mb-4 group-hover:bg-purple-600 transition-colors duration-300">
                     <ShoppingBag size={32} className="text-purple-600 group-hover:text-white transition-colors duration-300" />
                 </div>
-                <h2 className="text-xl font-bold mb-2 text-gray-800">Solar Shop</h2>
+                <h2 className="text-xl font-bold mb-2 text-gray-800">Shop Solar Products</h2>
                 <p className="text-gray-500 text-sm mb-4 flex-grow">
                     Browse premium inverters, batteries, and panels.
                 </p>

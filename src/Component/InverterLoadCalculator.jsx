@@ -1,8 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Minus, Plus, Search, X } from "lucide-react";
 import { assets } from "../assets/data";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+
 const InverterLoadCalculator = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const searchParams = new URLSearchParams(location.search);
+  const returnTo = searchParams.get("returnTo"); // "buy-now" | "bnpl"
   // Comprehensive appliance data from the Excel spreadsheet
   const applianceList = [
     // TVs
@@ -167,12 +172,54 @@ const InverterLoadCalculator = () => {
     appliance.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Calculate total power
+  // Calculate total power (peak load)
   const totalOutput = appliances.reduce(
     (total, appliance) =>
       total + appliance.power * appliance.quantity * (appliance.hours || 1),
     0
   );
+
+  // Calculate peak load (for navigation - just power * quantity, not hours)
+  const peakLoadW = appliances.reduce(
+    (total, appliance) =>
+      total + appliance.power * (appliance.quantity || 0),
+    0
+  );
+
+  // Handle proceed button - navigate back with load (q parameter)
+  const handleProceed = () => {
+    const q = Math.max(0, Math.round(peakLoadW));
+    
+    // Save appliances to localStorage for bundle detail page
+    try {
+      const appliancesForBundle = appliances
+        .filter((a) => (a.quantity || 0) > 0)
+        .map((a) => ({ 
+          name: a.name, 
+          power: a.power, 
+          quantity: a.quantity || 0, 
+          hours: a.hours || 0 
+        }));
+      if (appliancesForBundle.length > 0) {
+        localStorage.setItem("loadCalculatorAppliances", JSON.stringify(appliancesForBundle));
+      }
+    } catch (e) {
+      console.warn("Failed to save calculator data:", e);
+    }
+    
+    // Return to Buy Now or BNPL flow with load (q) so they see bundles matching their usage
+    if (returnTo === "buy-now") {
+      navigate(`/buy-now?step=3.5&q=${q}&fromCalculator=true`);
+      return;
+    }
+    if (returnTo === "bnpl") {
+      navigate(`/bnpl?step=3.5&q=${q}&fromCalculator=true`);
+      return;
+    }
+    
+    // Default: go to solar bundles if no returnTo specified
+    navigate(`/solar-bundles?q=${q}`);
+  };
 
   // Update quantity for an appliance
   const updateQuantity = (index, newQuantity) => {
@@ -397,14 +444,23 @@ const InverterLoadCalculator = () => {
 
           {/* Summary Box */}
           <div className="col-span-4">
-            <div className="bg-[#273e8e] text-white rounded-2xl px-1 py-2 flex justify-center items-center  gap-4 shadow-lg">
-              <h2 className="text-xl font-medium w-[50%] text-center">
-                Total Output
-              </h2>
-              <div className="bg-white h-[60px] w-[50%] rounded-xl px-1 flex justify-center items-center gap-2 text-[#273e8e]">
-                <span className="text-2xl font-medium">{totalOutput}</span>
-                <span className="text-lg">Watt</span>
+            <div className="bg-[#273e8e] text-white rounded-2xl px-1 py-2 flex flex-col justify-center items-center gap-4 shadow-lg">
+              <div className="flex justify-center items-center gap-4 w-full">
+                <h2 className="text-xl font-medium w-[50%] text-center">
+                  Total Output
+                </h2>
+                <div className="bg-white h-[60px] w-[50%] rounded-xl px-1 flex justify-center items-center gap-2 text-[#273e8e]">
+                  <span className="text-2xl font-medium">{totalOutput}</span>
+                  <span className="text-lg">Watt</span>
+                </div>
               </div>
+              {/* Show proceed button always - if returnTo exists, go back to flow; otherwise go to solar bundles */}
+              <button
+                onClick={handleProceed}
+                className="bg-white text-[#273e8e] px-8 py-3 rounded-xl font-semibold hover:bg-gray-100 transition-colors w-full max-w-xs"
+              >
+                Proceed
+              </button>
             </div>
           </div>
         </div>
@@ -628,11 +684,20 @@ const InverterLoadCalculator = () => {
         {/* Total Output - Fixed Bottom */}
         <div className="fixed bottom-0 left-0 right-0 bg-[#273e8e] text-white px-4 py-4 flex items-center justify-between">
           <h2 className="text-lg font-medium">Total Output</h2>
-          <div className="bg-white rounded-lg px-4 py-2 flex items-center gap-2 text-[#273e8e]">
-            <span className="text-2xl font-bold">
-              {totalOutput.toLocaleString()}
-            </span>
-            <span className="text-sm">Watts</span>
+          <div className="flex items-center gap-4">
+            <div className="bg-white rounded-lg px-4 py-2 flex items-center gap-2 text-[#273e8e]">
+              <span className="text-2xl font-bold">
+                {totalOutput.toLocaleString()}
+              </span>
+              <span className="text-sm">Watts</span>
+            </div>
+            {/* Show proceed button always - if returnTo exists, go back to flow; otherwise go to solar bundles */}
+            <button
+              onClick={handleProceed}
+              className="bg-white text-[#273e8e] px-6 py-2 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+            >
+              Proceed
+            </button>
           </div>
         </div>
       </div>

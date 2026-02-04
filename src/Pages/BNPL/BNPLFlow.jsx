@@ -27,6 +27,17 @@ const toAbsolute = (path) => {
 // Fallback image URL
 const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
 
+// Format backup time text - split sentences by periods and display on separate lines with blank line between
+const formatBackupTime = (text) => {
+  if (!text) return "";
+  // Split by periods followed by space, keep periods with sentences
+  return text
+    .split(/\.\s+/)
+    .filter(s => s.trim().length > 0)
+    .map(s => s.trim() + ".")
+    .join("\n\n"); // Two newlines for blank line between sentences
+};
+
 // Helper to get bundle image (moved to component level for modal access)
 const getBundleImage = (bundle) => {
     if (!bundle) return FALLBACK_IMAGE;
@@ -1515,7 +1526,7 @@ const BNPLFlow = () => {
                     </div>
                     <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose My Solar Bundle</h3>
                 </button>
-                <button onClick={() => navigate('/tools?solarPanel=true&returnTo=bnpl')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                <button onClick={() => navigate('/tools?inverter=true&returnTo=bnpl')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <Wrench size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
@@ -1561,7 +1572,7 @@ const BNPLFlow = () => {
                 </p>
                 {searchParams.get('q') && (
                     <p className="text-center mb-8">
-                        <a href="/tools?solarPanel=true&returnTo=bnpl" className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
+                        <a href="/tools?inverter=true&returnTo=bnpl" className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
                     </p>
                 )}
                 {!searchParams.get('q') && <div className="mb-8" />}
@@ -1820,7 +1831,7 @@ const BNPLFlow = () => {
                     {/* Desktop Layout */}
                     <div className="hidden sm:flex justify-between items-start gap-6">
                         {/* Left Column - Main Content */}
-                        <div className="min-w-[66%]">
+                        <div className="flex-1 min-w-0">
                             <div className="bg-white w-full border border-gray-200 rounded-xl mt-3 shadow-sm overflow-hidden">
                                 {/* Image */}
                                 <div className="relative h-[350px] bg-[#F8FAFC] m-3 rounded-lg flex justify-center items-center overflow-hidden">
@@ -1858,8 +1869,8 @@ const BNPLFlow = () => {
                                         )}
                                     </div>
                                     {(bundle.backup_time_description || bundle.backup_info) && (
-                                        <p className="text-sm text-gray-500 pt-1 whitespace-pre-wrap">
-                                            {bundle.backup_time_description || bundle.backup_info}
+                                        <p className="text-sm text-gray-500 pt-1 whitespace-pre-line">
+                                            {formatBackupTime(bundle.backup_time_description || bundle.backup_info)}
                                         </p>
                                     )}
 
@@ -1996,7 +2007,7 @@ const BNPLFlow = () => {
                         </div>
 
                         {/* Right Column - Stats */}
-                        <div className="w-[34%]">
+                        <div className="w-[380px] flex-shrink-0">
                             <div className="flex flex-col gap-3 rounded-2xl">
                                 <div className="grid grid-cols-2 gap-2 rounded-2xl overflow-hidden">
                                     <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
@@ -2040,8 +2051,8 @@ const BNPLFlow = () => {
                                     {(bundle.backup_time_description || bundle.backup_info) && (
                                         <div>
                                             <h4 className="text-sm font-semibold text-gray-800 mb-2">Backup Time</h4>
-                                            <p className="text-xs text-gray-600 whitespace-pre-wrap">
-                                                {bundle.backup_time_description || bundle.backup_info}
+                                            <p className="text-xs text-gray-600 whitespace-pre-line">
+                                                {formatBackupTime(bundle.backup_time_description || bundle.backup_info)}
                                             </p>
                                         </div>
                                     )}

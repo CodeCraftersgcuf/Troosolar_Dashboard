@@ -580,7 +580,8 @@ const SolarPanelCalculator = () => {
             )}
 
             {/* Proceed Button - Below Calculations */}
-            {showCalc && (
+            {/* Show proceed button when calculations are shown OR when user is on calculator normally (not from flow) */}
+            {(showCalc || (!returnTo && !fromBundles)) && (
               <button
                 className="bg-[#273e8e] text-white rounded-full px-6 text-sm w-full py-5 mt-4"
                 onClick={handleProceed}
