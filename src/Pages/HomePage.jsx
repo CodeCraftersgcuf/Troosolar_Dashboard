@@ -398,8 +398,8 @@ const HomePage = () => {
           </div>
 
           <div className="px-6 py-6 w-full overflow-x-hidden">
-            {/* Filters */}
-            <div className="flex justify-start items-center gap-4 mb-4">
+            {/* Filters - relative z-[100] so dropdown panels paint above "All Products" and grid */}
+            <div className="relative z-[100] flex justify-start items-center gap-4 mb-4">
               <SizeDropDown onFilter={handleSizeFilter} />
               <PriceDropDown onFilter={handlePriceFilter} />
               {/* Show active filters count */}
@@ -616,8 +616,8 @@ const HomePage = () => {
 
           {/* Products */}
           <div className="px-5 py-6 w-full">
-            {/* Filters */}
-            <div className="flex justify-start items-center gap-2 mb-4 flex-wrap">
+            {/* Filters - relative z-[100] so dropdown panels paint above content below */}
+            <div className="relative z-[100] flex justify-start items-center gap-2 mb-4 flex-wrap">
               <SizeDropDown onFilter={handleSizeFilter} />
               <PriceDropDown onFilter={handlePriceFilter} />
               {/* Show active filters count */}

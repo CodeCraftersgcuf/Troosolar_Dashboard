@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import axios from "axios";
 import { ChevronDown, X } from "lucide-react";
 import API, { BASE_URL } from "../config/api.config";
+
+const DROPDOWN_Z_BACKDROP = 9998;
+const DROPDOWN_Z_PANEL = 9999;
 
 // Fallbacks in case api.config.js doesn't have these helpers yet
 const CATEGORY_BRANDS = (categoryId) =>
@@ -41,6 +45,8 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
   const [selectedIds, setSelectedIds] = useState([]);
 
   const desktopWrapRef = useRef(null);
+  const triggerRef = useRef(null);
+  const [panelPosition, setPanelPosition] = useState({ top: 0, left: 0 });
   const token =
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
@@ -67,8 +73,8 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
           setBrands(
             arr.map((b) => ({
               id: String(b.id),
-              name: b.name || b.title || `Brand #${b.id}`,
-              icon: toAbsolute(b.icon || b.logo || b.image),
+              name: b.name ?? b.title ?? `Brand #${b.id}`,
+              icon: toAbsolute(b.icon ?? b.logo ?? b.image),
             }))
           );
           setSelectedIds([]); // reset when category changes
@@ -89,6 +95,16 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
       mounted = false;
     };
   }, [categoryId, token]);
+
+  // Position dropdown panel when opening (for portal; fixed = viewport coords)
+  useEffect(() => {
+    if (!isOpen || !triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    setPanelPosition({
+      top: rect.bottom + 4,
+      left: rect.left,
+    });
+  }, [isOpen]);
 
   const selectedLabel = useMemo(() => {
     if (!selectedIds.length) return "All";
@@ -147,11 +163,12 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
   };
 
   // The dropdown list UI (reused in desktop + mobile containers)
-  const List = () => (
+  const List = ({ className = "" }) => (
     <div
-      className="w-[400px] bg-white border border-gray-200 rounded-md shadow-lg max-h-[400px] overflow-y-auto"
+      className={`w-[400px] bg-white border border-gray-200 rounded-md shadow-lg max-h-[400px] overflow-y-auto ${className}`}
       role="listbox"
-      onClick={(e) => e.stopPropagation()} // keep clicks inside
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="relative px-4 py-2 border-b">
         <p className="text-center text-gray-900 py-1">Brand</p>
@@ -174,6 +191,11 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
       {/* Options */}
       {!loading && !err && (
         <>
+          {brands.length === 0 && (
+            <div className="px-4 py-3 text-sm text-gray-500">
+              No brands in this category.
+            </div>
+          )}
           {/* "All" row */}
           <button
             type="button"
@@ -261,6 +283,7 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
       >
         <div className="px-4 py-4 bg-white border border-black/50 rounded-2xl shadow-sm">
           <button
+            ref={triggerRef}
             type="button"
             onClick={() => setIsOpen((s) => !s)}
             className="flex items-center justify-between w-full font-medium"
@@ -278,18 +301,29 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
             />
           </button>
 
-          {isOpen && (
-            <>
-              {/* Backdrop (desktop) */}
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setIsOpen(false)}
-              />
-              <div className="absolute left-0 z-50 mt-1">
-                <List />
-              </div>
-            </>
-          )}
+          {isOpen &&
+            createPortal(
+              <>
+                <div
+                  className="fixed inset-0 bg-black/20"
+                  style={{ zIndex: DROPDOWN_Z_BACKDROP }}
+                  onClick={() => setIsOpen(false)}
+                  aria-hidden="true"
+                />
+                <div
+                  className="fixed shadow-lg rounded-md"
+                  style={{
+                    zIndex: DROPDOWN_Z_PANEL,
+                    top: panelPosition.top,
+                    left: panelPosition.left,
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <List />
+                </div>
+              </>,
+              document.body
+            )}
         </div>
       </div>
 
@@ -314,19 +348,25 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
             />
           </button>
 
-          {isOpen && (
-            <>
-              {/* Backdrop (mobile) */}
-              <div
-                className="fixed inset-0 bg-black/30 z-40"
-                onClick={() => setIsOpen(false)}
-              />
-              {/* Centered Dropdown */}
-              <div className="fixed z-50 top-[70%] left-1/2 -translate-x-1/2 -translate-y-1/2">
-                <List />
-              </div>
-            </>
-          )}
+          {isOpen &&
+            createPortal(
+              <>
+                <div
+                  className="fixed inset-0 bg-black/30"
+                  style={{ zIndex: DROPDOWN_Z_BACKDROP }}
+                  onClick={() => setIsOpen(false)}
+                  aria-hidden="true"
+                />
+                <div
+                  className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+                  style={{ zIndex: DROPDOWN_Z_PANEL }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <List />
+                </div>
+              </>,
+              document.body
+            )}
         </div>
       </div>
     </>

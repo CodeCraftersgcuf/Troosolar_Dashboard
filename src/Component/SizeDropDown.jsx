@@ -13,7 +13,8 @@ for (let i = 1.2; i <= 10; i += 0.5) {
 const SizeDropDown = ({ onFilter }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedSize, setSelectedSize] = useState(null);
-  const dropdownRef = useRef(null);
+  const desktopTriggerRef = useRef(null);
+  const mobileTriggerRef = useRef(null);
 
   const toggleDropdown = useCallback(() => setIsOpen((prev) => !prev), []);
 
@@ -31,10 +32,12 @@ const SizeDropDown = ({ onFilter }) => {
     onFilter?.(null);
   }, [onFilter]);
 
-  // Close dropdown on outside click
+  // Close dropdown on outside click (either trigger)
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+      const inDesktop = desktopTriggerRef.current?.contains(e.target);
+      const inMobile = mobileTriggerRef.current?.contains(e.target);
+      if (!inDesktop && !inMobile) {
         setIsOpen(false);
       }
     };
@@ -42,13 +45,23 @@ const SizeDropDown = ({ onFilter }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Close dropdown when the scrollable main content scrolls (dropdown scrolls with page; closing avoids stale state)
+  useEffect(() => {
+    if (!isOpen) return;
+    const scrollParent = desktopTriggerRef.current?.closest(".overflow-y-auto");
+    if (!scrollParent) return;
+    const handleScroll = () => setIsOpen(false);
+    scrollParent.addEventListener("scroll", handleScroll, { passive: true });
+    return () => scrollParent.removeEventListener("scroll", handleScroll);
+  }, [isOpen]);
+
   const selectedLabel = selectedSize ? `${selectedSize}kW` : "Size";
 
   return (
     <>
       {/* Desktop View */}
       <div
-        ref={dropdownRef}
+        ref={desktopTriggerRef}
         className="relative sm:block hidden w-full max-w-[200px] cursor-pointer"
       >
         <div
@@ -73,7 +86,11 @@ const SizeDropDown = ({ onFilter }) => {
         </div>
 
         {isOpen && (
-          <div className="absolute left-0 z-50 mt-1 w-[400px] bg-white border border-gray-200 rounded-md shadow-lg max-h-[400px] overflow-y-auto">
+          <div
+            className="absolute left-0 top-full z-[200] mt-1 w-[400px] bg-white border border-gray-200 rounded-md shadow-lg max-h-[400px] overflow-y-auto"
+            role="dialog"
+            aria-label="Size filter"
+          >
             <div className="relative px-4 py-2 border-b border-gray-200">
               <p className="text-center text-gray-900 py-1 font-medium">Size</p>
               <X
@@ -86,6 +103,7 @@ const SizeDropDown = ({ onFilter }) => {
 
             <div className="max-h-[300px] overflow-y-auto">
               <button
+                type="button"
                 onClick={handleClear}
                 className={`flex items-center justify-between w-full px-8 py-4 text-sm transition-colors ${
                   selectedSize === null
@@ -110,6 +128,7 @@ const SizeDropDown = ({ onFilter }) => {
                 const isSelected = selectedSize === option.value;
                 return (
                   <button
+                    type="button"
                     key={option.value}
                     onClick={() => handleSelect(option.value)}
                     className={`flex items-center justify-between w-full px-8 py-4 text-sm transition-colors ${
@@ -136,12 +155,14 @@ const SizeDropDown = ({ onFilter }) => {
 
             <div className="grid grid-cols-2 gap-3 py-4 px-4 border-t">
               <button
+                type="button"
                 onClick={handleClear}
                 className="border text-sm border-[#273e8e] py-3.5 rounded-full text-[#273e8e] hover:bg-[#273e8e]/10 transition duration-150"
               >
                 Clear
               </button>
               <button
+                type="button"
                 onClick={() => setIsOpen(false)}
                 className="text-sm rounded-full py-3.5 bg-[#273e8e] text-white hover:bg-[#1f2f6e] transition duration-150"
               >
@@ -154,7 +175,7 @@ const SizeDropDown = ({ onFilter }) => {
 
       {/* Mobile View */}
       <div
-        ref={dropdownRef}
+        ref={mobileTriggerRef}
         className="relative sm:hidden block w-full max-w-[150px] cursor-pointer"
       >
         <div
@@ -200,6 +221,7 @@ const SizeDropDown = ({ onFilter }) => {
 
               <div className="max-h-[300px] overflow-y-auto">
                 <button
+                  type="button"
                   onClick={handleClear}
                   className={`flex items-center justify-between w-full px-8 py-4 text-sm transition-colors ${
                     selectedSize === null
@@ -224,6 +246,7 @@ const SizeDropDown = ({ onFilter }) => {
                   const isSelected = selectedSize === option.value;
                   return (
                     <button
+                      type="button"
                       key={option.value}
                       onClick={() => handleSelect(option.value)}
                       className={`flex items-center justify-between w-full px-8 py-4 text-sm transition-colors ${
@@ -250,12 +273,14 @@ const SizeDropDown = ({ onFilter }) => {
 
               <div className="grid grid-cols-2 gap-3 py-4 px-4 border-t">
                 <button
+                  type="button"
                   onClick={handleClear}
                   className="border text-sm border-[#273e8e] py-3.5 rounded-full text-[#273e8e] hover:bg-[#273e8e]/10 transition duration-150"
                 >
                   Clear
                 </button>
                 <button
+                  type="button"
                   onClick={() => setIsOpen(false)}
                   className="text-sm rounded-full py-3.5 bg-[#273e8e] text-white hover:bg-[#1f2f6e] transition duration-150"
                 >
