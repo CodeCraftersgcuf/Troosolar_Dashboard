@@ -76,6 +76,23 @@ const formatPrice = (price) => {
     return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
 };
 
+// Label map for bundle specifications (matches sheet "Bundle Specification" column)
+const SPEC_LABELS = {
+    company_oem: 'Company / OEM',
+    solar_panel_type: 'Solar Panel type',
+    inverter_capacity_kva: 'Inverter Capacity',
+    voltage: 'Voltage',
+    battery_type: 'Battery Type',
+    solar_panels_warranty: 'Solar panels (Warranty)',
+    inverter_warranty: 'Solar Inverter (Warranty)',
+    battery_warranty: 'Lithium Ion Battery (Warranty)',
+    solar_panels_wattage: 'Solar Panels Wattage',
+    battery_capacity_kwh: 'Battery Capacity',
+    backup_time_range: 'Back-up time range',
+};
+const BUNDLE_SPEC_ORDER = ['company_oem', 'solar_panel_type', 'inverter_capacity_kva', 'voltage', 'battery_type', 'solar_panels_warranty', 'inverter_warranty', 'battery_warranty', 'solar_panels_wattage', 'battery_capacity_kwh', 'backup_time_range'];
+const SPEC_KEYS_HIDDEN = ['solar_panel_capacity_kw', 'solar_panel_capacity_w'];
+
 const BuyNowFlow = () => {
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
@@ -339,13 +356,16 @@ const BuyNowFlow = () => {
             loadBundleForOrderSummary();
         } else if (stepParam) {
             setStep(Number(stepParam));
-            // When coming from Load Calculator with step=3.5 and q, set defaults so bundle list shows
             const qParam = searchParams.get('q');
-            if (Number(stepParam) === 3.5 && qParam) {
+            const categoryParam = searchParams.get('category');
+            if (Number(stepParam) === 3.5 && (qParam || categoryParam)) {
+                const resolvedCategory = categoryParam && ['full-kit', 'inverter-battery', 'battery-only'].includes(categoryParam)
+                    ? categoryParam
+                    : (undefined);
                 setFormData(prev => ({
                     ...prev,
                     optionType: prev.optionType || 'choose-system',
-                    productCategory: prev.productCategory || 'full-kit',
+                    productCategory: resolvedCategory ?? prev.productCategory ?? 'full-kit',
                     customerType: prev.customerType || 'residential',
                 }));
             }
@@ -1495,13 +1515,18 @@ const BuyNowFlow = () => {
         }
     }, [step, auditRequestId, formData.optionType, formData.auditType]);
 
+    const categoryToBundleType = {
+        'full-kit': 'Solar+Inverter+Battery',
+        'inverter-battery': 'Inverter + Battery',
+        'battery-only': 'Battery only',
+    };
+
     useEffect(() => {
         const qParam = searchParams.get('q');
         const hasLoadParam = qParam && !Number.isNaN(Number(qParam));
         if (step === 3.5 && hasLoadParam && !bundlesFetchedRef.current && !bundlesLoading) {
             bundlesFetchedRef.current = true;
             setBundles([]);
-            // Request bundles for 30% above user's load (headroom)
             const userLoadW = Number(qParam);
             const loadW = Math.round(userLoadW * 1.3);
             const fetchBundles = async () => {
@@ -1516,15 +1541,18 @@ const BuyNowFlow = () => {
                         },
                     });
                     const root = response.data?.data ?? response.data;
-                    // Handle both array and single object responses
                     let arr = [];
                     if (Array.isArray(root)) {
                         arr = root;
                     } else if (Array.isArray(root?.data)) {
                         arr = root.data;
                     } else if (root && typeof root === "object" && root.id) {
-                        // Single bundle object - wrap in array
                         arr = [root];
+                    }
+                    const productCategory = searchParams.get('category') || 'full-kit';
+                    const expectedType = categoryToBundleType[productCategory];
+                    if (expectedType) {
+                        arr = arr.filter((b) => (b.bundle_type || '').trim() === expectedType);
                     }
                     setBundles(arr);
                 } catch (error) {
@@ -2293,7 +2321,7 @@ const BuyNowFlow = () => {
                     </div>
                     <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose My Solar Bundle</h3>
                 </button>
-                <button onClick={() => navigate('/tools?inverter=true&returnTo=buy-now')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                <button onClick={() => navigate(`/tools?inverter=true&returnTo=buy-now&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`)} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <Wrench size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
@@ -2363,7 +2391,7 @@ const BuyNowFlow = () => {
                 </p>
                 {searchParams.get('q') && (
                     <p className="text-center mb-8">
-                        <a href="/tools?inverter=true&returnTo=buy-now" className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
+                        <a href={`/tools?inverter=true&returnTo=buy-now&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`} className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
                     </p>
                 )}
                 {!searchParams.get('q') && <div className="mb-8" />}
@@ -2421,8 +2449,10 @@ const BuyNowFlow = () => {
                 ) : filteredBundles.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-2xl border border-gray-200">
                         <p className="text-gray-600 mb-4">
-                            {selectedSystemSize !== "all" 
-                                ? `No bundles found for ${selectedSizeLabel}.` 
+                            {searchParams.get('q')
+                                ? "No bundle available for your load and selected category. Your load may be higher than what we have, or there are no bundles in this category. Try editing your load or choosing a different category."
+                                : selectedSystemSize !== "all"
+                                ? `No bundles found for ${selectedSizeLabel}.`
                                 : "No bundles available at the moment."}
                         </p>
                         {selectedSystemSize !== "all" && (
@@ -2715,46 +2745,29 @@ const BuyNowFlow = () => {
                                                     <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{bundle.what_bundle_powers_text}</p>
                                                 </>
                                             )}
-                                            {(bundle.product_model && String(bundle.product_model).trim()) && (
-                                                <>
-                                                    <h4 className="text-sm font-semibold text-gray-800 mt-3">Product model</h4>
-                                                    <p className="text-sm text-gray-600">{bundle.product_model}</p>
-                                                </>
-                                            )}
                                         </div>
                                     )}
 
                                     {bundleDetailTab === 'specs' && (
-                                        <div className="overflow-x-auto">
-                                            {itemsIncluded.length > 0 ? (
-                                                <table className="w-full text-sm border-collapse">
-                                                    <thead>
-                                                        <tr className="border-b border-gray-200">
-                                                            <th className="text-left py-2 pr-4 text-gray-500 font-medium w-10">#</th>
-                                                            <th className="text-left py-2 pr-4 text-gray-700 font-medium">Item</th>
-                                                            <th className="text-right py-2 pr-4 text-gray-500 font-medium w-16">Qty</th>
-                                                            <th className="text-left py-2 text-gray-500 font-medium w-16">Unit</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {itemsIncluded.map((item, index) => {
-                                                            const product = item.product || item;
-                                                            const itemName = product?.name || product?.title || item?.name || `Item #${index + 1}`;
-                                                            const itemQuantity = item.quantity ?? product?.quantity ?? 1;
-                                                            const itemUnit = item.unit ?? product?.unit ?? "—";
-                                                            return (
-                                                                <tr key={index} className="border-b border-gray-100">
-                                                                    <td className="py-2.5 pr-4 text-gray-500">{index + 1}</td>
-                                                                    <td className="py-2.5 pr-4 text-[#273E8E] font-medium">{itemName}</td>
-                                                                    <td className="py-2.5 pr-4 text-right text-gray-600">{itemQuantity}</td>
-                                                                    <td className="py-2.5 text-gray-600">{itemUnit}</td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                    </tbody>
-                                                </table>
+                                        <div className="min-h-[80px]">
+                                            {bundle.specifications && typeof bundle.specifications === 'object' && Object.keys(bundle.specifications).length > 0 ? (
+                                                <dl className="space-y-2 text-sm">
+                                                    {BUNDLE_SPEC_ORDER.filter((key) => {
+                                                        const value = bundle.specifications[key];
+                                                        return value != null && value !== '' && !SPEC_KEYS_HIDDEN.includes(key);
+                                                    }).map((key) => {
+                                                        const value = bundle.specifications[key];
+                                                        const label = SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                                        return (
+                                                            <div key={key} className="flex justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
+                                                                <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
+                                                                <dd className="text-gray-900 text-right">{String(value)}</dd>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </dl>
                                             ) : (
-                                                <p className="text-sm text-gray-500 py-4">No items attached to this bundle.</p>
+                                                <p className="text-sm text-gray-500 py-4">No specifications available.</p>
                                             )}
                                         </div>
                                     )}
@@ -2776,7 +2789,7 @@ const BuyNowFlow = () => {
                             </div>
                         </div>
 
-                        {/* Right Column - Stats */}
+                        {/* Right Column - Stats: 4 boxes (Total Load, Inverter Rating, Battery Capacity, Solar Panel Capacity) */}
                         <div className="w-[380px] flex-shrink-0">
                             <div className="flex flex-col gap-3 rounded-2xl">
                                 <div className="grid grid-cols-2 gap-2 rounded-2xl overflow-hidden">
@@ -2786,19 +2799,23 @@ const BuyNowFlow = () => {
                                             <span className="text-sm text-center break-words leading-tight">{bundle.total_load || "—"}</span>
                                         </div>
                                     </div>
-
                                     <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
                                         <div className="text-xs text-left font-medium">Inverter Rating</div>
                                         <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
                                             <span className="text-sm text-center break-words leading-tight">{bundle.inver_rating || "—"}</span>
                                         </div>
                                     </div>
-                                </div>
-
-                                <div className="bg-[#273E8E] text-white px-4 py-3 rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 min-h-0">
-                                    <div className="text-sm font-bold shrink-0">Total Output</div>
-                                    <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] px-2 py-1 flex-1 min-w-0">
-                                        <span className="text-sm text-center break-words leading-tight">{bundle.total_output || "—"}</span>
+                                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
+                                        <div className="text-xs text-left font-medium">Battery Capacity</div>
+                                        <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
+                                            <span className="text-sm text-center break-words leading-tight">{(bundle.specifications && bundle.specifications.battery_capacity_kwh) ?? bundle.battery_capacity_kwh ?? bundle.battery_capacity ?? "—"}</span>
+                                        </div>
+                                    </div>
+                                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
+                                        <div className="text-xs text-left font-medium">Solar Panel Capacity</div>
+                                        <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
+                                            <span className="text-sm text-center break-words leading-tight">{(bundle.specifications && (bundle.specifications.solar_panels_wattage || bundle.specifications.solar_panel_capacity_kw)) ?? bundle.solar_panels_wattage ?? bundle.solar_panel_capacity_kw ?? "—"}</span>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -2931,7 +2948,7 @@ const BuyNowFlow = () => {
                                 </div>
 
                                 {bundleDetailTab === 'description' && (
-                                    <div className="min-h-[60px]">
+                                    <div className="min-h-[60px] space-y-3">
                                         {descriptionText ? (
                                             <p className="text-[11px] lg:text-[13px] text-gray-600 leading-relaxed whitespace-pre-wrap">
                                                 {descriptionText}
@@ -2939,40 +2956,47 @@ const BuyNowFlow = () => {
                                         ) : (
                                             <p className="text-[11px] text-gray-400 italic">No description found.</p>
                                         )}
+                                        {bundle.system_capacity_display && (
+                                            <>
+                                                <h4 className="text-[11px] font-semibold text-gray-800 mt-2">System capacity</h4>
+                                                <p className="text-[11px] text-gray-600 whitespace-pre-wrap">{bundle.system_capacity_display}</p>
+                                            </>
+                                        )}
+                                        {bundle.what_is_inside_bundle_text && (
+                                            <>
+                                                <h4 className="text-[11px] font-semibold text-gray-800 mt-2">What&apos;s inside</h4>
+                                                <p className="text-[11px] text-gray-600 whitespace-pre-wrap">{bundle.what_is_inside_bundle_text}</p>
+                                            </>
+                                        )}
+                                        {bundle.what_bundle_powers_text && (
+                                            <>
+                                                <h4 className="text-[11px] font-semibold text-gray-800 mt-2">What it powers</h4>
+                                                <p className="text-[11px] text-gray-600 whitespace-pre-wrap">{bundle.what_bundle_powers_text}</p>
+                                            </>
+                                        )}
                                     </div>
                                 )}
 
                                 {bundleDetailTab === 'specs' && (
-                                    <div className="overflow-x-auto -mx-1">
-                                        {itemsIncluded.length > 0 ? (
-                                            <table className="w-full text-[11px] lg:text-[12px] border-collapse">
-                                                <thead>
-                                                    <tr className="border-b border-gray-200">
-                                                        <th className="text-left py-2 pr-2 text-gray-500 font-medium w-8">#</th>
-                                                        <th className="text-left py-2 pr-2 text-gray-700 font-medium">Item</th>
-                                                        <th className="text-right py-2 pr-2 text-gray-500 font-medium w-10">Qty</th>
-                                                        <th className="text-left py-2 text-gray-500 font-medium w-10">Unit</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {itemsIncluded.map((item, idx) => {
-                                                        const product = item.product || item;
-                                                        const itemName = product?.name || product?.title || item?.name || `Item #${idx + 1}`;
-                                                        const itemQuantity = item.quantity ?? product?.quantity ?? 1;
-                                                        const itemUnit = item.unit ?? product?.unit ?? "—";
-                                                        return (
-                                                            <tr key={idx} className="border-b border-gray-100">
-                                                                <td className="py-2 pr-2 text-gray-500">{idx + 1}</td>
-                                                                <td className="py-2 pr-2 text-[#273E8E] font-medium">{itemName}</td>
-                                                                <td className="py-2 pr-2 text-right text-gray-600">{itemQuantity}</td>
-                                                                <td className="py-2 text-gray-600">{itemUnit}</td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
+                                    <div className="min-h-[60px]">
+                                        {bundle.specifications && typeof bundle.specifications === 'object' && Object.keys(bundle.specifications).length > 0 ? (
+                                            <dl className="space-y-1.5 text-[11px] lg:text-[12px]">
+                                                {BUNDLE_SPEC_ORDER.filter((key) => {
+                                                    const value = bundle.specifications[key];
+                                                    return value != null && value !== '' && !SPEC_KEYS_HIDDEN.includes(key);
+                                                }).map((key) => {
+                                                    const value = bundle.specifications[key];
+                                                    const label = SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                                    return (
+                                                        <div key={key} className="flex justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
+                                                            <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
+                                                            <dd className="text-gray-900 text-right">{String(value)}</dd>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </dl>
                                         ) : (
-                                            <p className="text-[11px] text-gray-500 py-3">No items attached to this bundle.</p>
+                                            <p className="text-[11px] text-gray-500 py-3">No specifications available.</p>
                                         )}
                                     </div>
                                 )}
@@ -3330,240 +3354,146 @@ const BuyNowFlow = () => {
             );
         }
 
-        // Otherwise, show regular product order summary
-        // Calculate total from all selected items (accounting for quantity)
+        // Otherwise, show combined Order Summary & Invoice
         const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
         const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
         const itemsSubtotal = bundlesTotal + productsTotal;
-        // For single items, multiply by quantity
         const singleItemBasePrice = formData.selectedProductPrice * (formData.singleItemQuantity || 1);
         const basePrice = itemsSubtotal > 0 ? itemsSubtotal : singleItemBasePrice;
 
-        // Get product details (for backward compatibility)
-        const productName = formData.selectedBundle 
-            ? formData.selectedBundle.title || 'Solar System Bundle'
-            : formData.productCategory === 'full-kit' 
-                ? 'Solar Panels, Inverter & Battery'
-                : formData.productCategory === 'inverter-battery'
-                    ? 'Inverter & Battery Solution'
-                    : formData.productCategory === 'battery-only'
-                        ? 'Battery Only'
-                        : formData.productCategory === 'inverter-only'
-                            ? 'Inverter Only'
-                            : 'Solar Panels Only';
+        // ── ORDER LIST: each bundle/product as ONE row ──
+        const orderRows = [];
+        formData.selectedBundles.forEach((sb) => {
+            const qty = sb.quantity || 1;
+            const unitPrice = sb.price || 0;
+            const obj = sb.bundle;
+            orderRows.push({ id: `b-${sb.id}`, name: obj?.title || obj?.name || `Bundle #${sb.id}`, subtitle: obj?.description || 'Solar System Bundle', quantity: qty, unitPrice, total: unitPrice * qty });
+        });
+        formData.selectedProducts.forEach((sp) => {
+            const qty = sp.quantity || 1;
+            const unitPrice = sp.price || 0;
+            orderRows.push({ id: `p-${sp.id}`, name: sp.product?.title || sp.product?.name || `Product #${sp.id}`, subtitle: 'Individual Component', quantity: qty, unitPrice, total: unitPrice * qty });
+        });
+        if (orderRows.length === 0) {
+            const productName = formData.selectedBundle?.title || formData.selectedBundle?.name
+                || (formData.productCategory === 'full-kit' ? 'Solar Panels, Inverter & Battery'
+                : formData.productCategory === 'inverter-battery' ? 'Inverter & Battery Solution'
+                : formData.productCategory === 'battery-only' ? 'Battery Only'
+                : formData.productCategory === 'inverter-only' ? 'Inverter Only' : 'Solar Panels Only');
+            orderRows.push({ id: 'single', name: productName, subtitle: '', quantity: formData.singleItemQuantity || 1, unitPrice: formData.selectedProductPrice || 0, total: (formData.selectedProductPrice || 0) * (formData.singleItemQuantity || 1) });
+        }
+        const subTotal = orderRows.reduce((s, r) => s + r.total, 0);
+
+        // ── INVOICE: estimated fees (confirmed values come from API after checkout) ──
+        const estInstallation = 50000;
+        const estDelivery = 25000;
+        const estInspection = 10000;
+        const vatPercent = 7.5;
+
+        const invoiceRows = [];
+        orderRows.forEach((r) => {
+            invoiceRows.push({ id: `inv-${r.id}`, description: r.name, quantity: r.quantity, unit: 'Nos', rate: r.unitPrice, totalCost: r.total });
+        });
+        const feeRows = [
+            { id: 'fee-install', description: 'Installation Fees (est.)', quantity: 1, unit: 'Nos', rate: estInstallation, totalCost: estInstallation },
+            { id: 'fee-delivery', description: 'Delivery/Logistics Fees (est.)', quantity: 1, unit: 'Nos', rate: estDelivery, totalCost: estDelivery },
+            { id: 'fee-inspection', description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: estInspection, totalCost: estInspection },
+        ];
+        const allInvoiceRows = [...invoiceRows, ...feeRows];
+        const netTotal = allInvoiceRows.reduce((s, r) => s + r.totalCost, 0);
+        const vatAmount = (netTotal * vatPercent) / 100;
+        const grandTotal = netTotal + vatAmount;
 
         return (
             <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
                 <button onClick={() => {
-                    if (formData.optionType === 'build-system') {
-                        setStep(3.75);
-                    } else if (formData.selectedBundleId) {
-                        setStep(3.5);
-                    } else if (formData.optionType) {
-                        setStep(3);
-                    } else {
-                        setStep(2);
-                    }
+                    if (formData.optionType === 'build-system') setStep(3.75);
+                    else if (formData.selectedBundleId) setStep(3.5);
+                    else if (formData.optionType) setStep(3);
+                    else setStep(2);
                 }} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
-                <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary</h2>
-                
-                <div className="space-y-4 mb-6">
-                    {/* Show selected bundles */}
-                    {formData.selectedBundles.length > 0 && (
-                        <div className="space-y-3">
-                            <h3 className="font-semibold text-gray-700 mb-2">Selected Bundles ({formData.selectedBundles.length})</h3>
-                            {formData.selectedBundles.map((selectedBundle) => {
-                                const quantity = selectedBundle.quantity || 1;
-                                const unitPrice = selectedBundle.price || 0;
-                                const totalPrice = unitPrice * quantity;
-                                
-                                return (
-                                    <div key={selectedBundle.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
-                                        <div className="flex items-center">
-                                            <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                                <Sun size={20} className="text-gray-600" />
-                                            </div>
-                                            <div>
-                                                <p className="font-bold text-gray-800">
-                                                    {selectedBundle.bundle.title || selectedBundle.bundle.name || `Bundle #${selectedBundle.id}`}
-                                                </p>
-                                                <p className="text-sm text-gray-500">
-                                                    Solar System Bundle
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-4">
-                                            {/* Quantity Controls */}
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={() => updateBundleQuantity(selectedBundle.id, Math.max(1, quantity - 1))}
-                                                    className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    disabled={quantity <= 1}
-                                                >
-                                                    <Minus size={16} />
-                                                </button>
-                                                <span className="w-8 text-center font-medium">{quantity}</span>
-                                                <button
-                                                    onClick={() => updateBundleQuantity(selectedBundle.id, quantity + 1)}
-                                                    className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors"
-                                                >
-                                                    <Plus size={16} />
-                                                </button>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="font-bold block">₦{Number(totalPrice).toLocaleString()}</span>
-                                                {quantity > 1 && (
-                                                    <span className="text-xs text-gray-500">₦{Number(unitPrice).toLocaleString()} each</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                    
-                    {/* Show selected products */}
-                    {formData.selectedProducts.length > 0 && (
-                        <div className="space-y-3">
-                            <h3 className="font-semibold text-gray-700 mb-2">Selected Products ({formData.selectedProducts.length})</h3>
-                            {formData.selectedProducts.map((selectedProduct) => {
-                                const quantity = selectedProduct.quantity || 1;
-                                const unitPrice = selectedProduct.price || 0;
-                                const totalPrice = unitPrice * quantity;
-                                
-                                return (
-                                    <div key={selectedProduct.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
-                                        <div className="flex items-center">
-                                            <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                                <Battery size={20} className="text-gray-600" />
-                                            </div>
-                                            <div>
-                                                <p className="font-bold text-gray-800">
-                                                    {selectedProduct.product.title || selectedProduct.product.name || `Product #${selectedProduct.id}`}
-                                                </p>
-                                                <p className="text-sm text-gray-500">
-                                                    Individual Component
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-4">
-                                            {/* Quantity Controls */}
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={() => updateProductQuantity(selectedProduct.id, Math.max(1, quantity - 1))}
-                                                    className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    disabled={quantity <= 1}
-                                                >
-                                                    <Minus size={16} />
-                                                </button>
-                                                <span className="w-8 text-center font-medium">{quantity}</span>
-                                                <button
-                                                    onClick={() => updateProductQuantity(selectedProduct.id, quantity + 1)}
-                                                    className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors"
-                                                >
-                                                    <Plus size={16} />
-                                                </button>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="font-bold block">₦{Number(totalPrice).toLocaleString()}</span>
-                                                {quantity > 1 && (
-                                                    <span className="text-xs text-gray-500">₦{Number(unitPrice).toLocaleString()} each</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                    
-                    {/* Fallback for single item (backward compatibility) */}
-                    {formData.selectedBundles.length === 0 && formData.selectedProducts.length === 0 && (
-                        <div className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
-                            <div className="flex items-center">
-                                <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                    <Sun size={24} className="text-gray-600" />
-                                </div>
-                                <div>
-                                    <p className="font-bold text-gray-800">{productName}</p>
-                                    <p className="text-sm text-gray-500">
-                                        {formData.productCategory === 'full-kit' 
-                                            ? 'Complete solar system solution'
-                                            : formData.productCategory === 'inverter-battery'
-                                                ? 'Inverter and battery backup'
-                                                : 'Individual component'}
-                                        {(formData.singleItemQuantity || 1) > 1 && (
-                                            <span className="ml-2 font-semibold">× {formData.singleItemQuantity || 1}</span>
-                                        )}
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                {/* Quantity Controls */}
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => setFormData(prev => ({
-                                            ...prev,
-                                            singleItemQuantity: Math.max(1, (prev.singleItemQuantity || 1) - 1)
-                                        }))}
-                                        className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                        disabled={(formData.singleItemQuantity || 1) <= 1}
-                                    >
-                                        <Minus size={16} />
-                                    </button>
-                                    <span className="w-8 text-center font-medium">{formData.singleItemQuantity || 1}</span>
-                                    <button
-                                        onClick={() => setFormData(prev => ({
-                                            ...prev,
-                                            singleItemQuantity: (prev.singleItemQuantity || 1) + 1
-                                        }))}
-                                        className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors"
-                                    >
-                                        <Plus size={16} />
-                                    </button>
-                                </div>
-                                <div className="text-right">
-                                    <span className="font-bold block">₦{Number((formData.selectedProductPrice || 0) * (formData.singleItemQuantity || 1)).toLocaleString()}</span>
-                                    {(formData.singleItemQuantity || 1) > 1 && (
-                                        <span className="text-xs text-gray-500">₦{Number(formData.selectedProductPrice || 0).toLocaleString()} each</span>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary & Invoice</h2>
 
-                    {/* Subtotal for multiple items */}
-                    {(formData.selectedBundles.length > 0 || formData.selectedProducts.length > 0) && (
-                        <div className="border-t pt-3 mt-3">
-                            <div className="flex justify-between items-center">
-                                <span className="font-semibold text-gray-700">Items Subtotal:</span>
-                                <span className="font-bold text-lg">₦{Number(basePrice || 0).toLocaleString()}</span>
-                            </div>
-                        </div>
-                    )}
-
-                    {formData.selectedBundles.length === 0 && formData.selectedProducts.length === 0 && (
-                        <div className="text-sm text-gray-600 pl-14 space-y-1 mt-4">
-                            {(formData.productCategory === 'full-kit' || formData.productCategory === 'inverter-battery') && (
-                                <>
-                                    <p><strong>Appliances:</strong> Standard household appliances</p>
-                                    <p><strong>Backup Time:</strong> 8-12 hours (depending on usage)</p>
-                                </>
-                            )}
-                            <p><strong>Quantity:</strong> {formData.singleItemQuantity || 1} {formData.productCategory === 'full-kit' || formData.productCategory === 'inverter-battery' ? 'system' : 'item'}{(formData.singleItemQuantity || 1) > 1 ? 's' : ''}</p>
-                            <p><strong>Unit Price:</strong> ₦{Number(formData.selectedProductPrice || 0).toLocaleString()}</p>
-                            <p><strong>Total Price:</strong> ₦{Number((formData.selectedProductPrice || 0) * (formData.singleItemQuantity || 1)).toLocaleString()}</p>
-                        </div>
-                    )}
+                {/* ── PART 1: ORDER LIST ── */}
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">Order List</h3>
+                <div className="mb-6 overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-sm">
+                        <thead>
+                            <tr className="border-b-2 border-gray-300 bg-gray-50">
+                                <th className="py-3 px-3 font-semibold text-gray-700">Item</th>
+                                <th className="py-3 px-3 font-semibold text-gray-700 text-center w-16">Qty</th>
+                                <th className="py-3 px-3 font-semibold text-gray-700 text-right w-32">Unit Price</th>
+                                <th className="py-3 px-3 font-semibold text-gray-700 text-right w-32">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {orderRows.map((row) => (
+                                <tr key={row.id} className="border-b border-gray-100">
+                                    <td className="py-4 px-3">
+                                        <p className="font-semibold text-gray-900">{row.name}</p>
+                                        {row.subtitle && <p className="text-xs text-gray-500 mt-0.5">{row.subtitle}</p>}
+                                    </td>
+                                    <td className="py-4 px-3 text-center">{row.quantity}</td>
+                                    <td className="py-4 px-3 text-right">₦{Number(row.unitPrice).toLocaleString()}</td>
+                                    <td className="py-4 px-3 text-right font-semibold">₦{Number(row.total).toLocaleString()}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        <tfoot>
+                            <tr className="border-t-2 border-gray-300">
+                                <td colSpan={3} className="py-3 px-3 font-bold text-gray-800">Items Subtotal:</td>
+                                <td className="py-3 px-3 text-right font-bold text-lg">₦{Number(subTotal || basePrice || 0).toLocaleString()}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
                 </div>
 
-                <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6">
-                    <p className="text-sm text-blue-700">
-                        <strong>Note:</strong> Detailed invoice with all fees will be shown after checkout options.
-                    </p>
+                {/* ── PART 2: INVOICE BREAKDOWN ── */}
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">Invoice Breakdown</h3>
+                <div className="mb-4 overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-sm">
+                        <thead>
+                            <tr className="border-b-2 border-gray-300 bg-gray-50">
+                                <th className="py-3 px-2 font-semibold text-gray-700">ITEM DESCRIPTION</th>
+                                <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">QTY</th>
+                                <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">UNIT</th>
+                                <th className="py-3 px-2 font-semibold text-gray-700 text-right w-28">RATE</th>
+                                <th className="py-3 px-2 font-semibold text-gray-700 text-right w-32">TOTAL COST</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {allInvoiceRows.map((row) => (
+                                <tr key={row.id} className="border-b border-gray-100">
+                                    <td className="py-3 px-2 text-gray-800">{row.description}</td>
+                                    <td className="py-3 px-2 text-center">{row.quantity}</td>
+                                    <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
+                                    <td className="py-3 px-2 text-right">₦{Number(row.rate).toLocaleString()}</td>
+                                    <td className="py-3 px-2 text-right font-semibold">₦{Number(row.totalCost).toLocaleString()}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        <tfoot>
+                            <tr className="border-t-2 border-gray-300">
+                                <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Net-Total</td>
+                                <td className="py-3 px-2 text-right font-bold">₦{Number(netTotal).toLocaleString()}</td>
+                            </tr>
+                            <tr className="border-b border-gray-200">
+                                <td colSpan={3} className="py-2 px-2 text-gray-700">VAT</td>
+                                <td className="py-2 px-2 text-right text-gray-600">{vatPercent}%</td>
+                                <td className="py-2 px-2 text-right font-semibold">₦{Number(vatAmount).toLocaleString()}</td>
+                            </tr>
+                            <tr className="bg-[#273e8e]/5">
+                                <td colSpan={4} className="py-3 px-2 font-bold text-lg text-[#273e8e]">Grand-Total</td>
+                                <td className="py-3 px-2 text-right font-bold text-lg text-[#273e8e]">₦{Number(grandTotal).toLocaleString()}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-sm text-blue-700 mb-6">
+                    <strong>Note:</strong> Fees shown are estimates. Final amounts will be confirmed after checkout.
                 </div>
 
                 <button
@@ -3937,253 +3867,127 @@ const BuyNowFlow = () => {
         const insuranceFee = invoiceDetails?.insurance_fee || 0;
         const addOnsTotal = invoiceDetails?.add_ons_total || 0;
         
-        // Calculate total (use API total only if it includes product price; otherwise use frontend calculation)
-        const calculatedTotal = basePrice + materialCost + installationFee + deliveryFee + inspectionFee + insuranceFee + addOnsTotal;
         const apiTotal = invoiceDetails?.total != null ? Number(invoiceDetails.total) : null;
-        // When we have items (basePrice > 0), prefer calculatedTotal if API total is missing or less than basePrice (backend may have missed product price)
-        const invoiceTotal = (basePrice > 0 && (apiTotal == null || apiTotal < basePrice))
-            ? calculatedTotal
-            : (apiTotal ?? calculatedTotal);
         
+        // Build invoice rows using INVOICE TEMPLATE (detailed breakdown)
+        const invoiceRows = [];
+
+        // Product/bundle rows
+        formData.selectedBundles.forEach((selectedBundle) => {
+            const qty = selectedBundle.quantity || 1;
+            const bundleObj = selectedBundle.bundle;
+            invoiceRows.push({
+                id: `b-${selectedBundle.id}`,
+                description: bundleObj?.title || bundleObj?.name || `Bundle #${selectedBundle.id}`,
+                quantity: qty,
+                unit: 'Nos',
+                rate: selectedBundle.price || 0,
+                totalCost: (selectedBundle.price || 0) * qty,
+            });
+        });
+        formData.selectedProducts.forEach((p) => {
+            const qty = p.quantity || 1;
+            const unitPrice = p.price || 0;
+            invoiceRows.push({
+                id: `p-${p.id}`,
+                description: p.product?.title || p.product?.name || `Product #${p.id}`,
+                quantity: qty,
+                unit: 'Nos',
+                rate: unitPrice,
+                totalCost: unitPrice * qty,
+            });
+        });
+        if (invoiceRows.length === 0 && formData.optionType !== 'audit') {
+            const label = formData.selectedBundle?.title || formData.selectedBundle?.name
+                || (formData.productCategory === 'full-kit' ? 'Solar Panels, Inverter & Battery'
+                : formData.productCategory === 'inverter-battery' ? 'Inverter & Battery Solution'
+                : formData.productCategory === 'battery-only' ? 'Battery Only'
+                : formData.productCategory === 'inverter-only' ? 'Inverter Only' : 'Solar Panels Only');
+            invoiceRows.push({
+                id: 'single',
+                description: label,
+                quantity: formData.singleItemQuantity || 1,
+                unit: 'Nos',
+                rate: formData.selectedProductPrice || basePrice || 0,
+                totalCost: basePrice || 0,
+            });
+        }
+        if (formData.optionType === 'audit') {
+            invoiceRows.push({
+                id: 'audit',
+                description: `Professional Energy Audit (${formData.auditType === 'home-office' ? 'Home / Office' : 'Commercial / Industrial'})`,
+                quantity: 1,
+                unit: 'Nos',
+                rate: invoiceDetails?.audit_fee || invoiceDetails?.product_price || 0,
+                totalCost: invoiceDetails?.audit_fee || invoiceDetails?.product_price || 0,
+            });
+        }
+
+        // Fee rows
+        const feeRows = [];
+        if (materialCost > 0) feeRows.push({ id: 'fee-material', description: 'Material Cost (Cables, Breakers, Surge Protectors, Trunking, and Pipes)', quantity: 1, unit: 'Lots', rate: materialCost, totalCost: materialCost });
+        if (installationFee > 0) feeRows.push({ id: 'fee-install', description: 'Installation Fees', quantity: 1, unit: 'Nos', rate: installationFee, totalCost: installationFee });
+        if (deliveryFee > 0) feeRows.push({ id: 'fee-delivery', description: 'Delivery/Logistics Fees', quantity: 1, unit: 'Nos', rate: deliveryFee, totalCost: deliveryFee });
+        feeRows.push({ id: 'fee-inspection', description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: inspectionFee, totalCost: inspectionFee });
+        if (insuranceFee > 0) feeRows.push({ id: 'fee-insurance', description: 'Insurance Fee', quantity: 1, unit: 'Nos', rate: insuranceFee, totalCost: insuranceFee });
+        if (addOnsTotal > 0) feeRows.push({ id: 'fee-addons', description: 'Additional Services', quantity: 1, unit: 'Nos', rate: addOnsTotal, totalCost: addOnsTotal });
+
+        const allInvoiceRows = [...invoiceRows, ...feeRows];
+        const netTotal = allInvoiceRows.reduce((s, r) => s + r.totalCost, 0);
+        const vatPercent = 7.5;
+        const vatAmount = (netTotal * vatPercent) / 100;
+        const grandTotal = netTotal + vatAmount;
+
+        // Use grandTotal for payment; if API total is higher (includes things we don't know about), use that
+        const finalTotal = (apiTotal != null && apiTotal > grandTotal) ? apiTotal : grandTotal;
+
         return (
         <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
             <button onClick={() => setStep(8)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Invoice #{orderId || 'Pending'}</h2>
-            <div className="space-y-4 mb-8">
-                <div className="border-b pb-4 mb-4">
-                    <h3 className="font-bold text-gray-800 mb-3">Invoice Details</h3>
-                </div>
-                
-                {/* Audit Request */}
-                {formData.optionType === 'audit' && (
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <p className="font-medium text-gray-800">Professional Energy Audit</p>
-                            <p className="text-sm text-gray-500">
-                                {formData.auditType === 'home-office' ? 'Home / Office Audit' : 'Commercial / Industrial Audit'}
-                            </p>
-                        </div>
-                        <span className="font-bold">₦{Number(invoiceDetails?.audit_fee || invoiceDetails?.product_price || 0).toLocaleString()}</span>
-                    </div>
-                )}
-                
-                {/* Selected Bundles */}
-                {formData.selectedBundles.length > 0 && (
-                    <div className="space-y-2">
-                        {formData.selectedBundles.map((selectedBundle) => {
-                            const quantity = selectedBundle.quantity || 1;
-                            const unitPrice = selectedBundle.price || 0;
-                            const totalPrice = unitPrice * quantity;
-                            
-                            return (
-                                <div key={selectedBundle.id} className="flex justify-between items-center">
-                                    <div>
-                                        <p className="font-medium text-gray-800">
-                                            {selectedBundle.bundle?.title || selectedBundle.bundle?.name || `Bundle #${selectedBundle.id}`}
-                                        </p>
-                                        <p className="text-sm text-gray-500">
-                                            Solar System Bundle
-                                            {quantity > 1 && <span className="ml-2">× {quantity}</span>}
-                                        </p>
-                                    </div>
-                                    <div className="text-right">
-                                        <span className="font-bold block">₦{Number(totalPrice).toLocaleString()}</span>
-                                        {quantity > 1 && (
-                                            <span className="text-xs text-gray-500">₦{Number(unitPrice).toLocaleString()} each</span>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-                
-                {/* Selected Products */}
-                {formData.selectedProducts.length > 0 && (
-                    <div className="space-y-2">
-                        {formData.selectedProducts.map((selectedProduct) => {
-                            const quantity = selectedProduct.quantity || 1;
-                            const unitPrice = selectedProduct.price || 0;
-                            const totalPrice = unitPrice * quantity;
-                            
-                            return (
-                                <div key={selectedProduct.id} className="flex justify-between items-center">
-                                    <div>
-                                        <p className="font-medium text-gray-800">
-                                            {selectedProduct.product?.title || selectedProduct.product?.name || `Product #${selectedProduct.id}`}
-                                        </p>
-                                        <p className="text-sm text-gray-500">
-                                            Individual Component
-                                            {quantity > 1 && <span className="ml-2">× {quantity}</span>}
-                                        </p>
-                                    </div>
-                                    <div className="text-right">
-                                        <span className="font-bold block">₦{Number(totalPrice).toLocaleString()}</span>
-                                        {quantity > 1 && (
-                                            <span className="text-xs text-gray-500">₦{Number(unitPrice).toLocaleString()} each</span>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-                
-                {/* Fallback for single bundle/product (backward compatibility) */}
-                {formData.selectedBundles.length === 0 && formData.selectedProducts.length === 0 && formData.optionType !== 'audit' && (
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <p className="font-medium text-gray-800">
-                                {formData.selectedBundle?.title || formData.selectedBundle?.name || formData.selectedBundle?.bundleTitle || 
-                                 formData.productCategory === 'full-kit' 
-                                    ? 'Solar Panels, Inverter & Battery'
-                                    : formData.productCategory === 'inverter-battery'
-                                        ? 'Inverter & Battery Solution'
-                                        : formData.productCategory === 'battery-only'
-                                            ? 'Battery Only'
-                                            : formData.productCategory === 'inverter-only'
-                                                ? 'Inverter Only'
-                                                : 'Solar Panels Only'}
-                            </p>
-                            <p className="text-sm text-gray-500">
-                                {formData.productCategory === 'full-kit' 
-                                    ? 'Complete solar system solution'
-                                    : formData.productCategory === 'inverter-battery'
-                                        ? 'Inverter and battery backup'
-                                        : 'Individual component'}
-                                {(formData.singleItemQuantity || 1) > 1 && <span className="ml-2">× {formData.singleItemQuantity || 1}</span>}
-                            </p>
-                        </div>
-                        <div className="text-right">
-                            {/* Use product_price from API if available, otherwise use calculated basePrice */}
-                            <span className="font-bold block">
-                                ₦{Number(invoiceDetails?.product_price || basePrice || 0).toLocaleString()}
-                            </span>
-                            {(formData.singleItemQuantity || 1) > 1 && (
-                                <span className="text-xs text-gray-500">
-                                    ₦{Number((invoiceDetails?.product_price || formData.selectedProductPrice || 0) / (formData.singleItemQuantity || 1)).toLocaleString()} each
-                                </span>
-                            )}
-                        </div>
-                    </div>
-                )}
-                
-                {/* Items Subtotal if multiple items */}
-                {(formData.selectedBundles.length > 0 || formData.selectedProducts.length > 0) && (
-                    <div className="border-t pt-3 mt-3">
-                        <div className="flex justify-between items-center">
-                            <span className="font-semibold text-gray-700">Items Subtotal:</span>
-                            {/* Use product_price from API if available, otherwise use calculated basePrice */}
-                            <span className="font-bold">₦{Number(invoiceDetails?.product_price || basePrice || 0).toLocaleString()}</span>
-                        </div>
-                    </div>
-                )}
-                
-                {/* Product Breakdown from API (for pre-packaged bundles) */}
-                {invoiceDetails?.product_breakdown && (
-                    <div className="border-t pt-4 mt-4">
-                        <h4 className="font-semibold text-gray-800 mb-3">Product Breakdown</h4>
-                        <div className="space-y-2 bg-gray-50 rounded-lg p-4">
-                            {invoiceDetails.product_breakdown.solar_panels && (
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-700">
-                                        Solar Panels
-                                        {invoiceDetails.product_breakdown.solar_panels.quantity > 0 && (
-                                            <span className="ml-2 text-gray-500">
-                                                (× {invoiceDetails.product_breakdown.solar_panels.quantity})
-                                            </span>
-                                        )}
-                                    </span>
-                                    <span className="font-semibold text-gray-800">
-                                        ₦{Number(invoiceDetails.product_breakdown.solar_panels.price || 0).toLocaleString()}
-                                    </span>
-                                </div>
-                            )}
-                            {invoiceDetails.product_breakdown.solar_inverter && (
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-700">
-                                        Solar Inverter
-                                        {invoiceDetails.product_breakdown.solar_inverter.quantity > 0 && (
-                                            <span className="ml-2 text-gray-500">
-                                                (× {invoiceDetails.product_breakdown.solar_inverter.quantity})
-                                            </span>
-                                        )}
-                                    </span>
-                                    <span className="font-semibold text-gray-800">
-                                        ₦{Number(invoiceDetails.product_breakdown.solar_inverter.price || 0).toLocaleString()}
-                                    </span>
-                                </div>
-                            )}
-                            {invoiceDetails.product_breakdown.batteries && (
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-700">
-                                        Batteries
-                                        {invoiceDetails.product_breakdown.batteries.quantity > 0 && (
-                                            <span className="ml-2 text-gray-500">
-                                                (× {invoiceDetails.product_breakdown.batteries.quantity})
-                                            </span>
-                                        )}
-                                    </span>
-                                    <span className="font-semibold text-gray-800">
-                                        ₦{Number(invoiceDetails.product_breakdown.batteries.price || 0).toLocaleString()}
-                                    </span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-                
-                {/* Material Cost - only if installation is selected */}
-                {materialCost > 0 && (
-                    <div className="flex justify-between text-sm text-gray-600">
-                        <span>Material Cost (Cables, Breakers, Surge Protectors, Trunking, and Pipes)</span>
-                        <span>₦{Number(materialCost).toLocaleString()}</span>
-                    </div>
-                )}
-                
-                {/* Installation Fee - only if Troosolar installer is selected */}
-                {installationFee > 0 && (
-                    <div className="flex justify-between">
-                        <span>Installation Fees</span>
-                        <span>₦{Number(installationFee).toLocaleString()}</span>
-                    </div>
-                )}
-                
-                {/* Delivery/Logistics */}
-                {deliveryFee > 0 && (
-                    <div className="flex justify-between">
-                        <span>Delivery/Logistics Fees</span>
-                        <span>₦{Number(deliveryFee).toLocaleString()}</span>
-                    </div>
-                )}
-                
-                {/* Inspection Fee - always included */}
-                <div className="flex justify-between text-sm text-gray-600">
-                    <span>Inspection Fees</span>
-                    <span>₦{Number(inspectionFee).toLocaleString()}</span>
-                </div>
-                
-                {/* Insurance Fee - optional */}
-                {insuranceFee > 0 && (
-                    <div className="flex justify-between">
-                        <span>Insurance Fee (Optional)</span>
-                        <span>₦{Number(insuranceFee).toLocaleString()}</span>
-                    </div>
-                )}
-                
-                {/* Add-ons Total */}
-                {addOnsTotal > 0 && (
-                    <div className="flex justify-between">
-                        <span>Additional Services</span>
-                        <span>₦{Number(addOnsTotal).toLocaleString()}</span>
-                    </div>
-                )}
-                
-                <div className="border-t pt-4 font-bold text-xl flex justify-between">
-                    <span>Total</span>
-                    <span className="text-[#273e8e]">₦{Number(invoiceTotal).toLocaleString()}</span>
+
+            {/* INVOICE TEMPLATE */}
+            <div className="mb-8">
+                <div className="overflow-x-auto mb-4">
+                    <table className="w-full text-left border-collapse text-sm">
+                        <thead>
+                            <tr className="border-b-2 border-gray-300 bg-gray-50">
+                                <th className="py-3 px-2 font-semibold text-gray-700">ITEM DESCRIPTION</th>
+                                <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">QTY</th>
+                                <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">UNIT</th>
+                                <th className="py-3 px-2 font-semibold text-gray-700 text-right w-28">RATE</th>
+                                <th className="py-3 px-2 font-semibold text-gray-700 text-right w-32">TOTAL COST</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {allInvoiceRows.map((row) => (
+                                <tr key={row.id} className="border-b border-gray-100">
+                                    <td className="py-3 px-2 text-gray-800">{row.description}</td>
+                                    <td className="py-3 px-2 text-center">{row.quantity}</td>
+                                    <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
+                                    <td className="py-3 px-2 text-right">₦{Number(row.rate).toLocaleString()}</td>
+                                    <td className="py-3 px-2 text-right font-semibold">₦{Number(row.totalCost).toLocaleString()}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        <tfoot>
+                            <tr className="border-t-2 border-gray-300">
+                                <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Net-Total</td>
+                                <td className="py-3 px-2 text-right font-bold">₦{Number(netTotal).toLocaleString()}</td>
+                            </tr>
+                            <tr className="border-b border-gray-200">
+                                <td colSpan={3} className="py-2 px-2 text-gray-700">VAT</td>
+                                <td className="py-2 px-2 text-right text-gray-600">{vatPercent}%</td>
+                                <td className="py-2 px-2 text-right font-semibold">₦{Number(vatAmount).toLocaleString()}</td>
+                            </tr>
+                            <tr className="bg-[#273e8e]/5">
+                                <td colSpan={4} className="py-3 px-2 font-bold text-lg text-[#273e8e]">Grand-Total</td>
+                                <td className="py-3 px-2 text-right font-bold text-lg text-[#273e8e]">₦{Number(finalTotal).toLocaleString()}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
                 </div>
             </div>
             

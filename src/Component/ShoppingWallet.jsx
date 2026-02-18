@@ -5,7 +5,7 @@ import axios from "axios";
 import API from "../config/api.config";
 
 const ShoppingWallet = () => {
-  const [open, setOpen] = useState(false);
+  const [showAmount, setShowAmount] = useState(true); // true => amount visible (eye open), false => hidden (eye closed)
   const [showDialog, setShowDialog] = useState(false);
   const [amountInput, setAmountInput] = useState("1000");
   const [loading, setLoading] = useState(false);
@@ -152,17 +152,19 @@ const ShoppingWallet = () => {
       <div className="flex justify-between items-center mb-2">
         <p className="text-white/70 text-sm">Shopping Wallet</p>
         <div className="bg-[#1d3073] h-7 w-7 rounded-md flex items-center justify-center">
-          {open ? (
+          {showAmount ? (
             <Eye
-              onClick={() => setOpen(!open)}
+              onClick={() => setShowAmount(false)}
               size={18}
               className="text-white/70 cursor-pointer"
+              title="Hide balance"
             />
           ) : (
             <EyeOff
-              onClick={() => setOpen(!open)}
+              onClick={() => setShowAmount(true)}
               size={18}
               className="text-white/70 cursor-pointer"
+              title="Show balance"
             />
           )}
         </div>
@@ -170,14 +172,14 @@ const ShoppingWallet = () => {
 
       {/* Balance */}
       <h1 className="text-xl font-bold -tracking-tighter mb-2">
-        {walletLoading ? "Loading..." : (open ? "******" : `N${Number(balance || 0).toLocaleString()}`)}
+        {walletLoading ? "Loading..." : (showAmount ? `₦${Number(balance || 0).toLocaleString()}` : "******")}
       </h1>
 
       <div className="flex  min-h-[70px] flex-row justify-between items-start sm:items-center bg-[#1d3073] py-3 px-3 rounded-md gap-3">
         {/* Loan Info */}
         <div className="flex flex-col gap-2 text-sm leading-tight">
           <p className="text-white/80 text-xs">Last Transaction</p>
-          <p className="text-white">{walletLoading ? "Loading..." : (open ? "******" : `N${Number(lastTransaction || 0).toLocaleString()}`)}</p>
+          <p className="text-white">{walletLoading ? "Loading..." : (showAmount ? `₦${Number(lastTransaction || 0).toLocaleString()}` : "******")}</p>
         </div>
         <div className="h-10 w-10 bg-white flex justify-center  items-center rounded-full">
           <img src={assets.greenTick} className="h-4 w-4 rotate-12" alt="" />

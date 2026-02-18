@@ -976,7 +976,7 @@ const Cart = () => {
                   <div className="flex justify-between text-[#273e8e]">
                     <span className="text-xs text-gray-400 ">Total</span>
                     <span className="font-semibold">
-                      N{amountTotal.toLocaleString()}
+                      ₦{amountTotal.toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -1232,7 +1232,7 @@ const Cart = () => {
                   <div className="flex justify-between text-[#00000080] text-sm">
                     <span>Price</span>
                     <span className="text-[#273E8E]">
-                      N{itemsTotalToShow.toLocaleString()}
+                      ₦{itemsTotalToShow.toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -1309,14 +1309,14 @@ const Cart = () => {
                     <p>Charge</p>
                     <p>
                       {deliveryToShow
-                        ? `N${deliveryToShow.toLocaleString()}`
+                        ? `₦${deliveryToShow.toLocaleString()}`
                         : "Free"}
                     </p>
                   </div>
                   <hr className="border-gray-300" />
                   <div className="flex justify-between font-bold text-[#273e8e]">
                     <p>Total</p>
-                    <p>N{grandTotal.toLocaleString()}</p>
+                    <p>₦{grandTotal.toLocaleString()}</p>
                   </div>
                 </div>
 
@@ -1512,7 +1512,7 @@ const Cart = () => {
                   <p className="text-sm text-gray-600">Total</p>
                   <div className="mt-1 flex items-center">
                     <p className="text-[14px]  font-[500] text-[#273e8e]">
-                      N{amountTotal.toLocaleString()}
+                      ₦{amountTotal.toLocaleString()}
                     </p>
                     <button
                       className="px-25 py-4 rounded-full text-[12px] bg-[#273e8e] text-white disabled:opacity-60 ml-[25px]"
@@ -1716,7 +1716,7 @@ const Cart = () => {
                   <div className="flex justify-between items-center py-3 border-t border-gray-200 text-xs">
                     <span className="text-gray-500">Price</span>
                     <span className="text-[#273e8e] font-semibold">
-                      N{itemsTotalToShow.toLocaleString()}
+                      ₦{itemsTotalToShow.toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -1766,7 +1766,7 @@ const Cart = () => {
                   <div>
                     <p className="text-sm text-gray-700">Total</p>
                     <p className="mt-1 font-[500] text-[18px] text-[#273e8e]">
-                      N{grandTotal.toLocaleString()}
+                      ₦{grandTotal.toLocaleString()}
                     </p>
                   </div>
                   <button
@@ -1805,7 +1805,7 @@ const Cart = () => {
                         {firstLine.name}
                       </Link>
                       <p className="text-[#273e8e] font-semibold">
-                        N{firstLine.unitPrice.toLocaleString()}
+                        ₦{firstLine.unitPrice.toLocaleString()}
                       </p>
                     </div>
                   </div>
@@ -1840,7 +1840,7 @@ const Cart = () => {
                   <div className="flex justify-between text-sm">
                     <span className="text-[#00000080]">Price</span>
                     <span className="text-[#273e8e]">
-                      N{itemsTotalToShow.toLocaleString()}
+                      ₦{itemsTotalToShow.toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -1978,7 +1978,7 @@ const Cart = () => {
                                   {line.name}
                                 </p>
                                 <p className="text-[#273e8e] font-semibold">
-                                  N{line.unitPrice.toLocaleString()} x{" "}
+                                  ₦{line.unitPrice.toLocaleString()} x{" "}
                                   {line.qty}
                                 </p>
                               </div>

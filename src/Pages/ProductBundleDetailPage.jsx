@@ -136,7 +136,9 @@ const mapBundleDetail = (b) => {
 
   const totalLoad = b.total_load ?? "";
   const inverterRating = b.inver_rating ?? "";
-  const totalOutput = b.total_output ?? "";
+  const specs = b.specifications && typeof b.specifications === "object" ? b.specifications : {};
+  const batteryCapacity = specs.battery_capacity_kwh ?? b.battery_capacity_kwh ?? b.battery_capacity ?? "";
+  const solarPanelCapacity = specs.solar_panels_wattage ?? specs.solar_panel_capacity_kw ?? b.solar_panels_wattage ?? b.solar_panel_capacity_kw ?? b.solar_panel_capacity ?? "";
 
   // API: detailed_description, description, desc – prefer detailed_description for display
   const description = (b.detailed_description && String(b.detailed_description).trim())
@@ -161,6 +163,9 @@ const mapBundleDetail = (b) => {
       }
     : { installation_fee: 0, delivery_fee: 0, inspection_fee: 0 };
 
+  // API specifications (inverter/solar/battery specs – not the materials list)
+  const specifications = b.specifications && typeof b.specifications === "object" ? b.specifications : null;
+
   return {
     id,
     label,
@@ -178,11 +183,46 @@ const mapBundleDetail = (b) => {
     heroImage: image,
     totalLoad,
     inverterRating,
-    totalOutput,
+    batteryCapacity: batteryCapacity !== "" ? String(batteryCapacity) : "",
+    solarPanelCapacity: solarPanelCapacity !== "" ? String(solarPanelCapacity) : "",
     itemsIncluded,
     appliances,
+    specifications,
   };
 };
+
+// Label map for specifications (API keys → display labels). Matches sheet "Bundle Specification" column.
+const SPEC_LABELS = {
+  company_oem: "Company / OEM",
+  solar_panel_type: "Solar Panel type",
+  inverter_capacity_kva: "Inverter Capacity",
+  voltage: "Voltage",
+  battery_type: "Battery Type",
+  solar_panels_warranty: "Solar panels (Warranty)",
+  inverter_warranty: "Solar Inverter (Warranty)",
+  battery_warranty: "Lithium Ion Battery (Warranty)",
+  solar_panels_wattage: "Solar Panels Wattage",
+  battery_capacity_kwh: "Battery Capacity",
+  backup_time_range: "Back-up time range",
+};
+
+// Order matching the sheet "Bundle Specification" (solar capacity shown once as Solar Panels Wattage only)
+const BUNDLE_SPEC_ORDER = [
+  "company_oem",
+  "solar_panel_type",
+  "inverter_capacity_kva",
+  "voltage",
+  "battery_type",
+  "solar_panels_warranty",
+  "inverter_warranty",
+  "battery_warranty",
+  "solar_panels_wattage",
+  "battery_capacity_kwh",
+  "backup_time_range",
+];
+
+// Hide duplicate solar capacity fields (kW and W) so only "Solar Panels Wattage" is shown
+const SPEC_KEYS_HIDDEN = ["solar_panel_capacity_kw", "solar_panel_capacity_w"];
 
 // Default appliances (fallback if API doesn't provide)
 const defaultAppliances = [
@@ -562,40 +602,29 @@ const ProductBundle = () => {
                             <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{productData.whatBundlePowers}</p>
                           </>
                         )}
-                        {productData.productModel && (
-                          <>
-                            <h4 className="text-sm font-semibold text-gray-800 mt-3">Product model</h4>
-                            <p className="text-sm text-gray-600">{productData.productModel}</p>
-                          </>
-                        )}
                       </div>
                     )}
 
                     {bundleDetailTab === "specs" && (
-                      <div className="overflow-x-auto">
-                        {(productData.itemsIncluded || []).length > 0 ? (
-                          <table className="w-full text-sm border-collapse">
-                            <thead>
-                              <tr className="border-b border-gray-200">
-                                <th className="text-left py-2 pr-4 text-gray-500 font-medium w-10">#</th>
-                                <th className="text-left py-2 pr-4 text-gray-700 font-medium">Item</th>
-                                <th className="text-right py-2 pr-4 text-gray-500 font-medium w-16">Qty</th>
-                                <th className="text-left py-2 text-gray-500 font-medium w-16">Unit</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {(productData.itemsIncluded || []).map((item, index) => (
-                                <tr key={index} className="border-b border-gray-100">
-                                  <td className="py-2.5 pr-4 text-gray-500">{index + 1}</td>
-                                  <td className="py-2.5 pr-4 text-[#273E8E] font-medium">{item.title}</td>
-                                  <td className="py-2.5 pr-4 text-right text-gray-600">{item.quantity ?? 1}</td>
-                                  <td className="py-2.5 text-gray-600">{item.unit || "—"}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                      <div className="min-h-[80px]">
+                        {productData.specifications && Object.keys(productData.specifications).length > 0 ? (
+                          <dl className="space-y-2 text-sm">
+                            {BUNDLE_SPEC_ORDER.filter((key) => {
+                              const value = productData.specifications[key];
+                              return value != null && value !== "" && !SPEC_KEYS_HIDDEN.includes(key);
+                            }).map((key) => {
+                              const value = productData.specifications[key];
+                              const label = SPEC_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                              return (
+                                <div key={key} className="flex justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
+                                  <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
+                                  <dd className="text-gray-900 text-right">{String(value)}</dd>
+                                </div>
+                              );
+                            })}
+                          </dl>
                         ) : (
-                          <p className="text-sm text-gray-500 py-4">No items attached to this bundle.</p>
+                          <p className="text-sm text-gray-500 py-4">No specifications available.</p>
                         )}
                       </div>
                     )}
@@ -621,7 +650,7 @@ const ProductBundle = () => {
                 </div>
               </div>
 
-              {/* Right column (stats) - aligned with BNPL/Buy Now flow */}
+              {/* Right column (stats) - 4 boxes: Total Load, Inverter Rating, Battery Capacity, Solar Panel Capacity */}
               <div className="w-[380px] flex-shrink-0">
                 <div className="flex flex-col gap-3 rounded-2xl">
                   <div className="grid grid-cols-2 gap-2 rounded-2xl overflow-hidden">
@@ -631,19 +660,23 @@ const ProductBundle = () => {
                         <span className="text-sm text-center break-words leading-tight">{productData.totalLoad || "—"}</span>
                       </div>
                     </div>
-
                     <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
                       <div className="text-xs text-left font-medium">Inverter Rating</div>
                       <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
                         <span className="text-sm text-center break-words leading-tight">{productData.inverterRating || "—"}</span>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="bg-[#273E8E] text-white px-4 py-3 rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 min-h-0">
-                    <div className="text-sm font-bold shrink-0">Total Output</div>
-                    <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] px-2 py-1 flex-1 min-w-0">
-                      <span className="text-sm text-center break-words leading-tight">{productData.totalOutput || "—"}</span>
+                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
+                      <div className="text-xs text-left font-medium">Battery Capacity</div>
+                      <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
+                        <span className="text-sm text-center break-words leading-tight">{productData.batteryCapacity || "—"}</span>
+                      </div>
+                    </div>
+                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
+                      <div className="text-xs text-left font-medium">Solar Panel Capacity</div>
+                      <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
+                        <span className="text-sm text-center break-words leading-tight">{productData.solarPanelCapacity || "—"}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -843,40 +876,29 @@ const ProductBundle = () => {
                           <p className="text-[11px] text-gray-600 whitespace-pre-wrap">{productData.whatBundlePowers}</p>
                         </>
                       )}
-                      {productData.productModel && (
-                        <>
-                          <h4 className="text-[11px] font-semibold text-gray-800 mt-2">Product model</h4>
-                          <p className="text-[11px] text-gray-600">{productData.productModel}</p>
-                        </>
-                      )}
                     </div>
                   )}
 
                   {bundleDetailTab === "specs" && (
-                    <div className="overflow-x-auto -mx-1">
-                      {(productData.itemsIncluded || []).length > 0 ? (
-                        <table className="w-full text-[11px] lg:text-[12px] border-collapse">
-                          <thead>
-                            <tr className="border-b border-gray-200">
-                              <th className="text-left py-2 pr-2 text-gray-500 font-medium w-8">#</th>
-                              <th className="text-left py-2 pr-2 text-gray-700 font-medium">Item</th>
-                              <th className="text-right py-2 pr-2 text-gray-500 font-medium w-10">Qty</th>
-                              <th className="text-left py-2 text-gray-500 font-medium w-10">Unit</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(productData.itemsIncluded || []).map((item, idx) => (
-                              <tr key={idx} className="border-b border-gray-100">
-                                <td className="py-2 pr-2 text-gray-500">{idx + 1}</td>
-                                <td className="py-2 pr-2 text-[#273E8E] font-medium">{item.title}</td>
-                                <td className="py-2 pr-2 text-right text-gray-600">{item.quantity ?? 1}</td>
-                                <td className="py-2 text-gray-600">{item.unit || "—"}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                    <div className="min-h-[60px]">
+                      {productData.specifications && Object.keys(productData.specifications).length > 0 ? (
+                        <dl className="space-y-1.5 text-[11px] lg:text-[12px]">
+                          {BUNDLE_SPEC_ORDER.filter((key) => {
+                            const value = productData.specifications[key];
+                            return value != null && value !== "" && !SPEC_KEYS_HIDDEN.includes(key);
+                          }).map((key) => {
+                            const value = productData.specifications[key];
+                            const label = SPEC_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                            return (
+                              <div key={key} className="flex justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
+                                <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
+                                <dd className="text-gray-900 text-right">{String(value)}</dd>
+                              </div>
+                            );
+                          })}
+                        </dl>
                       ) : (
-                        <p className="text-[11px] text-gray-500 py-3">No items attached to this bundle.</p>
+                        <p className="text-[11px] text-gray-500 py-3">No specifications available.</p>
                       )}
                     </div>
                   )}

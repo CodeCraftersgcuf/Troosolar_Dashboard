@@ -44,7 +44,7 @@ const PendingLoan = () => {
                 {toggle ? (
                   <div>
                     <LoanStatusCard
-                      amount="N200,200"
+                      amount="₦200,200"
                       amountColor="text-[#FFA500]"
                       status="Pending"
                       statusTextColor="text-[#FFA500]"
@@ -74,7 +74,7 @@ const PendingLoan = () => {
                       loanStatus="Active"
                       intersetRate="5%"
                       duration="12 month"
-                      loanAmount="N200,000"
+                      loanAmount="₦200,000"
                       date="22 June, 2025"
                       statusTextColor="text-[#008000]"
                       statusBgColor="bg-[#00800033]"

@@ -215,7 +215,7 @@ const WithdrawalAccountPage = ({ onBack, onProceed, amount = 0 }) => {
           {/* Information Box */}
           <div className="border-2 border-dashed border-yellow-400 rounded-xl p-4 bg-yellow-50">
             <p className="text-gray-600 text-sm text-center">
-              Your account will be credited in the next 24 - 48 hours
+              Your account will be credited in the next 24 - 72 hours
             </p>
           </div>
 

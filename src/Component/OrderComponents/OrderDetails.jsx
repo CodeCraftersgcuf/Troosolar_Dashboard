@@ -8,7 +8,7 @@ const OrderDetails = ({ order, onBack }) => {
   const orderData = {
     id: order?.id || "ORD-001",
     productName: "Newman 12200 AGM Solar Inverter",
-    price: "N1,500,000",
+    price: "₦1,500,000",
     status: "Pending",
     orderDate: "15 May, 25 - 09:22 AM",
     productImage:

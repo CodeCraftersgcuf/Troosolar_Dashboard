@@ -152,8 +152,8 @@ const Otp = () => {
           <div className="w-[90%] max-w-[600px] p-6 h-[700px] flex flex-col justify-start items-center bg-white rounded-2xl shadow-lg">
             <form className="space-y-6 w-full" onSubmit={handleSubmit}>
               <div className="text-center">
-                <img src={assets.logo} alt="Logo" className="w-[200px] mx-auto mb-6" loading="lazy" />
-                <h2 className="text-3xl font-bold">Phone Verification</h2>
+                <img src={assets.fullLogo} alt="Logo" className="w-[200px] mx-auto mb-6" loading="lazy" />
+                <h2 className="text-3xl font-bold">Email Verification</h2>
                 <p className="text-sm text-gray-600 mt-2">
                   {state?.email ? `Verify the code sent to ${state.email}` : "Verify your phone number to continue"}
                 </p>
@@ -216,8 +216,8 @@ const Otp = () => {
       <div className="w-full min-h-screen sm:hidden block relative">
         <img src={assets.loginImageForSm} className="w-full h-[40vh] object-cover" alt="Mobile Background" />
         <div className="bg-[#273e8e] absolute top-[31vh] w-full rounded-t-4xl shadow-md p-6 text-center mb-6">
-          <img src={assets.smLogo} alt="Logo" className="mx-auto mb-2 w-28" />
-          <h1 className="text-2xl font-bold text-white">Phone Verification</h1>
+          <img src={assets.fullLogoMobile} alt="Logo" className="mx-auto mb-2 w-28" />
+          <h1 className="text-2xl font-bold text-white">Email Verification</h1>
           <p className="text-xs text-white">
             {state?.email ? `Code sent to ${state.email}` : "Verify your Phone Number"}
           </p>

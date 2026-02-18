@@ -147,7 +147,7 @@ const CartItems = ({
           {/* MOBILE: price, then trash + qty under it */}
           {showControls && (
             <div className="sm:hidden mt-1">
-              <p className="text-xl font-semibold text-[#273e8e]">N{formatted}</p>
+              <p className="text-xl font-semibold text-[#273e8e]">₦{formatted}</p>
               <div className="mt-2 flex items-center justify-between">
                 <button
                   onClick={handleDelete}
@@ -184,7 +184,7 @@ const CartItems = ({
           {showControls && (
             <div className="hidden sm:flex items-center justify-between mt-4">
               <div className="flex flex-col">
-                <p className="text-[16px] font-medium text-[#273e8e]">N{formatted}</p>
+                <p className="text-[16px] font-medium text-[#273e8e]">₦{formatted}</p>
                 <div>
                   <button
                     onClick={handleDelete}
@@ -220,7 +220,7 @@ const CartItems = ({
 
           {/* If controls hidden (e.g., in review modal), show just price */}
           {!showControls && (
-            <p className="mt-1 text-[15px] font-medium text-[#273e8e]">N{formatted}</p>
+            <p className="mt-1 text-[15px] font-medium text-[#273e8e]">₦{formatted}</p>
           )}
         </div>
       </div>

@@ -206,6 +206,9 @@ const Home = () => {
   // active loan check
   const [hasActiveLoan, setHasActiveLoan] = useState(false);
 
+  // home promo banner (from API)
+  const [bannerUrl, setBannerUrl] = useState(null);
+
   useEffect(() => {
     setUser(readStoredUser());
   }, []);
@@ -356,6 +359,22 @@ const Home = () => {
     fetchProducts();
   }, []);
 
+  // fetch home promo banner (public)
+  useEffect(() => {
+    const fetchBanner = async () => {
+      try {
+        const { data } = await axios.get(API.SITE_BANNER, {
+          headers: { Accept: "application/json" },
+        });
+        const url = data?.data?.url ?? data?.url ?? null;
+        setBannerUrl(url || null);
+      } catch {
+        setBannerUrl(null);
+      }
+    };
+    fetchBanner();
+  }, []);
+
   const catMap = useMemo(() => {
     const map = {};
     for (const c of categories || []) {
@@ -494,17 +513,25 @@ const Home = () => {
               <div className="sm:block hidden">
                 <ShoppingWallet />
               </div>
-              <img
-                src={assets.sale}
-                className="hidden lg:block min-w-full h-[243px] rounded-lg"
-                alt="Sale banner"
-              />
+              {bannerUrl && (
+                <img
+                  src={bannerUrl}
+                  className="hidden lg:block min-w-full h-[243px] rounded-lg object-cover"
+                  alt="Promotion banner"
+                />
+              )}
             </div>
 
             <div className="mt-4">
               <SmallBoxes />
             </div>
-            <img src={assets.sale} className="sm:hidden block my-4" alt="" />
+            {bannerUrl && (
+              <img
+                src={bannerUrl}
+                className="sm:hidden block my-4 w-full rounded-lg object-cover"
+                alt="Promotion banner"
+              />
+            )}
 
             {/* ---------- Featured Products (Products + Bundles) ---------- */}
             <div className="mt-6">

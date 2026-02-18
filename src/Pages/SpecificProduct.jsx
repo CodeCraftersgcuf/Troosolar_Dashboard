@@ -5,8 +5,8 @@ import axios from "axios";
 import SideBar from "../Component/SideBar";
 import SearchBar from "../Component/SearchBar";
 import Product from "../Component/Product";
-import BrandDropDown from "../Component/BrandDropDown";
-import PriceDropDown from "../Component/PriceDropDown";
+import ProductBrandFilter from "../Component/ProductBrandFilter";
+import ProductPriceFilter from "../Component/ProductPriceFilter";
 import TopNavbar from "../Component/TopNavbar";
 import HrLine from "../Component/MobileSectionResponsive/HrLine";
 
@@ -162,6 +162,9 @@ const SpecificProduct = () => {
           rawList = every.filter((p) => String(p?.category_id) === String(id));
         }
 
+        // 3) Always restrict to this category (so only e.g. Solar Panels show on /product/7, not inverters/batteries)
+        rawList = rawList.filter((p) => String(p?.category_id) === String(id));
+
         // Keep original raw in Context for cart (if your cart uses it)
         registerProducts(rawList);
 
@@ -240,13 +243,12 @@ const SpecificProduct = () => {
           </div>
 
           <div className="px-6 py-6 flex-1 overflow-auto">
-            <div className="flex justify-start items-center gap-4 mb-4">
-              {/* pass categoryId + result handler */}
-              <BrandDropDown
+            <div className="relative z-[100] flex justify-start items-center gap-4 mb-4">
+              <ProductBrandFilter
                 categoryId={id}
                 onFilter={handleBrandFilterResult}
               />
-              <PriceDropDown onFilter={handlePriceFilter} />
+              <ProductPriceFilter onFilter={handlePriceFilter} />
             </div>
 
             <h1 className="text-xl font-semibold text-black-800 my-4">
@@ -309,15 +311,15 @@ const SpecificProduct = () => {
               </div>
             </div>
 
-            <div className="flex h-[70px] justify-center items-center mb-4">
-              <BrandDropDown
+            <div className="relative z-[100] flex h-[70px] justify-center items-center mb-4">
+              <ProductBrandFilter
                 categoryId={id}
                 onFilter={handleBrandFilterResult}
               />
               <div className="h-full flex items-center px-3">
                 <div className="h-[50px] w-[4px] bg-white rounded" />
               </div>
-              <PriceDropDown onFilter={handlePriceFilter} />
+              <ProductPriceFilter onFilter={handlePriceFilter} />
             </div>
           </div>
 

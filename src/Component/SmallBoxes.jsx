@@ -4,40 +4,16 @@ import { Link } from "react-router-dom";
 
 const SmallBoxes = () => {
   const boxItems = [
-    {
-      id: 1,
-      title: "Buy Solar Bundles",
-      color: "#0000ff",
-      icon: assets.vec1,
-      link: "/buy-now",
-    },
-    {
-      id: 2,
-      title: "Buy Now, Pay Later",
-      color: "#ff0000",
-      icon: assets.vec2,
-      link: "/bnpl",
-    },
-    {
-      id: 3,
-      title: "Shop Solar Products",
-      color: "#800080",
-      icon: assets.vec3,
-      link: "/shop",
-    },
-    {
-      id: 4,
-      title: "Load & Savings Calculator",
-      color: "#008000",
-      icon: assets.vec4,
-      link: "/tools",
-    },
+    { id: 1, title: "Buy Solar Bundles", color: "#0000ff", icon: assets.vec1, link: "/buy-now" },
+    { id: 2, title: "Buy Now, Pay Later", color: "#ff0000", icon: assets.vec2, link: "/bnpl" },
+    { id: 3, title: "Shop Solar Products", color: "#800080", icon: assets.vec3, link: "/shop" },
+    { id: 4, title: "Load Calculator", color: "#008000", icon: assets.vec4, link: "/tools?tool=inverter" },
   ];
 
   return (
     <>
-      {/* Desktop View  */}
-      <div className="gap-5 sm:grid lg:grid-cols-4  hidden md:grid-cols-3 grid-cols-2">
+      {/* Desktop View – 4 boxes: Bundles, BNPL, Shop, Load Calculator */}
+      <div className="gap-5 sm:grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 hidden">
         {boxItems.map((item) => (
           <Link
             to={item.link}
@@ -61,8 +37,8 @@ const SmallBoxes = () => {
         ))}
       </div>
 
-      {/* Mobile View - 4 horizontal cards matching the photo */}
-      <div className="gap-3 grid grid-cols-4 sm:hidden">
+      {/* Mobile View - 5 cards */}
+      <div className="gap-3 grid grid-cols-2 sm:hidden">
         {boxItems.map((item) => (
           <Link
             to={item.link}
@@ -85,6 +61,8 @@ const SmallBoxes = () => {
                       ? "invert(13%) sepia(94%) saturate(7151%) hue-rotate(360deg) brightness(91%) contrast(118%)"
                       : item.color === "#800080"
                       ? "invert(20%) sepia(100%) saturate(7500%) hue-rotate(300deg) brightness(101%) contrast(102%)"
+                      : item.color === "#273e8e"
+                      ? "invert(27%) sepia(51%) saturate(2878%) hue-rotate(224deg) brightness(89%) contrast(97%)"
                       : "invert(25%) sepia(100%) saturate(7500%) hue-rotate(120deg) brightness(101%) contrast(102%)"
                   }`,
                 }}

@@ -20,10 +20,11 @@ const Referrals = () => {
   const [showInsufficientBalanceModal, setShowInsufficientBalanceModal] = useState(false);
   const [withdrawalAmount, setWithdrawalAmount] = useState(0);
   
-  // API data state
+  // API data state (referral_code = user's shareable code; my_referrals = count of people who used it)
   const [referralData, setReferralData] = useState({
     referral_code: "",
-    referral_balance: 0
+    referral_balance: 0,
+    my_referrals: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -51,17 +52,12 @@ const Referrals = () => {
 
         if (response.data.status === "success") {
           const data = response.data.data;
-          // If no referral code exists, try to create one (assuming backend creates it automatically on first access)
-          if (!data.referral_code || data.referral_code === "") {
-            // The referral code should be created automatically by the backend
-            // If not, we'll show a message to contact support
-            setReferralData({
-              ...data,
-              referral_code: data.referral_code || "Not available"
-            });
-          } else {
-            setReferralData(data);
-          }
+          // Backend now returns user_code as referral_code and generates it from username if missing
+          setReferralData({
+            referral_code: data.referral_code ?? "",
+            referral_balance: data.referral_balance ?? 0,
+            my_referrals: data.my_referrals ?? 0,
+          });
         } else {
           setError(response.data.message || "Failed to fetch referral details");
         }
@@ -241,7 +237,7 @@ const Referrals = () => {
             <div className="flex flex-col text-sm leading-tight">
               <p className="text-white/50 pb-3">My Referrals</p>
               <p className="text-white text-end">
-                {loading ? "..." : error ? "Error" : "0"}
+                {loading ? "..." : error ? "Error" : (referralData.my_referrals ?? 0)}
               </p>
             </div>
           </div>
@@ -335,7 +331,7 @@ const Referrals = () => {
                 <div className="flex flex-col">
                   <p className="text-white/70 text-xs mb-1">My Referrals</p>
                   <p className="text-white font-semibold">
-                    {loading ? "..." : error ? "Error" : "0"}
+                    {loading ? "..." : error ? "Error" : (referralData.my_referrals ?? 0)}
                   </p>
                 </div>
               </div>

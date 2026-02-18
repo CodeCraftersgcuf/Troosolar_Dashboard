@@ -105,7 +105,7 @@ const OrderSummary = ({ order, onBack }) => {
             orderStatus: data.order_status,
             paymentStatus: data.payment_status,
             productName: data.items?.[0]?.item?.title || "Product",
-            price: `N${parseFloat(data.total_price).toLocaleString()}`,
+            price: `₦${parseFloat(data.total_price).toLocaleString()}`,
             views: "12 views", // This might not be in API response
             deliveryDate: new Date(data.created_at).toLocaleDateString(
               "en-GB",
@@ -119,7 +119,7 @@ const OrderSummary = ({ order, onBack }) => {
             deliveryAddress: deliveryAddressText,
             phoneNumber,
             estimatedDeliveryTime: "July 2 - 7, 2025", // This might need to be calculated or from API
-            deliveryPrice: "N20,000", // This might need to be from API
+            deliveryPrice: "₦20,000", // This might need to be from API
             installationNote:
               "Installation will be carried out by one of our skilled technicians, you can choose not to use our installers",
             estimatedInstallationTime: data.installation?.installation_date
@@ -132,10 +132,10 @@ const OrderSummary = ({ order, onBack }) => {
                 })
               : "July 2 - 7, 2025",
             installationPrice: data.installation?.installation_fee
-              ? `N${parseFloat(
+              ? `₦${parseFloat(
                   data.installation.installation_fee
                 ).toLocaleString()}`
-              : "N25,000",
+              : "₦25,000",
             paymentMethod:
               data.payment_method === "direct" ? "Direct" : data.payment_method,
             charge: "Free", // This might need to be from API
@@ -414,7 +414,7 @@ const OrderSummary = ({ order, onBack }) => {
                         </span>
                       </div>
                       <p className="text-xl font-bold text-[#273E8E]">
-                        N{displayPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ₦{displayPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                     </div>
                   </div>

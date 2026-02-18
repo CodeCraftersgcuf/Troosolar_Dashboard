@@ -2,14 +2,15 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X } from "lucide-react";
 
-const DROPDOWN_Z_BACKDROP = 9998;
-const DROPDOWN_Z_PANEL = 9999;
+const DROPDOWN_Z_BACKDROP = 10000;
+const DROPDOWN_Z_PANEL = 10001;
 
 const PRICE_OPTIONS = [
-  { label: "0 - 300,000", min: 0, max: 300000 },
-  { label: "300,000 - 600,000", min: 300000, max: 600000 },
-  { label: "600,000 - 900,000", min: 600000, max: 900000 },
-].sort((a, b) => a.min - b.min); // Already sorted, but keeping for consistency
+  { label: "900,000 - 1,500,000", min: 900000, max: 1500000 },
+  { label: "1,500,000 - 2,500,000", min: 1500000, max: 2500000 },
+  { label: "2,500,000 - 5,000,000", min: 2500000, max: 5000000 },
+  { label: "5,000,000+", min: 5000000, max: null },
+].sort((a, b) => (a.min || 0) - (b.min || 0));
 
 const PriceDropDown = ({ onFilter }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -20,14 +21,16 @@ const PriceDropDown = ({ onFilter }) => {
 
   const desktopTriggerRef = useRef(null);
   const mobileTriggerRef = useRef(null);
+  const openedByPointerRef = useRef(false);
+  const openedAtRef = useRef(0);
 
   const toggleDropdown = useCallback(() => setIsOpen((prev) => !prev), []);
 
   const handleSelect = useCallback(
     (option) => {
       setSelectedLabel(option.label);
-      setMinPrice(option.min.toString());
-      setMaxPrice(option.max.toString());
+      setMinPrice(option.min != null ? String(option.min) : "");
+      setMaxPrice(option.max != null ? String(option.max) : "");
       setIsOpen(false);
       onFilter?.(option.min, option.max);
     },
@@ -58,22 +61,41 @@ const PriceDropDown = ({ onFilter }) => {
     onFilter?.(null, null);
   }, [onFilter]);
 
-  // Position panel when opening (for portal); use visible trigger by viewport
+  const [isDesktopView, setIsDesktopView] = useState(
+    typeof window !== "undefined" && window.innerWidth >= 640
+  );
+
+  // Position panel below trigger when opening
   useEffect(() => {
     if (!isOpen) return;
-    const isDesktop = typeof window !== "undefined" && window.innerWidth >= 640;
-    const el = isDesktop ? desktopTriggerRef.current : mobileTriggerRef.current;
+    const desktop = typeof window !== "undefined" && window.innerWidth >= 640;
+    setIsDesktopView(desktop);
+    const el = desktop ? desktopTriggerRef.current : mobileTriggerRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    setPanelPosition({ top: rect.bottom + 4, left: rect.left });
+    setPanelPosition({ top: rect.bottom + 8, left: rect.left });
+  }, [isOpen]);
+
+  // Close dropdown when page scrolls (not when scrolling inside the panel), so page stays scrollable
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleScroll = (e) => {
+      if (e.target?.closest?.("[data-price-dropdown-panel]")) return;
+      setIsOpen(false);
+    };
+    window.addEventListener("scroll", handleScroll, true);
+    return () => window.removeEventListener("scroll", handleScroll, true);
   }, [isOpen]);
 
   const PricePanel = ({ isMobile = false }) => (
     <div
-      className="w-[400px] bg-white border border-gray-200 rounded-md shadow-lg"
+      className="w-[400px] max-h-[85vh] flex flex-col bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"
+      role="dialog"
+      aria-label="Price range"
       onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
     >
-      <div className="relative px-4 py-2 border-b border-gray-200">
+      <div className="relative px-4 py-3 border-b border-gray-200 shrink-0">
         <p className="text-center text-gray-900 py-1 font-medium">
           {isMobile ? "Select Price Range" : "Price"}
         </p>
@@ -85,12 +107,37 @@ const PriceDropDown = ({ onFilter }) => {
         />
       </div>
 
-      <div className="max-h-[300px] overflow-y-auto">
+      <div className="overflow-y-auto min-h-0 flex-1" style={{ maxHeight: "320px" }}>
+        {/* All / clear price filter */}
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedLabel("Price");
+            setMinPrice("");
+            setMaxPrice("");
+            setIsOpen(false);
+            onFilter?.(null, null);
+          }}
+          className={`flex items-center justify-between w-full px-8 py-4 text-sm transition-colors ${
+            selectedLabel === "Price"
+              ? "bg-blue-50 font-semibold text-gray-800"
+              : "text-gray-700 hover:bg-gray-100"
+          }`}
+          role="option"
+          aria-selected={selectedLabel === "Price"}
+        >
+          <span>All</span>
+          <span className="h-4 w-4 p-0 rounded-full flex items-center justify-center border border-[#273e8e]">
+            {selectedLabel === "Price" && (
+              <span className="h-3 w-3 rounded-full bg-[#273e8e]" aria-hidden="true" />
+            )}
+          </span>
+        </button>
         {PRICE_OPTIONS.map((option) => {
           const isSelected = selectedLabel === option.label;
           return (
             <button
-              key={`${option.min}-${option.max}`}
+              key={option.max == null ? `min-${option.min}` : `${option.min}-${option.max}`}
               type="button"
               onClick={() => handleSelect(option)}
               className={`flex items-center justify-between w-full px-8 py-4 text-sm transition-colors ${
@@ -115,9 +162,11 @@ const PriceDropDown = ({ onFilter }) => {
         })}
       </div>
 
-      <div className="p-4 border-t">
+      <div className="p-4 border-t shrink-0">
         <div className="grid grid-cols-2 gap-3 mb-3">
           <input
+            id="price-filter-min"
+            name="price-min"
             type="number"
             value={minPrice}
             onChange={(e) =>
@@ -126,8 +175,11 @@ const PriceDropDown = ({ onFilter }) => {
             placeholder="Min price"
             className="border px-3 text-sm outline-none py-3 rounded-xl border-gray-300 focus:border-[#273e8e] focus:ring-1 focus:ring-[#273e8e]"
             min="0"
+            aria-label="Minimum price"
           />
           <input
+            id="price-filter-max"
+            name="price-max"
             type="number"
             value={maxPrice}
             onChange={(e) =>
@@ -136,6 +188,7 @@ const PriceDropDown = ({ onFilter }) => {
             placeholder="Max price"
             className="border px-3 text-sm outline-none py-3 rounded-xl border-gray-300 focus:border-[#273e8e] focus:ring-1 focus:ring-[#273e8e]"
             min="0"
+            aria-label="Maximum price"
           />
         </div>
 
@@ -163,11 +216,26 @@ const PriceDropDown = ({ onFilter }) => {
   return (
     <>
       {/* Desktop View  */}
-      <div className="relative sm:block hidden w-full max-w-[200px] cursor-pointer">
+      <div className="relative sm:block hidden w-full max-w-[200px]">
         <div
           ref={desktopTriggerRef}
-          className="px-4 py-4 bg-white border border-black/50 rounded-2xl shadow-sm hover:border-black/70 transition-colors"
-          onClick={toggleDropdown}
+          role="button"
+          tabIndex={0}
+          style={{ touchAction: "manipulation" }}
+          className="px-4 py-4 bg-white border border-black/50 rounded-2xl shadow-sm hover:border-black/70 transition-colors cursor-pointer"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openedByPointerRef.current = true;
+            openedAtRef.current = Date.now();
+            toggleDropdown();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              toggleDropdown();
+            }
+          }}
         >
           <div className="flex items-center justify-between w-full font-medium">
             <span
@@ -186,36 +254,29 @@ const PriceDropDown = ({ onFilter }) => {
           </div>
         </div>
 
-        {isOpen &&
-          createPortal(
-            <>
-              <div
-                className="fixed inset-0 bg-black/20"
-                style={{ zIndex: DROPDOWN_Z_BACKDROP }}
-                onClick={() => setIsOpen(false)}
-                aria-hidden="true"
-              />
-              <div
-                className="fixed"
-                style={{
-                  zIndex: DROPDOWN_Z_PANEL,
-                  top: panelPosition.top,
-                  left: panelPosition.left,
-                }}
-              >
-                <PricePanel isMobile={false} />
-              </div>
-            </>,
-            document.body
-          )}
       </div>
 
       {/* Mobile View  */}
-      <div className="relative sm:hidden block w-full max-w-[150px] cursor-pointer">
+      <div className="relative sm:hidden block w-full max-w-[150px]">
         <div
           ref={mobileTriggerRef}
-          className="sm:px-5 px-2 sm:py-5 py-3 bg-white border border-black/50 rounded-tr-2xl border-l-0 rounded-br-2xl sm:rounded-2xl shadow-sm hover:border-black/70 transition-colors"
-          onClick={toggleDropdown}
+          role="button"
+          tabIndex={0}
+          style={{ touchAction: "manipulation" }}
+          className="sm:px-5 px-2 sm:py-5 py-3 bg-white border border-black/50 rounded-tr-2xl border-l-0 rounded-br-2xl sm:rounded-2xl shadow-sm hover:border-black/70 transition-colors cursor-pointer"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openedByPointerRef.current = true;
+            openedAtRef.current = Date.now();
+            toggleDropdown();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              toggleDropdown();
+            }
+          }}
         >
           <div className="flex items-center justify-between w-full font-medium">
             <span
@@ -233,27 +294,55 @@ const PriceDropDown = ({ onFilter }) => {
             />
           </div>
         </div>
-
-        {isOpen &&
-          createPortal(
-            <>
-              <div
-                className="fixed inset-0 bg-black/30"
-                style={{ zIndex: DROPDOWN_Z_BACKDROP }}
-                onClick={() => setIsOpen(false)}
-                aria-hidden="true"
-              />
-              <div
-                className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-                style={{ zIndex: DROPDOWN_Z_PANEL }}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <PricePanel isMobile />
-              </div>
-            </>,
-            document.body
-          )}
       </div>
+
+      {/* Portal: overlay closes only when click is outside panel; panel positioned below trigger */}
+      {isOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0"
+            style={{ zIndex: DROPDOWN_Z_BACKDROP }}
+            onClick={(e) => {
+              if (e.target.closest?.("[data-price-dropdown-panel]")) return;
+              if (openedByPointerRef.current && Date.now() - openedAtRef.current < 150) {
+                openedByPointerRef.current = false;
+                return;
+              }
+              setIsOpen(false);
+            }}
+            onPointerDown={(e) => {
+              if (e.target.closest?.("[data-price-dropdown-panel]")) return;
+              if (openedByPointerRef.current && Date.now() - openedAtRef.current < 150) {
+                openedByPointerRef.current = false;
+                return;
+              }
+              setIsOpen(false);
+            }}
+            aria-hidden="true"
+          >
+            <div
+              className={isDesktopView ? "bg-black/20" : "bg-black/30"}
+              style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+              aria-hidden="true"
+            />
+            <div
+              data-price-dropdown-panel
+              className={isDesktopView ? "fixed rounded-xl" : "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"}
+              style={{
+                zIndex: DROPDOWN_Z_PANEL,
+                pointerEvents: "auto",
+                top: isDesktopView ? panelPosition.top : undefined,
+                left: isDesktopView ? panelPosition.left : undefined,
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <PricePanel isMobile={!isDesktopView} />
+            </div>
+          </div>,
+          document.getElementById("root") || document.body
+        )}
     </>
   );
 };

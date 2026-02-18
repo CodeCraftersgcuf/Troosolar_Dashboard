@@ -1,7 +1,7 @@
 // src/Component/LoanRepaymentCard.jsx
 import React from "react";
 
-const fmtN = (n) => (n == null ? "—" : `N${Number(n).toLocaleString()}`);
+const fmtN = (n) => (n == null ? "—" : `₦${Number(n).toLocaleString()}`);
 
 const fmtDuration = (m) =>
   !m

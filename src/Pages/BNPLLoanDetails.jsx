@@ -12,7 +12,6 @@ import {
   FileText, 
   ChevronLeft,
   Calendar,
-  DollarSign,
   CreditCard,
   Home,
   User,
@@ -25,11 +24,17 @@ import {
   Receipt,
   ArrowRight,
   CheckCircle2,
-  X
+  X,
+  Download,
+  Upload,
+  Loader
 } from 'lucide-react';
 import Loading from '../Component/Loading';
 import BNPLPaymentModal from '../Component/BNPLPaymentModal';
 import RepaymentCalendar from '../Component/RepaymentCalendar';
+
+/** Default BNPL interest rate (%). Used for Total Interest when backend does not provide one. Change as needed. */
+const DEFAULT_BNPL_INTEREST_RATE_PERCENT = 4;
 
 /* Flutterwave script for down payment */
 const ensureFlutterwave = () =>
@@ -60,10 +65,16 @@ const BNPLLoanDetails = () => {
     const [installmentsWithHistory, setInstallmentsWithHistory] = useState(null);
     const [processingDownPayment, setProcessingDownPayment] = useState(false);
     const [processingCounterOffer, setProcessingCounterOffer] = useState(false);
+    const [downloadingGuarantorForm, setDownloadingGuarantorForm] = useState(false);
+    const [uploadingGuarantorForm, setUploadingGuarantorForm] = useState(false);
+    const [guarantorIdFromInvite, setGuarantorIdFromInvite] = useState(null);
+    const [showBookInstallationModal, setShowBookInstallationModal] = useState(false);
+    const [bookingInstallationDate, setBookingInstallationDate] = useState('');
+    const [processingBookInstallation, setProcessingBookInstallation] = useState(false);
 
     useEffect(() => {
         if (id) {
-            // Check if ID is an application ID (prefixed with 'app-')
+            setGuarantorIdFromInvite(null);
             if (id.startsWith('app-')) {
                 const applicationId = id.replace('app-', '');
                 fetchApplicationDetails(applicationId);
@@ -971,8 +982,292 @@ const BNPLLoanDetails = () => {
                     </div>
                 )}
 
-                {/* Repayment Summary */}
-                {repaymentSummary && Object.keys(repaymentSummary).length > 0 && (
+                {/* Forms section – Download + Upload (approved BNPL, application or order view) */}
+                {displayStatus?.toLowerCase() === 'approved' && (isApplication && id?.startsWith('app-') || (!isApplication && loanApp)) && (() => {
+                    const applicationIdForDownload = isApplication && id?.startsWith('app-') ? id.replace('app-', '') : (loanApp?.id ?? null);
+                    const hasGuarantor = loanApp?.guarantor || guarantorIdFromInvite;
+                    const refetchAfterAction = () => {
+                        if (id?.startsWith('app-')) fetchApplicationDetails(id.replace('app-', ''));
+                        else if (id) fetchOrderDetails(id);
+                    };
+                    return (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-0 overflow-visible">
+                        <div className="flex items-center gap-3 mb-3">
+                            <FileText className="text-[#273e8e] flex-shrink-0" size={24} />
+                            <h3 className="text-xl font-semibold text-gray-800">Forms</h3>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-5">
+                            Download the form for your guarantor to sign, then upload the signed copy here. Signed guarantor forms and undated cheques are required before installation. Signed guarantor forms should be uploaded on or before the installation date and undated cheques must be made available on or before the day of installation; installation will not proceed without them.
+                        </p>
+
+                        {hasGuarantor && (
+                            <div className="bg-green-50 border border-green-200 p-4 rounded-lg flex items-center gap-3 mb-5">
+                                <CheckCircle className="text-green-600 flex-shrink-0" size={20} />
+                                <p className="text-sm text-green-700">Guarantor is set. Download the form, have it signed, then upload it below.</p>
+                            </div>
+                        )}
+
+                        {/* 1. Download guarantor form */}
+                        <div className={hasGuarantor ? "border-t border-gray-200 pt-5 mt-5" : ""}>
+                            <p className="font-semibold text-gray-800 mb-2">Download guarantor form</p>
+                            {applicationIdForDownload ? (
+                            <button
+                                type="button"
+                                disabled={downloadingGuarantorForm}
+                                onClick={async () => {
+                                    const token = localStorage.getItem('access_token');
+                                    if (!token) { alert('Please login to download'); return; }
+                                    setDownloadingGuarantorForm(true);
+                                    const triggerPdfDownload = (blob, filename = 'Troosolar-Guarantor-Form.pdf') => {
+                                        const url = window.URL.createObjectURL(blob);
+                                        const link = document.createElement('a');
+                                        link.href = url;
+                                        link.setAttribute('download', filename);
+                                        document.body.appendChild(link);
+                                        link.click();
+                                        link.remove();
+                                        window.URL.revokeObjectURL(url);
+                                    };
+                                    const MIN_PDF_SIZE = 2000; // reject tiny/empty placeholder PDFs (real form is usually tens of KB+)
+                                    const isPdfBlob = async (blob, contentType = '') => {
+                                        if (!blob || blob.size < 10) return false;
+                                        if (blob.size < MIN_PDF_SIZE) return false;
+                                        if (contentType && contentType.toLowerCase().includes('application/pdf')) return true;
+                                        const buf = await blob.slice(0, 5).arrayBuffer();
+                                        const bytes = new Uint8Array(buf);
+                                        return bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46; // %PDF
+                                    };
+                                    const tryFetchPdf = async (url) => {
+                                        const res = await fetch(url, { method: 'GET' });
+                                        if (!res.ok) return null;
+                                        const blob = await res.blob();
+                                        const ct = res.headers.get('content-type') || '';
+                                        if (!blob || blob.size < MIN_PDF_SIZE || !(await isPdfBlob(blob, ct))) return null;
+                                        return new Blob([await blob.arrayBuffer()], { type: 'application/pdf' });
+                                    };
+                                    const origin = window.location.origin;
+                                    const docsPaths = import.meta.env.VITE_GUARANTOR_FORM_FALLBACK_PATH
+                                        ? [import.meta.env.VITE_GUARANTOR_FORM_FALLBACK_PATH]
+                                        : ['/docs/Guarantor%20Form.pdf', '/docs/Guarantor%20Form%20.pdf'];
+                                    const docsUrls = docsPaths.map((p) => (p.startsWith('http') ? p : origin + p));
+                                    let downloaded = false;
+                                    for (const docsUrl of docsUrls) {
+                                        try {
+                                            const pdfBlob = await tryFetchPdf(docsUrl);
+                                            if (pdfBlob) {
+                                                triggerPdfDownload(pdfBlob, 'Troosolar-Guarantor-Form.pdf');
+                                                downloaded = true;
+                                                break;
+                                            }
+                                        } catch (e) {
+                                            console.warn('Dashboard docs guarantor form fetch failed:', e);
+                                        }
+                                    }
+                                    if (!downloaded) {
+                                        try {
+                                            const response = await axios.get(
+                                                `${API.BNPL_GUARANTOR_FORM}?loan_application_id=${applicationIdForDownload}`,
+                                                { headers: { Authorization: `Bearer ${token}`, Accept: 'application/pdf' }, responseType: 'blob' }
+                                            );
+                                            const blob = response.data;
+                                            const contentType = (response.headers && response.headers['content-type']) || '';
+                                            if (blob && blob.size >= MIN_PDF_SIZE && !contentType.includes('application/json') && (await isPdfBlob(blob, contentType))) {
+                                                triggerPdfDownload(new Blob([blob], { type: 'application/pdf' }), `Troosolar-Guarantor-Form-${applicationIdForDownload}.pdf`);
+                                                downloaded = true;
+                                            }
+                                        } catch (error) {
+                                            console.error('Download guarantor form error:', error);
+                                        }
+                                    }
+                                    if (!downloaded) {
+                                        const fallbackUrl = docsUrls[0];
+                                        window.open(fallbackUrl, '_blank');
+                                        alert('Guarantor form could not be downloaded. Add the real PDF (not empty) at: TrooSolar - Dashboard/public/docs/ — name it either "Guarantor Form.pdf" or "Guarantor Form .pdf"');
+                                    }
+                                    setDownloadingGuarantorForm(false);
+                                }}
+                                className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-[#273e8e] text-white font-semibold rounded-lg hover:bg-[#1a2b6b] disabled:opacity-50 transition-colors"
+                            >
+                                <Download size={20} />
+                                {downloadingGuarantorForm ? 'Downloading...' : 'Download Guarantor Form'}
+                            </button>
+                            ) : (
+                                <p className="text-sm text-gray-500">Application link not available for download. View this loan from My BNPL Loans to download the form.</p>
+                            )}
+                        </div>
+
+                        {/* 2. Upload signed form – always visible */}
+                        <div className="border-t border-gray-200 pt-5 mt-5">
+                            <p className="font-semibold text-gray-800 mb-2">Upload signed form</p>
+                            {(loanApp?.guarantor?.has_signed_form || loanApp?.guarantor?.signed_form_path) && (
+                                <div className="bg-green-50 border border-green-200 p-4 rounded-lg flex items-center gap-3 mb-4">
+                                    <CheckCircle className="text-green-600 flex-shrink-0" size={20} />
+                                    <p className="text-sm text-green-700">Signed guarantor form has been uploaded. You can upload a new file to replace it.</p>
+                                </div>
+                            )}
+                            <p className="text-sm text-gray-500 mb-3">Upload the form after your guarantor has signed it (PDF or image). You can upload on or before the installation date. The latest upload replaces any previous one.</p>
+                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#273e8e] transition-colors cursor-pointer relative">
+                                <input
+                                    type="file"
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    accept=".pdf,.jpg,.jpeg,.png"
+                                    onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        const token = localStorage.getItem('access_token');
+                                        if (!token) { alert('Please login'); return; }
+                                        const guarantorId = loanApp?.guarantor?.id ?? guarantorIdFromInvite;
+                                        if (!guarantorId && !applicationIdForDownload) {
+                                            alert('Unable to identify the guarantor. Please try again from your BNPL Loans page.');
+                                            return;
+                                        }
+                                        setUploadingGuarantorForm(true);
+                                        try {
+                                            const fd = new FormData();
+                                            if (guarantorId) fd.append('guarantor_id', String(guarantorId));
+                                            if (applicationIdForDownload) fd.append('loan_application_id', String(applicationIdForDownload));
+                                            fd.append('signed_form', file);
+                                            const res = await axios.post(API.BNPL_GUARANTOR_UPLOAD, fd, {
+                                                headers: { Authorization: `Bearer ${token}` },
+                                            });
+                                            if (res.data?.status === 'success') {
+                                                alert('Signed form uploaded successfully.');
+                                                refetchAfterAction();
+                                            } else {
+                                                alert(res.data?.message || 'Upload failed.');
+                                            }
+                                        } catch (err) {
+                                            console.error('Guarantor upload error:', err);
+                                            alert(err.response?.data?.message || 'Failed to upload form.');
+                                        } finally {
+                                            setUploadingGuarantorForm(false);
+                                        }
+                                        e.target.value = '';
+                                    }}
+                                />
+                                {uploadingGuarantorForm ? (
+                                    <Loader className="animate-spin mx-auto text-[#273e8e]" size={24} />
+                                ) : (
+                                    <>
+                                        <Upload className="mx-auto text-gray-400 mb-2" size={24} />
+                                        <p className="text-sm text-gray-500">Click to upload signed guarantor form (PDF or image)</p>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                    );
+                })()}
+
+                {/* Book Installation Date – after down payment, order view only */}
+                {!isApplication && loanApp && displayStatus?.toLowerCase() === 'approved' && (order.payment_status === 'paid' || order.down_payment_completed) && (() => {
+                    const instDate = loanApp.installation_requested_date;
+                    const instStatus = loanApp.installation_booking_status;
+                    const rejectedDates = loanApp.installation_rejected_dates || [];
+                    const minDate = (() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() + 3); // 72h = 3 days
+                        return d.toISOString().slice(0, 10);
+                    })();
+                    const isSunday = (dateStr) => new Date(dateStr).getDay() === 0;
+                    const refetch = () => id ? fetchOrderDetails(id) : null;
+                    return (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                            <div className="flex items-center gap-3 mb-3">
+                                <Calendar className="text-[#273e8e]" size={24} />
+                                <h3 className="text-xl font-semibold text-gray-800">Book Installation Date</h3>
+                            </div>
+                            {instStatus === 'accepted' && instDate && (
+                                <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
+                                    <p className="text-green-800 font-medium">Installation date confirmed: {instDate}</p>
+                                </div>
+                            )}
+                            {instStatus === 'pending' && instDate && (
+                                <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg mb-4">
+                                    <p className="text-amber-800">Your requested date <strong>{instDate}</strong> is pending confirmation. We will notify you once it is confirmed.</p>
+                                </div>
+                            )}
+                            {(!instDate || instStatus === 'rejected') && (
+                                <div className="mb-4">
+                                    {instStatus === 'rejected' && (
+                                        <div className="bg-red-50 border border-red-200 p-4 rounded-lg mb-4">
+                                            <p className="text-red-800">Your requested date could not be confirmed. Please choose another date below (Sundays and previously rejected dates are not available).</p>
+                                        </div>
+                                    )}
+                                    {!instDate && (
+                                        <p className="text-sm text-gray-500 mb-4">Choose a date at least 72 hours from today. Sundays are not available.</p>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShowBookInstallationModal(true); setBookingInstallationDate(''); }}
+                                        className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-[#273e8e] text-white font-semibold rounded-lg hover:bg-[#1a2b6b] disabled:opacity-50 transition-colors"
+                                    >
+                                        <Calendar size={20} />
+                                        {instStatus === 'rejected' ? 'Book another date' : 'Book Installation Date'}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
+
+                {/* Book Installation Date modal */}
+                {showBookInstallationModal && !isApplication && orderData && !orderData.isList && (() => {
+                    const order = orderData;
+                    const loanAppModal = order.loan_application;
+                    const rejectedDates = loanAppModal?.installation_rejected_dates || [];
+                    const minDate = (() => { const d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); })();
+                    const isSunday = (dateStr) => new Date(dateStr).getDay() === 0;
+                    const handleBookSubmit = async () => {
+                        if (!bookingInstallationDate) { alert('Please select a date.'); return; }
+                        if (isSunday(bookingInstallationDate)) { alert('Sundays are not available. Please choose another day.'); return; }
+                        if (rejectedDates.includes(bookingInstallationDate)) { alert('This date was previously rejected. Please choose another date.'); return; }
+                        const minD = new Date(); minD.setDate(minD.getDate() + 3);
+                        if (new Date(bookingInstallationDate) < minD) { alert('Date must be at least 72 hours from today.'); return; }
+                        setProcessingBookInstallation(true);
+                        try {
+                            const token = localStorage.getItem('access_token');
+                            const res = await axios.post(API.BNPL_INSTALLATION_BOOK, {
+                                order_id: order.id,
+                                requested_date: bookingInstallationDate,
+                            }, { headers: { Authorization: `Bearer ${token}` } });
+                            if (res.data?.status === 'success') {
+                                setShowBookInstallationModal(false);
+                                setBookingInstallationDate('');
+                                if (id) fetchOrderDetails(id);
+                                alert('Installation date request submitted. You will be notified once it is confirmed.');
+                            } else {
+                                alert(res.data?.message || 'Failed to submit.');
+                            }
+                        } catch (err) {
+                            alert(err.response?.data?.message || 'Failed to book installation date.');
+                        } finally {
+                            setProcessingBookInstallation(false);
+                        }
+                    };
+                    return (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => !processingBookInstallation && setShowBookInstallationModal(false)}>
+                            <div className="bg-white rounded-xl shadow-lg p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+                                <h3 className="text-lg font-semibold text-gray-800 mb-4">Book Installation Date</h3>
+                                <p className="text-sm text-gray-500 mb-3">Select a date at least 72 hours from today. Sundays are not available. Previously rejected dates cannot be selected.</p>
+                                <input
+                                    type="date"
+                                    min={minDate}
+                                    value={bookingInstallationDate}
+                                    onChange={e => setBookingInstallationDate(e.target.value)}
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-4"
+                                />
+                                <div className="flex gap-3">
+                                    <button type="button" onClick={() => { setShowBookInstallationModal(false); setBookingInstallationDate(''); }} className="flex-1 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium">Cancel</button>
+                                    <button type="button" onClick={handleBookSubmit} disabled={processingBookInstallation} className="flex-1 py-2 bg-[#273e8e] text-white rounded-lg font-medium disabled:opacity-50">{processingBookInstallation ? 'Submitting...' : 'Submit'}</button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
+
+                {/* Repayment Summary — only show for approved loans */}
+                {displayStatus?.toLowerCase() === 'approved' && repaymentSummary && Object.keys(repaymentSummary).length > 0 && (
                     <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-sm border border-blue-200 p-6">
                         <div className="flex items-center gap-3 mb-4">
                             <TrendingUp className="text-[#273e8e]" size={24} />
@@ -1007,47 +1302,45 @@ const BNPLLoanDetails = () => {
                     </div>
                 )}
 
-                {/* Loan Calculation Summary */}
-                {loanCalc && (
+                {/* Loan Calculation / Repayment Breakdown — Naira, 6 items in order */}
+                {loanCalc && (() => {
+                    const totalAmount = parseAmount(loanCalc.total_amount);
+                    const initialDeposit = parseAmount(loanCalc.down_payment);
+                    const totalLoanAmount = totalAmount - initialDeposit;
+                    const interestRatePercent = typeof loanCalc.interest_rate === 'number' && !Number.isNaN(loanCalc.interest_rate)
+                        ? loanCalc.interest_rate
+                        : DEFAULT_BNPL_INTEREST_RATE_PERCENT;
+                    const totalInterestAmount = (interestRatePercent / 100) * totalLoanAmount;
+                    const totalRepaymentAmount = totalLoanAmount + totalInterestAmount;
+                    const tenor = Number(loanCalc.repayment_duration || loanCalc.tenor || 12) || 12;
+                    const monthlyRepaymentAmount = tenor > 0 ? totalRepaymentAmount / tenor : 0;
+                    const rows = [
+                        { label: 'Total Amount', sublabel: 'Total cost of product, interest, etc.', value: totalAmount },
+                        { label: 'Initial Deposit', sublabel: null, value: initialDeposit },
+                        { label: 'Total Loan Amount', sublabel: 'Total Amount − Initial Deposit', value: totalLoanAmount },
+                        { label: 'Total Interest Amount', sublabel: `${interestRatePercent}% of Total Loan Amount`, value: totalInterestAmount },
+                        { label: 'Total Repayment Amount', sublabel: 'Total Loan Amount + Total Interest Amount', value: totalRepaymentAmount },
+                        { label: 'Monthly Repayment Amount', sublabel: `Total Repayment Amount ÷ ${tenor} months`, value: monthlyRepaymentAmount },
+                    ];
+                    return (
                     <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl shadow-sm border border-green-200 p-6">
                         <div className="flex items-center gap-3 mb-4">
-                            <DollarSign className="text-[#273e8e]" size={24} />
+                            <span className="text-[#273e8e] text-2xl font-bold" aria-hidden="true">₦</span>
                             <h3 className="text-xl font-semibold text-gray-800">Loan Calculation</h3>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <div className="bg-white rounded-lg p-4 border border-green-100">
-                                <p className="text-sm text-gray-500 mb-1">Loan Amount</p>
-                                <p className="text-xl font-bold text-gray-800">
-                                    {formatCurrency(loanCalc.loan_amount)}
-                                </p>
-                            </div>
-                            <div className="bg-white rounded-lg p-4 border border-green-100">
-                                <p className="text-sm text-gray-500 mb-1">Down Payment</p>
-                                <p className="text-xl font-bold text-gray-800">
-                                    {formatCurrency(loanCalc.down_payment)}
-                                </p>
-                            </div>
-                            <div className="bg-white rounded-lg p-4 border border-green-100">
-                                <p className="text-sm text-gray-500 mb-1">Total Amount</p>
-                                <p className="text-xl font-bold text-gray-800">
-                                    {formatCurrency(loanCalc.total_amount)}
-                                </p>
-                            </div>
-                            <div className="bg-white rounded-lg p-4 border border-green-100">
-                                <p className="text-sm text-gray-500 mb-1">Interest Rate</p>
-                                <p className="text-xl font-bold text-gray-800">
-                                    {loanCalc.interest_rate || 'N/A'}%
-                                </p>
-                            </div>
+                        <div className="space-y-3">
+                            {rows.map((row, index) => (
+                                <div key={index} className="bg-white rounded-lg p-4 border border-green-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                                    <div>
+                                        <p className="text-sm font-medium text-gray-800">{row.label}</p>
+                                        {row.sublabel && <p className="text-xs text-gray-500 mt-0.5">{row.sublabel}</p>}
+                                    </div>
+                                    <p className={`text-xl font-bold text-gray-800 ${index === 5 ? 'text-[#273e8e]' : ''}`}>
+                                        {formatCurrency(row.value)}
+                                    </p>
+                                </div>
+                            ))}
                         </div>
-                        {loanCalc.monthly_repayment && (
-                            <div className="mt-4 bg-white rounded-lg p-4 border border-green-100">
-                                <p className="text-sm text-gray-500 mb-1">Monthly Repayment</p>
-                                <p className="text-2xl font-bold text-[#273e8e]">
-                                    {formatCurrency(loanCalc.monthly_repayment)}
-                                </p>
-                            </div>
-                        )}
                         {/* Pay Down Payment – show when approved, down payment not yet paid, and no order yet */}
                         {isApplication &&
                             (displayStatus?.toLowerCase() === 'approved' || displayStatus?.toLowerCase() === 'counter_offer_accepted') &&
@@ -1077,7 +1370,8 @@ const BNPLLoanDetails = () => {
                             </div>
                         )}
                     </div>
-                )}
+                    );
+                })()}
 
                 {/* Overdue Warning Banner */}
                 {installmentsWithHistory?.hasOverdue && (

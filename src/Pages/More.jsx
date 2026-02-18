@@ -23,6 +23,7 @@ import Support from "../Component/MoreSectionComponent/Support";
 import MyOrders from "../Component/MoreSectionComponent/MyOrders"; // <-- NEW
 import Notifications from "../Component/MoreSectionComponent/Notifications"; // <-- NEW
 import CreditScore from "../Component/MoreSectionComponent/CreditScore";
+import FAQ from "../Component/FAQ";
 import {
   ChevronLeft,
   ChevronRight,
@@ -33,6 +34,7 @@ import {
   Users,
   Headphones,
   Settings,
+  HelpCircle,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -119,6 +121,7 @@ const sectionTitles = {
   referrals: "Referrals",
   support: "Support",
   maintenance: "Notifications",
+  faqs: "FAQs",
 };
 
 const More = () => {
@@ -207,6 +210,8 @@ const More = () => {
         return <KycDetails />;
       case "support":
         return <Support />;
+      case "faqs":
+        return <FAQ />;
       case "maintenance":
         return <Notifications onBack={() => setMobileViewSection("sidebar")} />;
       case "creditScore":
@@ -310,6 +315,15 @@ const More = () => {
                       image={assets.support}
                       label="Support"
                       isSelected={activeSection === "support"}
+                    />
+                  </div>
+
+                  <div onClick={() => setActiveSection("faqs")}>
+                    <SidebarOption
+                      colorBg="bg-[#273E8E]"
+                      icon={HelpCircle}
+                      label="FAQs"
+                      isSelected={activeSection === "faqs"}
                     />
                   </div>
 
@@ -494,6 +508,22 @@ const More = () => {
                   </div>
                   <span className="text-sm font-medium text-gray-700">
                     Support
+                  </span>
+                </div>
+                <ChevronRight className="text-gray-400" size={16} />
+              </div>
+
+              {/* FAQs */}
+              <div
+                className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-between cursor-pointer"
+                onClick={() => handleMobileSectionChange("faqs")}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#273E8E] rounded-full flex items-center justify-center">
+                    <HelpCircle className="text-white" size={20} />
+                  </div>
+                  <span className="text-sm font-medium text-gray-700">
+                    FAQs
                   </span>
                 </div>
                 <ChevronRight className="text-gray-400" size={16} />

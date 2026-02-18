@@ -45,7 +45,7 @@ const OverdueLoan = () => {
                 {toggle ? (
                   <div>
                     <LoanStatusCard
-                      amount="N200,200"
+                      amount="₦200,200"
                       amountColor="text-[#FF0000]"
                       status="Active"
                       statusTextColor="text-[#008000]"
@@ -75,7 +75,7 @@ const OverdueLoan = () => {
                       loanStatus="Overdue"
                       intersetRate="5%"
                       duration="12 month"
-                      loanAmount="N200,000"
+                      loanAmount="₦200,000"
                       date="22 June, 2025"
                       statusTextColor="text-[#FF0000]"
                       statusBgColor="bg-[#FF000033]"

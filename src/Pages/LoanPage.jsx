@@ -167,11 +167,11 @@ const LoanPage = () => {
   }, [relate]);
 
   const formatMoney = (n) => {
-    if (n == null || isNaN(Number(n))) return "N0";
+    if (n == null || isNaN(Number(n))) return "₦0";
     try {
-      return `N${Number(n).toLocaleString()}`;
+      return `₦${Number(n).toLocaleString()}`;
     } catch {
-      return `N${n}`;
+      return `₦${n}`;
     }
   };
 

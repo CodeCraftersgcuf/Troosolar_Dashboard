@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { Minus, Plus, Search, X } from "lucide-react";
-import { assets } from "../assets/data";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 const InverterLoadCalculator = () => {
@@ -8,6 +7,7 @@ const InverterLoadCalculator = () => {
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
   const returnTo = searchParams.get("returnTo"); // "buy-now" | "bnpl"
+  const category = searchParams.get("category") || ""; // full-kit | inverter-battery | battery-only
   // Comprehensive appliance data from the Excel spreadsheet
   const applianceList = [
     // TVs
@@ -153,38 +153,32 @@ const InverterLoadCalculator = () => {
     applianceList.map((appliance) => ({ ...appliance, quantity: 0, hours: 0 }))
   );
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedType, setSelectedType] = useState("Home");
-  const [selectedHouse, setSelectedHouse] = useState(null);
   const [showAddAppliance, setShowAddAppliance] = useState(false);
   const [newApplianceName, setNewApplianceName] = useState("");
   const [newAppliancePower, setNewAppliancePower] = useState("");
 
-  // House types
-  const houseData = [
-    { id: "1", name: "1 Bedroom", image: assets.house1 },
-    { id: "2", name: "2 Bedroom", image: assets.house2 },
-    { id: "3", name: "3 Bedroom", image: assets.house3 },
-    { id: "4", name: "Custom", image: assets.house4 },
-  ];
+  // Standard inverter ratings (W) — can be replaced by API from backend when Excel data is uploaded
+  const INVERTER_RATINGS_W = [800, 1200, 2000, 3000, 4000, 5000, 6000, 7500, 10000, 12000, 15000];
 
   // Filter appliances based on search term
   const filteredAppliances = appliances.filter((appliance) =>
     appliance.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Calculate total power (peak load)
-  const totalOutput = appliances.reduce(
-    (total, appliance) =>
-      total + appliance.power * appliance.quantity * (appliance.hours || 1),
+  // Per row: Power (W) = Quantity * Watts; Watts Hours / Day = Power (W) * Hours/Day
+  const totalLoadW = appliances.reduce(
+    (sum, a) => sum + (a.power || 0) * (a.quantity || 0),
     0
   );
-
-  // Calculate peak load (for navigation - just power * quantity, not hours)
-  const peakLoadW = appliances.reduce(
-    (total, appliance) =>
-      total + appliance.power * (appliance.quantity || 0),
+  const totalEnergyWh = appliances.reduce(
+    (sum, a) => sum + (a.power || 0) * (a.quantity || 0) * (a.hours || 0),
     0
   );
+  const totalEnergyKwh = totalEnergyWh / 1000;
+  // Proposed inverter: smallest rating that can handle load with ~1.25 headroom
+  const proposedInverterW = INVERTER_RATINGS_W.find((r) => r >= totalLoadW * 1.25) ?? INVERTER_RATINGS_W[INVERTER_RATINGS_W.length - 1];
+  const proposedInverterKva = (proposedInverterW / 1000).toFixed(1);
+  const peakLoadW = totalLoadW;
 
   // Handle proceed button - navigate back with load (q parameter)
   const handleProceed = () => {
@@ -207,13 +201,14 @@ const InverterLoadCalculator = () => {
       console.warn("Failed to save calculator data:", e);
     }
     
-    // Return to Buy Now or BNPL flow with load (q) so they see bundles matching their usage
+    // Return to Buy Now or BNPL flow with load (q) and category so they see bundles matching their usage and category
+    const categoryParam = category ? `&category=${encodeURIComponent(category)}` : "";
     if (returnTo === "buy-now") {
-      navigate(`/buy-now?step=3.5&q=${q}&fromCalculator=true`);
+      navigate(`/buy-now?step=3.5&q=${q}&fromCalculator=true${categoryParam}`);
       return;
     }
     if (returnTo === "bnpl") {
-      navigate(`/bnpl?step=3.5&q=${q}&fromCalculator=true`);
+      navigate(`/bnpl?step=3.5&q=${q}&fromCalculator=true${categoryParam}`);
       return;
     }
     
@@ -235,11 +230,20 @@ const InverterLoadCalculator = () => {
   // Update usage hours for an appliance
   const updateHours = (index, hours) => {
     const updatedAppliances = [...appliances];
-    // Find the actual index in the original array
     const originalIndex = appliances.findIndex(
       (item) => item.name === filteredAppliances[index].name
     );
     updatedAppliances[originalIndex].hours = Math.max(0, hours);
+    setAppliances(updatedAppliances);
+  };
+
+  const updatePower = (index, newPower) => {
+    const updatedAppliances = [...appliances];
+    const originalIndex = appliances.findIndex(
+      (item) => item.name === filteredAppliances[index].name
+    );
+    const value = parseInt(String(newPower).replace(/\D/g, ""), 10);
+    updatedAppliances[originalIndex].power = Number.isNaN(value) ? 0 : Math.max(0, value);
     setAppliances(updatedAppliances);
   };
 
@@ -281,32 +285,8 @@ const InverterLoadCalculator = () => {
           Go Back
         </Link>
         <div className="grid grid-cols-12 gap-6 w-full mt-4">
-          {/* Room Options */}
-          <div className="col-span-2 flex flex-col gap-4">
-            {houseData.map((house) => (
-              <div
-                key={house.id}
-                onClick={() => setSelectedHouse(house.id)}
-                className={`bg-white p-4 flex flex-col justify-center items-center h-[110px] w-[110px] rounded-2xl shadow-2xl cursor-pointer transition ${
-                  selectedHouse === house.id
-                    ? "border-2 border-[#273e8e]"
-                    : "border-2 border-gray-300"
-                }`}
-              >
-                <img
-                  src={house.image}
-                  alt={house.name}
-                  className="w-8 h-8 object-contain"
-                />
-                <p className="mt-2 text-xs font-medium text-gray-700">
-                  {house.name}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {/* Appliance Table */}
-          <div className="col-span-6 space-y-4">
+          {/* LOAD CALCULATION table — columns match Excel: Appliance | Quantity | Watts | Power (W) | Hours/Day | Watts Hours / Day */}
+          <div className="col-span-8 space-y-4">
             {/* Search */}
             <div className="flex items-center w-full border-2 border-gray-300 rounded-xl bg-white px-4 py-3">
               <Search className="text-gray-400 w-6 h-6 mr-3" />
@@ -319,55 +299,65 @@ const InverterLoadCalculator = () => {
               />
             </div>
 
-            {/* Table Headers */}
-            <div className="grid grid-cols-5 text-[13px] text-gray-700 text-center">
-              <p>Appliance</p>
-              <p>Power (W)</p>
-              <p>Quantity</p>
-              <p>Total (W)</p>
-              <p>Usage (hrs)</p>
+            {/* Table Headers — match Excel: Appliance | Quantity | Watts | Power (W) | Hours/Day | Watts Hours / Day */}
+            <div className="grid grid-cols-6 text-[13px] text-gray-700 font-medium gap-2">
+              <p className="text-left">Appliance</p>
+              <p className="text-center">Quantity</p>
+              <p className="text-center">Watts</p>
+              <p className="text-center">Power (W)</p>
+              <p className="text-center">Hours/Day</p>
+              <p className="text-center">Watts Hours / Day</p>
             </div>
 
             {/* Appliance List */}
             <div className="rounded-2xl border bg-white p-4 divide-y">
               {filteredAppliances.map((item, index) => {
-                const totalPower = item.power * item.quantity;
+                const powerW = (item.power || 0) * (item.quantity || 0);
+                const hoursPerDay = item.hours ?? 0;
+                const wattsHoursPerDay = powerW * hoursPerDay;
 
                 return (
                   <div
                     key={index}
-                    className="grid grid-cols-5 items-center text-center py-3 text-sm"
+                    className="grid grid-cols-6 items-center gap-2 py-3 text-sm"
                   >
-                    <p className="font-normal">{item.name}</p>
-                    <p className="font-medium">{item.power}</p>
-
-                    <div className="flex justify-center items-center gap-2">
+                    <p className="font-normal text-left truncate" title={item.name}>{item.name}</p>
+                    <div className="flex justify-center items-center gap-1">
                       <button
-                        className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer"
+                        type="button"
+                        className="bg-[#273e8e] text-white rounded p-1 cursor-pointer"
                         onClick={() => updateQuantity(index, item.quantity - 1)}
                       >
-                        <Minus size={16} />
+                        <Minus size={14} />
                       </button>
-                      <span className="w-6 text-center">{item.quantity}</span>
+                      <span className="w-8 text-center">{item.quantity}</span>
                       <button
-                        className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer"
+                        type="button"
+                        className="bg-[#273e8e] text-white rounded p-1 cursor-pointer"
                         onClick={() => updateQuantity(index, item.quantity + 1)}
                       >
-                        <Plus size={16} />
+                        <Plus size={14} />
                       </button>
                     </div>
-
-                    <p className="font-medium">{totalPower}</p>
-
+                    <input
+                      type="number"
+                      value={item.power}
+                      onChange={(e) => updatePower(index, e.target.value)}
+                      min={0}
+                      className="w-14 mx-auto px-1 py-1 text-center outline-none rounded border border-gray-200 bg-gray-50 text-gray-800 text-xs focus:border-[#273e8e] focus:ring-1 focus:ring-[#273e8e]"
+                    />
+                    <p className="text-center font-medium">{powerW}</p>
                     <input
                       type="number"
                       value={item.hours}
                       onChange={(e) =>
-                        updateHours(index, parseInt(e.target.value) || 0)
+                        updateHours(index, parseInt(e.target.value, 10) || 0)
                       }
-                      placeholder="Hours"
-                      className="w-16 mx-auto px-2 py-1 text-center outline-none rounded bg-gray-100 text-gray-500"
+                      placeholder="0"
+                      min={0}
+                      className="w-14 mx-auto px-1 py-1 text-center outline-none rounded border border-gray-200 bg-gray-50 text-gray-800 text-xs focus:border-[#273e8e] focus:ring-1 focus:ring-[#273e8e]"
                     />
+                    <p className="text-center font-medium">{wattsHoursPerDay}</p>
                   </div>
                 );
               })}
@@ -442,22 +432,32 @@ const InverterLoadCalculator = () => {
             )}
           </div>
 
-          {/* Summary Box */}
+          {/* Summary: Total Load, Total Energy, Proposed Inverter Rating — then Proceed → recommended bundles */}
           <div className="col-span-4">
-            <div className="bg-[#273e8e] text-white rounded-2xl px-1 py-2 flex flex-col justify-center items-center gap-4 shadow-lg">
-              <div className="flex justify-center items-center gap-4 w-full">
-                <h2 className="text-xl font-medium w-[50%] text-center">
-                  Total Output
-                </h2>
-                <div className="bg-white h-[60px] w-[50%] rounded-xl px-1 flex justify-center items-center gap-2 text-[#273e8e]">
-                  <span className="text-2xl font-medium">{totalOutput}</span>
-                  <span className="text-lg">Watt</span>
+            <div className="bg-[#273e8e] text-white rounded-2xl px-5 py-5 flex flex-col gap-4 shadow-lg">
+              <h2 className="text-lg font-semibold border-b border-white/30 pb-2">Load calculation result</h2>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-white/80 text-xs">Total Load</p>
+                  <p className="text-xl font-bold">{totalLoadW.toLocaleString()} W</p>
+                  <p className="text-sm text-white/90">{(totalLoadW / 1000).toFixed(3)} kW</p>
+                </div>
+                <div>
+                  <p className="text-white/80 text-xs">Total Energy</p>
+                  <p className="text-xl font-bold">{totalEnergyWh.toLocaleString()} Wh/day</p>
+                  <p className="text-sm text-white/90">{totalEnergyKwh.toFixed(3)} kWh/day</p>
+                </div>
+                <div>
+                  <p className="text-white/80 text-xs">Proposed Inverter Rating</p>
+                  <p className="text-xl font-bold">{proposedInverterKva} kVA</p>
+                  <p className="text-sm text-white/90">{proposedInverterW.toLocaleString()} W</p>
                 </div>
               </div>
-              {/* Show proceed button always - if returnTo exists, go back to flow; otherwise go to solar bundles */}
+              <p className="text-white/80 text-xs">Click Proceed to see recommended bundles for this load.</p>
               <button
+                type="button"
                 onClick={handleProceed}
-                className="bg-white text-[#273e8e] px-8 py-3 rounded-xl font-semibold hover:bg-gray-100 transition-colors w-full max-w-xs"
+                className="bg-white text-[#273e8e] px-8 py-3 rounded-xl font-semibold hover:bg-gray-100 transition-colors w-full"
               >
                 Proceed
               </button>
@@ -467,73 +467,14 @@ const InverterLoadCalculator = () => {
       </div>
 
       {/* Mobile View  */}
-      <div className="min-h-screen bg-[#f5f6ff] sm:hidden block">
-        {/* Home/Office Selection */}
-        <div className="px-3 mb-4 bg-white max-w-[180px] border border-gray-300 rounded-4xl py-3">
-          <div className="flex gap-2">
-            <button
-              onClick={() => setSelectedType("Home")}
-              className={`py-2 px-5 rounded-full font-medium text-[12px] transition-all duration-300 ease-in-out ${
-                selectedType === "Home"
-                  ? "bg-[#273e8e] text-white"
-                  : " text-gray-600"
-              }`}
-            >
-              Home
-            </button>
-            <button
-              onClick={() => setSelectedType("Office")}
-              className={`py-2 px-5 rounded-full font-medium text-[12px] transition-all duration-300 ease-in-out ${
-                selectedType === "Office"
-                  ? "bg-[#273e8e] text-white"
-                  : "text-gray-600"
-              }`}
-            >
-              Office
-            </button>
-          </div>
-        </div>
-
-        {/* House Selection Cards */}
-        <div className="px-4 mb-6">
-          <div className="grid grid-cols-4 gap-2 ">
-            {houseData.map((house) => (
-              <div
-                key={house.id}
-                onClick={() => setSelectedHouse(house.id)}
-                className={`p-3 py-4 rounded-lg flex flex-col items-center ${
-                  selectedHouse === house.id
-                    ? "bg-white border-2 border-[#273e8e]"
-                    : "bg-white border border-gray-200"
-                }`}
-              >
-                <img
-                  src={house.image}
-                  alt={house.name}
-                  className="w-6 h-6 object-contain mb-1"
-                />
-                <p className="text-[8px] font-medium text-center">
-                  {house.name}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
+      <div className="min-h-screen bg-[#f5f6ff] sm:hidden block pb-32">
         {/* Title and Description */}
-        <div className="px-4 mb-4">
+        <div className="px-4 mb-4 pt-2">
           <h2 className="text-[14px] font-semibold text-black mb-2">
             Inverter Load Calculator
-            {selectedHouse
-              ? ` for ${
-                  houseData.find((h) => h.id === selectedHouse)?.name
-                } Apartment`
-              : ""}
           </h2>
           <p className="text-[12px] text-gray-600">
-            An inverter load calculator helps estimate the total power needed to
-            run selected appliances. It guides you in choosing the right
-            inverter and battery size for efficient backup.
+            Add appliances and usage to see Total Load, Total Energy, and Proposed Inverter Rating. Then tap Proceed for recommended bundles.
           </p>
         </div>
 
@@ -551,60 +492,63 @@ const InverterLoadCalculator = () => {
           </div>
         </div>
 
-        {/* Appliance Table */}
+        {/* Appliance Table — columns: Appliance | Quantity | Watts | Power (W) | Hours/Day | Watts Hours / Day */}
         <div className="px-4 mb-4">
-          {/* Table Headers */}
-          <div className="grid grid-cols-5 text-xs font-medium text-gray-600 text-center mb-2">
-            <p>Appliance</p>
-            <p>Power</p>
-            <p>Quantity</p>
-            <p>Total</p>
-            <p>Usage(hrs)</p>
+          <div className="grid grid-cols-6 text-[10px] font-medium text-gray-600 gap-0.5 mb-1">
+            <p className="col-span-1 text-left">Appliance</p>
+            <p className="text-center">Qty</p>
+            <p className="text-center">W</p>
+            <p className="text-center">P(W)</p>
+            <p className="text-center">Hrs</p>
+            <p className="text-center">Wh/day</p>
           </div>
-
-          {/* Appliance List */}
-          <div className="bg-white rounded-lg border divide-y max-h-96 overflow-y-auto">
+          <div className="bg-white rounded-lg border divide-y max-h-80 overflow-y-auto">
             {filteredAppliances.map((item, index) => {
-              const totalPower = item.power * item.quantity;
-
+              const powerW = (item.power || 0) * (item.quantity || 0);
+              const hoursPerDay = item.hours ?? 0;
+              const wattsHoursPerDay = powerW * hoursPerDay;
               return (
                 <div
                   key={index}
-                  className="grid grid-cols-5 items-center text-center py-3 text-xs"
+                  className="grid grid-cols-6 items-center gap-0.5 py-2 text-[10px]"
                 >
-                  <p className="font-normal text-left pl-2">{item.name}</p>
-                  <p className="font-medium">{item.power}w</p>
-
-                  <div className="flex justify-center items-center gap-1">
+                  <p className="font-normal text-left pl-1 truncate" title={item.name}>{item.name}</p>
+                  <div className="flex justify-center items-center gap-0.5">
                     <button
-                      className="bg-[#273e8e] text-white rounded p-1 cursor-pointer"
+                      type="button"
+                      className="bg-[#273e8e] text-white rounded p-0.5"
                       onClick={() => updateQuantity(index, item.quantity - 1)}
                     >
-                      <Minus size={12} />
+                      <Minus size={10} />
                     </button>
-                    <span className="w-6 text-center font-medium">
-                      {item.quantity}
-                    </span>
+                    <span className="w-5 text-center">{item.quantity}</span>
                     <button
-                      className="bg-[#273e8e] text-white rounded p-1 cursor-pointer"
+                      type="button"
+                      className="bg-[#273e8e] text-white rounded p-0.5"
                       onClick={() => updateQuantity(index, item.quantity + 1)}
                     >
-                      <Plus size={12} />
+                      <Plus size={10} />
                     </button>
                   </div>
-
-                  <p className="font-medium">{totalPower}w</p>
-
+                  <input
+                    type="number"
+                    value={item.power}
+                    onChange={(e) => updatePower(index, e.target.value)}
+                    min={0}
+                    className="w-9 mx-auto px-0.5 py-0.5 text-center border rounded text-[10px] bg-gray-50"
+                  />
+                  <p className="text-center font-medium">{powerW}</p>
                   <input
                     type="number"
                     value={item.hours}
                     onChange={(e) =>
-                      updateHours(index, parseInt(e.target.value) || 0)
+                      updateHours(index, parseInt(e.target.value, 10) || 0)
                     }
-                    placeholder="Hrs"
-                    min="0"
-                    className="w-12 mx-auto px-1 py-1 text-center border rounded bg-white outline-none focus:border-[#273e8e] text-xs"
+                    placeholder="0"
+                    min={0}
+                    className="w-9 mx-auto px-0.5 py-0.5 text-center border rounded text-[10px] bg-gray-50"
                   />
+                  <p className="text-center font-medium">{wattsHoursPerDay}</p>
                 </div>
               );
             })}
@@ -681,24 +625,29 @@ const InverterLoadCalculator = () => {
           )}
         </div>
 
-        {/* Total Output - Fixed Bottom */}
-        <div className="fixed bottom-0 left-0 right-0 bg-[#273e8e] text-white px-4 py-4 flex items-center justify-between">
-          <h2 className="text-lg font-medium">Total Output</h2>
-          <div className="flex items-center gap-4">
-            <div className="bg-white rounded-lg px-4 py-2 flex items-center gap-2 text-[#273e8e]">
-              <span className="text-2xl font-bold">
-                {totalOutput.toLocaleString()}
-              </span>
-              <span className="text-sm">Watts</span>
+        {/* Total Load, Total Energy, Proposed Inverter — then Proceed */}
+        <div className="fixed bottom-0 left-0 right-0 bg-[#273e8e] text-white px-4 py-4 shadow-lg">
+          <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+            <div>
+              <p className="text-white/80">Total Load</p>
+              <p className="font-bold">{totalLoadW.toLocaleString()} W</p>
             </div>
-            {/* Show proceed button always - if returnTo exists, go back to flow; otherwise go to solar bundles */}
-            <button
-              onClick={handleProceed}
-              className="bg-white text-[#273e8e] px-6 py-2 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
-            >
-              Proceed
-            </button>
+            <div>
+              <p className="text-white/80">Total Energy</p>
+              <p className="font-bold">{totalEnergyKwh.toFixed(2)} kWh/day</p>
+            </div>
+            <div>
+              <p className="text-white/80">Proposed Inverter</p>
+              <p className="font-bold">{proposedInverterKva} kVA</p>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={handleProceed}
+            className="bg-white text-[#273e8e] w-full py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+          >
+            Proceed
+          </button>
         </div>
       </div>
     </>

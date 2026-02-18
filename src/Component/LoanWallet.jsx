@@ -5,7 +5,7 @@ import axios from "axios";
 import API from "../config/api.config";
 
 const LoanWallet = () => {
-  const [open, setOpen] = useState(false); // true => mask (kept your behavior)
+  const [showAmount, setShowAmount] = useState(true); // true => amount visible (eye open), false => hidden (eye closed)
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -339,9 +339,9 @@ const LoanWallet = () => {
   const path = location.pathname.includes("loanDetails/loanDashboard");
 
   const displayBalance = useMemo(() => {
-    const txt = `N${Number(balance || 0).toLocaleString()}`;
-    return open ? "******" : txt;
-  }, [balance, open]);
+    const txt = `₦${Number(balance || 0).toLocaleString()}`;
+    return showAmount ? txt : "******";
+  }, [balance, showAmount]);
 
   return (
     <div className="bg-[#273e8e] rounded-[16px] px-4 pt-4 pb-3 text-white shadow-md">
@@ -349,19 +349,19 @@ const LoanWallet = () => {
       <div className="flex justify-between items-center mb-2">
         <p className="text-white/70 text-xs lg:text-sm">Loan Wallet</p>
         <div className="bg-[#1d3073] h-7 w-7 rounded-md flex items-center justify-center">
-          {open ? (
+          {showAmount ? (
             <Eye
-              onClick={() => setOpen(!open)}
-              size={18}
-              className="text-white/70 cursor-pointer"
-              title="Show balance"
-            />
-          ) : (
-            <EyeOff
-              onClick={() => setOpen(!open)}
+              onClick={() => setShowAmount(false)}
               size={18}
               className="text-white/70 cursor-pointer"
               title="Hide balance"
+            />
+          ) : (
+            <EyeOff
+              onClick={() => setShowAmount(true)}
+              size={18}
+              className="text-white/70 cursor-pointer"
+              title="Show balance"
             />
           )}
         </div>
@@ -380,7 +380,7 @@ const LoanWallet = () => {
               ? "Unable to fetch wallet" 
               : hasActiveLoan || balance > 0
               ? nextPaymentDate 
-                ? `Next payment: ${new Date(nextPaymentDate).toLocaleDateString('en-NG', { month: 'short', day: 'numeric' })}`
+                ? `Next payment: ${new Date(nextPaymentDate).toLocaleDateString('en-GB', { month: 'long', day: 'numeric' })}`
                 : "Active loan"
               : "You have no loans"}
           </p>

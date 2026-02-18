@@ -312,18 +312,20 @@ const HomePage = () => {
       products = products.filter(item => filteredProductIds.has(item.id));
     }
     
-    // Apply price filter - use raw price values from API
-    if (priceRange.min !== null && priceRange.max !== null) {
+    // Apply price filter - use raw price values from API (supports min-only e.g. 5M+)
+    const hasPriceFilter = priceRange.min != null || priceRange.max != null;
+    if (hasPriceFilter) {
       products = products.filter((item) => {
         const rawProduct = rawProductMap[item.id];
         if (!rawProduct) return false;
         
-        // Use discount_price if available and valid, otherwise use price
         const discountPrice = rawProduct.discount_price != null ? Number(rawProduct.discount_price) : null;
         const regularPrice = rawProduct.price != null ? Number(rawProduct.price) : 0;
         const actualPrice = discountPrice !== null && discountPrice > 0 ? discountPrice : regularPrice;
         
-        return actualPrice >= priceRange.min && actualPrice <= priceRange.max;
+        const minOk = priceRange.min == null || actualPrice >= priceRange.min;
+        const maxOk = priceRange.max == null || actualPrice <= priceRange.max;
+        return minOk && maxOk;
       });
     }
     
@@ -403,7 +405,7 @@ const HomePage = () => {
               <SizeDropDown onFilter={handleSizeFilter} />
               <PriceDropDown onFilter={handlePriceFilter} />
               {/* Show active filters count */}
-              {(selectedSize !== null || (priceRange.min !== null && priceRange.max !== null)) && (
+              {(selectedSize !== null || priceRange.min != null || priceRange.max != null) && (
                 <button
                   onClick={() => {
                     setSelectedSize(null);
@@ -621,7 +623,7 @@ const HomePage = () => {
               <SizeDropDown onFilter={handleSizeFilter} />
               <PriceDropDown onFilter={handlePriceFilter} />
               {/* Show active filters count */}
-              {(selectedSize !== null || (priceRange.min !== null && priceRange.max !== null)) && (
+              {(selectedSize !== null || priceRange.min != null || priceRange.max != null) && (
                 <button
                   onClick={() => {
                     setSelectedSize(null);

@@ -4,8 +4,8 @@ import axios from "axios";
 import { ChevronDown, X } from "lucide-react";
 import API, { BASE_URL } from "../config/api.config";
 
-const DROPDOWN_Z_BACKDROP = 9998;
-const DROPDOWN_Z_PANEL = 9999;
+const DROPDOWN_Z_BACKDROP = 10000;
+const DROPDOWN_Z_PANEL = 10001;
 
 // Fallbacks in case api.config.js doesn't have these helpers yet
 const CATEGORY_BRANDS = (categoryId) =>
@@ -46,7 +46,13 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
 
   const desktopWrapRef = useRef(null);
   const triggerRef = useRef(null);
+  const mobileTriggerRef = useRef(null);
+  const openedByPointerRef = useRef(false);
+  const openedAtRef = useRef(0);
   const [panelPosition, setPanelPosition] = useState({ top: 0, left: 0 });
+  const [isDesktopView, setIsDesktopView] = useState(
+    typeof window !== "undefined" && window.innerWidth >= 640
+  );
   const token =
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
@@ -96,14 +102,46 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
     };
   }, [categoryId, token]);
 
-  // Position dropdown panel when opening (for portal; fixed = viewport coords)
+  // Position dropdown panel below trigger when opening
   useEffect(() => {
-    if (!isOpen || !triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
+    if (!isOpen) return;
+    const desktop = typeof window !== "undefined" && window.innerWidth >= 640;
+    setIsDesktopView(desktop);
+    const el = desktop ? triggerRef.current : mobileTriggerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
     setPanelPosition({
-      top: rect.bottom + 4,
+      top: rect.bottom + 8,
       left: rect.left,
     });
+  }, [isOpen]);
+
+  // Close dropdown when page scrolls (not when scrolling inside the panel), so page stays scrollable
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleScroll = (e) => {
+      if (e.target?.closest?.("[data-brand-dropdown-panel]")) return;
+      setIsOpen(false);
+    };
+    window.addEventListener("scroll", handleScroll, true);
+    return () => window.removeEventListener("scroll", handleScroll, true);
+  }, [isOpen]);
+
+  // Native listener so closing works when clicking outside (portal is in #root so React events also work)
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleBackdrop = (e) => {
+      const panel = document.querySelector("[data-brand-dropdown-panel]");
+      const trigger = triggerRef.current || mobileTriggerRef.current;
+      if (panel?.contains(e.target) || trigger?.contains(e.target)) return;
+      if (openedByPointerRef.current && Date.now() - openedAtRef.current < 150) {
+        openedByPointerRef.current = false;
+        return;
+      }
+      setIsOpen(false);
+    };
+    document.addEventListener("pointerdown", handleBackdrop, true);
+    return () => document.removeEventListener("pointerdown", handleBackdrop, true);
   }, [isOpen]);
 
   const selectedLabel = useMemo(() => {
@@ -276,99 +314,130 @@ const BrandDropDown = ({ categoryId, onFilter }) => {
 
   return (
     <>
-      {/* Desktop */}
+      {/* Desktop - entire box is the clickable trigger */}
       <div
         ref={desktopWrapRef}
         className="relative sm:block hidden w-full max-w-[200px]"
       >
-        <div className="px-4 py-4 bg-white border border-black/50 rounded-2xl shadow-sm">
-          <button
-            ref={triggerRef}
-            type="button"
-            onClick={() => setIsOpen((s) => !s)}
-            className="flex items-center justify-between w-full font-medium"
-            aria-expanded={isOpen}
-            aria-haspopup="listbox"
-          >
-            <span className="text-sm lg:text-lg text-gray-500">
-              {selectedLabel}
-            </span>
-            <ChevronDown
-              size={26}
-              className={`transition-transform duration-200 ${
-                isOpen ? "rotate-180" : ""
-              }`}
-            />
-          </button>
-
-          {isOpen &&
-            createPortal(
-              <>
-                <div
-                  className="fixed inset-0 bg-black/20"
-                  style={{ zIndex: DROPDOWN_Z_BACKDROP }}
-                  onClick={() => setIsOpen(false)}
-                  aria-hidden="true"
-                />
-                <div
-                  className="fixed shadow-lg rounded-md"
-                  style={{
-                    zIndex: DROPDOWN_Z_PANEL,
-                    top: panelPosition.top,
-                    left: panelPosition.left,
-                  }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  <List />
-                </div>
-              </>,
-              document.body
-            )}
+        <div
+          ref={triggerRef}
+          role="button"
+          tabIndex={0}
+          style={{ touchAction: "manipulation" }}
+          className="px-4 py-4 bg-white border border-black/50 rounded-2xl shadow-sm flex items-center justify-between w-full font-medium cursor-pointer select-none hover:border-black/70 transition-colors"
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openedByPointerRef.current = true;
+            openedAtRef.current = Date.now();
+            setIsOpen((s) => !s);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsOpen((s) => !s);
+            }
+          }}
+        >
+          <span className="text-sm lg:text-lg text-gray-500">
+            {selectedLabel}
+          </span>
+          <ChevronDown
+            size={26}
+            className={`transition-transform duration-200 shrink-0 ${
+              isOpen ? "rotate-180" : ""
+            }`}
+          />
         </div>
       </div>
 
-      {/* Mobile */}
+      {/* Mobile - entire box is the clickable trigger */}
       <div className="relative block sm:hidden w-full max-w-[160px]">
-        <div className="sm:px-5 px-2 sm:py-5 py-3 bg-white border border-r-0 border-black/50 sm:rounded-2xl rounded-tl-2xl rounded-bl-2xl shadow-sm">
-          <button
-            type="button"
-            onClick={() => setIsOpen((s) => !s)}
-            className="flex items-center justify-between w-full font-medium"
-            aria-expanded={isOpen}
-            aria-haspopup="listbox"
-          >
-            <span className="text-sm lg:text-lg text-gray-500">
-              {selectedLabel}
-            </span>
-            <ChevronDown
-              size={26}
-              className={`transition-transform duration-200 ${
-                isOpen ? "rotate-180" : ""
-              }`}
-            />
-          </button>
-
-          {isOpen &&
-            createPortal(
-              <>
-                <div
-                  className="fixed inset-0 bg-black/30"
-                  style={{ zIndex: DROPDOWN_Z_BACKDROP }}
-                  onClick={() => setIsOpen(false)}
-                  aria-hidden="true"
-                />
-                <div
-                  className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-                  style={{ zIndex: DROPDOWN_Z_PANEL }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  <List />
-                </div>
-              </>,
-              document.body
-            )}
+        <div
+          ref={mobileTriggerRef}
+          role="button"
+          tabIndex={0}
+          style={{ touchAction: "manipulation" }}
+          className="sm:px-5 px-2 sm:py-5 py-3 bg-white border border-r-0 border-black/50 sm:rounded-2xl rounded-tl-2xl rounded-bl-2xl shadow-sm flex items-center justify-between w-full font-medium cursor-pointer select-none hover:border-black/70 transition-colors"
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openedByPointerRef.current = true;
+            openedAtRef.current = Date.now();
+            setIsOpen((s) => !s);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsOpen((s) => !s);
+            }
+          }}
+        >
+          <span className="text-sm lg:text-lg text-gray-500">
+            {selectedLabel}
+          </span>
+          <ChevronDown
+            size={26}
+            className={`transition-transform duration-200 shrink-0 ${
+              isOpen ? "rotate-180" : ""
+            }`}
+          />
         </div>
       </div>
+
+      {/* Single portal: only one modal when open (desktop or mobile layout) */}
+      {isOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0"
+            style={{ zIndex: DROPDOWN_Z_BACKDROP }}
+            onClick={(e) => {
+              if (e.target.closest?.("[data-brand-dropdown-panel]")) return;
+              if (openedByPointerRef.current && Date.now() - openedAtRef.current < 150) {
+                openedByPointerRef.current = false;
+                return;
+              }
+              setIsOpen(false);
+            }}
+            onPointerDown={(e) => {
+              if (e.target.closest?.("[data-brand-dropdown-panel]")) return;
+              if (openedByPointerRef.current && Date.now() - openedAtRef.current < 150) {
+                openedByPointerRef.current = false;
+                return;
+              }
+              setIsOpen(false);
+            }}
+            aria-hidden="true"
+          >
+            <div
+              className={isDesktopView ? "bg-black/20" : "bg-black/30"}
+              style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+              aria-hidden="true"
+            />
+            <div
+              data-brand-dropdown-panel
+              className={isDesktopView ? "fixed shadow-lg rounded-xl" : "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"}
+              style={{
+                zIndex: DROPDOWN_Z_PANEL,
+                pointerEvents: "auto",
+                top: isDesktopView ? panelPosition.top : undefined,
+                left: isDesktopView ? panelPosition.left : undefined,
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <List />
+            </div>
+          </div>,
+          document.getElementById("root") || document.body
+        )}
     </>
   );
 };

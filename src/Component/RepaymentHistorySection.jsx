@@ -6,7 +6,7 @@ const RepaymentHistorySection = ({
   hasOverdue = false,
 }) => {
   const formatMoney = (n) =>
-    n != null ? `N${Number(n).toLocaleString()}` : "—";
+    n != null ? `₦${Number(n).toLocaleString()}` : "—";
 
   const formatDate = (d) => {
     if (!d) return "—";

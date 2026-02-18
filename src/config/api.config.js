@@ -86,9 +86,14 @@ const API = {
     BNPL_ORDERS: `${BASE_URL}/bnpl/orders`,
     BNPL_ORDER_DETAILS: (orderId) => `${BASE_URL}/bnpl/orders/${orderId}`,
     BNPL_REPAYMENT_SCHEDULE: (applicationId) => `${BASE_URL}/bnpl/applications/${applicationId}/repayment-schedule`,
+    BNPL_INSTALLATION_BOOK: `${BASE_URL}/bnpl/installation/book`,
     BUY_NOW_CHECKOUT: `${BASE_URL}/orders/checkout`,
     CALENDAR_SLOTS: `${BASE_URL}/calendar/slots`,
     
+    // Site (public) – FAQs editable from backend; form submission recipients (info@, sales@) configured in backend
+    SITE_BANNER: `${BASE_URL}/site/banner`,
+    SITE_FAQS: `${BASE_URL}/site/faqs`,
+
     // Audit Request Endpoints
     AUDIT_REQUEST: `${BASE_URL}/audit/request`,
     AUDIT_REQUEST_BY_ID: (id) => `${BASE_URL}/audit/request/${id}`,

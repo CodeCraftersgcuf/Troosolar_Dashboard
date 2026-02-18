@@ -2,13 +2,17 @@ import React, { useState, useEffect, useRef, useContext, useMemo } from "react";
 import { ChevronDown, Search, X } from "lucide-react";
 import { ContextApi } from "../Context/AppContext";
 
+const Z_DROPDOWN_BACKDROP = 9999;
+const Z_DROPDOWN_PANEL = 10000;
+
 /**
  * props:
  * - categories: [{ id, name }]
- * - products: array of mapped products to filter (from HomePage)
- * - onFilteringChange: callback to notify parent when filtering state changes
+ * - products: array of mapped products to filter (from HomePage or SolarBundle)
+ * - onFilteringChange: callback(boolean) when filtering state changes
+ * - onFilteredResults: callback(filteredArray) when filtered list is computed (e.g. for SolarBundle)
  */
-const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
+const SearchBar = ({ categories = [], products = [], onFilteringChange, onFilteredResults }) => {
   const { setFilteredResults } = useContext(ContextApi);
 
   // Build dropdown options from API cats
@@ -23,6 +27,8 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const triggerRef = useRef(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
 
   // value = "all" | "<categoryId>"
   const [selectedValue, setSelectedValue] = useState("all");
@@ -44,16 +50,49 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
   const selectedLabel =
     dropdownOptions.find((o) => o.value === selectedValue)?.label || "All";
 
-  // Close dropdown if clicked outside
+  /**
+   * Fallback: infer if product belongs to category by title/heading.
+   * Ensures inverters show under Inverters, panels under Panels, batteries under Lithium Batteries, etc.,
+   * even when product.category_id is wrong in the API.
+   */
+  const productTitleMatchesCategory = (heading, categoryLabel) => {
+    if (!heading || !categoryLabel) return false;
+    const h = String(heading).toLowerCase();
+    const c = String(categoryLabel).toLowerCase();
+    // Inverters / Solar Inverters
+    if (c.includes("inverter")) return /inverter|inv\b|kva|hybrid\s*inv/i.test(h);
+    // Solar Panels / Panels
+    if (c.includes("panel") || c === "solar panels") return /panel|monofacial|bifacial|solar\s*pv|jinko|longi|canadian|trina|watt\s*\d|^\d+w\b/i.test(h) && !/inverter|battery|lithium/i.test(h);
+    // Lithium Batteries / Batteries
+    if (c.includes("battery") || c.includes("lithium")) return /battery|batteries|lithium|li-ion|li-ion|kwh\s*battery/i.test(h);
+    // All In One Systems
+    if (c.includes("all in one") || c.includes("system")) return /all\s*in\s*one|system|hybrid\s*system/i.test(h);
+    // Accessories, Cables, etc. - optional keyword match
+    if (c.includes("accessor")) return /cable|wire|connector|meter|stick|wifi/i.test(h);
+    if (c.includes("cable") || c.includes("wiring")) return /cable|wire|flexible|dc\s*cable|ac\s*cable/i.test(h);
+    if (c.includes("mounting") || c.includes("installation")) return /mount|rack|structure|installation/i.test(h);
+    if (c.includes("electrical")) return /breaker|combiner|surge|bypass|switch|busbar|earth/i.test(h);
+    return false;
+  };
+
+  // Position dropdown below trigger when open (for fixed positioning so it's not clipped by overflow)
   useEffect(() => {
+    if (!isDropdownOpen || !triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    setDropdownPosition({ top: rect.bottom + 4, left: rect.left });
+  }, [isDropdownOpen]);
+
+  // Close dropdown if clicked outside (including when dropdown is fixed/portaled)
+  useEffect(() => {
+    if (!isDropdownOpen) return;
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsDropdownOpen(false);
-      }
+      const panel = document.querySelector("[data-search-bar-dropdown-panel]");
+      if (triggerRef.current?.contains(event.target) || panel?.contains(event.target)) return;
+      setIsDropdownOpen(false);
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [isDropdownOpen]);
 
   // Extract size from query (e.g., "1.2kW" or "1.2 kw")
   const extractSizeFromQuery = (q) => {
@@ -83,14 +122,16 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
       const sizeToFilter = selectedSize !== "all" ? parseFloat(selectedSize) : querySize;
       const isFilteringActive = selectedValue !== "all" || query.trim() !== "" || selectedSize !== "all";
 
-      // Category filtering
+      // Category filtering: by category_id first, then fallback by product title so
+      // inverters show under Inverters, panels under Panels, batteries under Lithium Batteries, etc.
       if (selectedValue !== "all") {
         const catId = Number(selectedValue);
+        const categoryLabel = dropdownOptions.find((o) => o.value === selectedValue)?.label || "";
         results = results.filter((item) => {
-          // For mapped products from HomePage (they have categoryId)
           const itemCategoryId = Number(item.categoryId);
-          const matches = !isNaN(itemCategoryId) && itemCategoryId === catId;
-          return matches;
+          const matchesId = !isNaN(itemCategoryId) && itemCategoryId === catId;
+          const matchesTitle = productTitleMatchesCategory(item.heading || item.title || item.name, categoryLabel);
+          return matchesId || matchesTitle;
         });
       }
 
@@ -132,7 +173,10 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
       
       // Update filtered results in context
       setFilteredResults(results);
-      
+      // Notify parent with filtered array (e.g. SolarBundle can display these)
+      if (onFilteredResults) {
+        onFilteredResults(results);
+      }
       // Notify parent about filtering state
       if (onFilteringChange) {
         onFilteringChange(isFilteringActive);
@@ -144,12 +188,15 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
   }, [query, selectedValue, selectedSize, products]); // Removed setFilteredResults and onFilteringChange to prevent infinite loops
 
   return (
-    <div className="flex items-center bg-white rounded-lg shadow-sm border border-gray-200 w-[100%] relative">
-      {/* Dropdown */}
-      <div className="relative" ref={dropdownRef}>
+    <div className="flex items-center bg-white rounded-lg shadow-sm border border-gray-200 w-[100%] relative" ref={dropdownRef}>
+      {/* Dropdown trigger */}
+      <div className="relative" ref={triggerRef}>
         <button
+          type="button"
           onClick={() => setIsDropdownOpen((prev) => !prev)}
           className="flex items-center gap-8 pl-4 py-3 font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
+          aria-expanded={isDropdownOpen}
+          aria-haspopup="listbox"
         >
           <span className="mr-2 whitespace-nowrap">{selectedLabel}</span>
           <ChevronDown
@@ -159,34 +206,58 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
             }`}
           />
         </button>
+      </div>
 
-        {isDropdownOpen && (
-          <div className="absolute left-0 top-full mt-1 max-h-[500px] z-50 w-[320px] bg-white rounded-md shadow-lg border border-gray-200 overflow-y-auto">
-            <div className="px-4 py-2 relative border-b border-gray-200">
+      {/* Dropdown panel: fixed so it's not clipped by overflow-y-auto ancestors */}
+      {isDropdownOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/10"
+            style={{ zIndex: Z_DROPDOWN_BACKDROP }}
+            aria-hidden="true"
+            onClick={() => setIsDropdownOpen(false)}
+          />
+          <div
+            data-search-bar-dropdown-panel
+            className="fixed max-h-[500px] w-[320px] bg-white rounded-md shadow-lg border border-gray-200 overflow-y-auto"
+            style={{
+              zIndex: Z_DROPDOWN_PANEL,
+              top: dropdownPosition.top,
+              left: dropdownPosition.left,
+            }}
+            role="listbox"
+            aria-label="Select category and size"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-2 relative border-b border-gray-200 shrink-0">
               <p className="text-center text-gray-500 font-medium">Select Category</p>
-              <X
-                size={20}
+              <button
+                type="button"
                 onClick={() => setIsDropdownOpen(false)}
-                className="cursor-pointer absolute top-2.5 right-2 text-gray-500 hover:text-gray-800"
-              />
+                className="cursor-pointer absolute top-2.5 right-2 text-gray-500 hover:text-gray-800 p-1"
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
             </div>
 
             {/* Category Options */}
             {dropdownOptions.map((option) => (
               <button
                 key={option.value}
+                type="button"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   setSelectedValue(option.value);
-                  // Optionally close dropdown after selection
-                  // setIsDropdownOpen(false);
                 }}
                 className={`flex items-center justify-between w-full px-4 py-2 text-sm hover:bg-gray-100 ${
                   selectedValue === option.value
                     ? "bg-blue-50 font-semibold"
                     : "text-gray-700"
                 }`}
+                role="option"
+                aria-selected={selectedValue === option.value}
               >
                 <span>{option.label}</span>
                 <span className="h-4 w-4 rounded-full border border-[#273e8e] flex items-center justify-center">
@@ -206,18 +277,19 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
                 {sizeOptions.map((size) => (
                   <button
                     key={size.value}
+                    type="button"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       setSelectedSize(size.value);
-                      // Optionally close dropdown after selection
-                      // setIsDropdownOpen(false);
                     }}
                     className={`flex items-center justify-between w-full px-4 py-2 text-sm hover:bg-gray-100 ${
                       selectedSize === size.value
                         ? "bg-blue-50 font-semibold"
                         : "text-gray-700"
                     }`}
+                    role="option"
+                    aria-selected={selectedSize === size.value}
                   >
                     <span>{size.label}</span>
                     <span className="h-4 w-4 rounded-full border border-[#273e8e] flex items-center justify-center">
@@ -230,8 +302,8 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </>
+      )}
 
       {/* Divider */}
       <div className="h-6 w-px bg-gray-300 mx-2"></div>
@@ -240,11 +312,14 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange }) => {
       <div className="flex-1 flex items-center px-2">
         <Search size={18} className="text-gray-400 mr-2" />
         <input
+          id="search-bar-query"
+          name="search-query"
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Choose Solar Bundle"
           className="w-full px-2 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none"
+          aria-label="Search solar bundles"
         />
         {(query || selectedValue !== "all" || selectedSize !== "all") && (
           <button

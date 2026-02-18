@@ -27,6 +27,11 @@ const toAbsolute = (path) => {
 // Fallback image URL
 const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
 
+// Insurance: default 3% of order when not set in backend. Backend can override via add-ons (is_compulsory_bnpl, calculation_type: 'percentage', calculation_value).
+const DEFAULT_INSURANCE_PERCENT = 3;
+// Credit check fee: editable from backend via loan-config (credit_check_fee). Fallback when not set.
+const DEFAULT_CREDIT_CHECK_FEE = 1000;
+
 // Format backup time text - split sentences by periods and display on separate lines with blank line between
 const formatBackupTime = (text) => {
   if (!text) return "";
@@ -53,6 +58,23 @@ const getBundleImage = (bundle) => {
 const formatPrice = (price) => {
     return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
 };
+
+// Label map for bundle specifications (matches sheet "Bundle Specification" column)
+const SPEC_LABELS = {
+    company_oem: 'Company / OEM',
+    solar_panel_type: 'Solar Panel type',
+    inverter_capacity_kva: 'Inverter Capacity',
+    voltage: 'Voltage',
+    battery_type: 'Battery Type',
+    solar_panels_warranty: 'Solar panels (Warranty)',
+    inverter_warranty: 'Solar Inverter (Warranty)',
+    battery_warranty: 'Lithium Ion Battery (Warranty)',
+    solar_panels_wattage: 'Solar Panels Wattage',
+    battery_capacity_kwh: 'Battery Capacity',
+    backup_time_range: 'Back-up time range',
+};
+const BUNDLE_SPEC_ORDER = ['company_oem', 'solar_panel_type', 'inverter_capacity_kva', 'voltage', 'battery_type', 'solar_panels_warranty', 'inverter_warranty', 'battery_warranty', 'solar_panels_wattage', 'battery_capacity_kwh', 'backup_time_range'];
+const SPEC_KEYS_HIDDEN = ['solar_panel_capacity_kw', 'solar_panel_capacity_w'];
 
 // Flutterwave integration
 const ensureFlutterwave = () =>
@@ -184,6 +206,8 @@ const BNPLFlow = () => {
     
     // Custom order flow (from admin-created cart)
     const [searchParams] = useSearchParams();
+    const [bnplTermsAccepted, setBnplTermsAccepted] = useState(() => typeof sessionStorage !== 'undefined' && sessionStorage.getItem('bnpl_terms_accepted') === 'true');
+    const [bnplTermsCheckbox, setBnplTermsCheckbox] = useState(false);
     const [cartToken, setCartToken] = useState(null);
     const [cartItems, setCartItems] = useState([]);
     const [cartOrderType, setCartOrderType] = useState(null);
@@ -223,9 +247,78 @@ const BNPLFlow = () => {
         estateAddress: '',
         bankStatement: null,
         livePhoto: null,
+        livePhotoPreview: null,
         auditRequestId: null, // Store audit request ID after submission
         streetName: '', // Street name for property address
     });
+
+    // Camera capture for live photo
+    const [cameraStream, setCameraStream] = useState(null);
+    const [cameraError, setCameraError] = useState(null);
+    const cameraVideoRef = useRef(null);
+    const cameraCanvasRef = useRef(null);
+
+    const openCamera = async () => {
+        setCameraError(null);
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+                audio: false,
+            });
+            setCameraStream(stream);
+            // Attach stream to video element after render
+            setTimeout(() => {
+                if (cameraVideoRef.current) {
+                    cameraVideoRef.current.srcObject = stream;
+                }
+            }, 100);
+        } catch (err) {
+            console.error('Camera access error:', err);
+            if (err.name === 'NotAllowedError') {
+                setCameraError('Camera access was denied. Please allow camera permission in your browser settings and try again.');
+            } else if (err.name === 'NotFoundError') {
+                setCameraError('No camera found on this device.');
+            } else {
+                setCameraError('Could not access camera. Please try again or use a device with a camera.');
+            }
+        }
+    };
+
+    const stopCamera = () => {
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+            setCameraStream(null);
+        }
+    };
+
+    const captureLivePhoto = () => {
+        const video = cameraVideoRef.current;
+        const canvas = cameraCanvasRef.current;
+        if (!video || !canvas) return;
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
+
+        canvas.toBlob((blob) => {
+            if (blob) {
+                const file = new File([blob], `live-selfie-${Date.now()}.jpg`, { type: 'image/jpeg' });
+                const previewUrl = canvas.toDataURL('image/jpeg');
+                setFormData(prev => ({ ...prev, livePhoto: file, livePhotoPreview: previewUrl }));
+                stopCamera();
+            }
+        }, 'image/jpeg', 0.9);
+    };
+
+    // Cleanup camera stream on unmount
+    useEffect(() => {
+        return () => {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+            }
+        };
+    }, [cameraStream]);
 
     // Categories and products for individual components
     const [categories, setCategories] = useState([]);
@@ -242,6 +335,50 @@ const BNPLFlow = () => {
     const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false);
     const sizeDropdownRef = useRef(null);
     const bundlesFetchedForLoadRef = useRef(false);
+    const [enrichedBundles, setEnrichedBundles] = useState({}); // { bundleId: fullBundleData }
+    const [enrichingBundles, setEnrichingBundles] = useState(false);
+
+    // Fetch full details (bundle_items, materials, services) for all selected bundles
+    const enrichSelectedBundles = async () => {
+        const token = localStorage.getItem('access_token');
+        const toEnrich = formData.selectedBundles.filter(sb => {
+            const obj = sb.bundle;
+            const hasItems = (obj?.bundleItems ?? obj?.bundle_items ?? []).length > 0;
+            const alreadyEnriched = enrichedBundles[sb.id];
+            return !hasItems && !alreadyEnriched;
+        });
+        if (toEnrich.length === 0) return;
+        setEnrichingBundles(true);
+        try {
+            const results = await Promise.all(
+                toEnrich.map(async (sb) => {
+                    try {
+                        const res = await axios.get(API.BUNDLE_DETAILS(sb.id), {
+                            headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                        });
+                        const detail = res.data?.data ?? res.data;
+                        return { id: sb.id, detail };
+                    } catch {
+                        return { id: sb.id, detail: null };
+                    }
+                })
+            );
+            const newEnriched = { ...enrichedBundles };
+            results.forEach(r => { if (r.detail) newEnriched[r.id] = r.detail; });
+            setEnrichedBundles(newEnriched);
+            // Also update the bundle objects in formData so extractBundleLineItems works
+            setFormData(prev => ({
+                ...prev,
+                selectedBundles: prev.selectedBundles.map(sb => {
+                    const full = newEnriched[sb.id];
+                    if (full) return { ...sb, bundle: { ...sb.bundle, ...full } };
+                    return sb;
+                }),
+            }));
+        } finally {
+            setEnrichingBundles(false);
+        }
+    };
 
     // Map predefined category groups to API category IDs
     const getCategoryIdsForGroup = (groupType) => {
@@ -372,9 +509,11 @@ const BNPLFlow = () => {
             verifyCartAccess(token);
         }
         
-        // If applicationId is provided, load existing application and show summary/invoice
+        // If applicationId is provided, load existing application; optional stepParam (e.g. 17) jumps to that step
         if (applicationIdParam) {
-            loadExistingApplication(Number(applicationIdParam));
+            loadExistingApplication(Number(applicationIdParam)).then(() => {
+                if (stepParam) setStep(Number(stepParam));
+            });
         }
         
         // If coming from bundle detail page, load bundle and skip to order summary
@@ -382,15 +521,19 @@ const BNPLFlow = () => {
             loadBundleAndSkipToStep(Number(bundleIdParam), stepParam ? Number(stepParam) : 6.5);
             return;
         }
-        // When coming from Load Calculator with step=3.5 and q, go to bundle selection with load-based bundles
+        // When coming from Load Calculator with step=3.5 and q, go to bundle selection with load-based bundles; preserve category from URL
         const qParam = searchParams.get('q');
+        const categoryParam = searchParams.get('category');
         if (stepParam && Number(stepParam) === 3.5) {
             setStep(3.5);
-            if (qParam) {
+            if (qParam || categoryParam) {
+                const resolvedCategory = categoryParam && ['full-kit', 'inverter-battery', 'battery-only'].includes(categoryParam)
+                    ? categoryParam
+                    : (undefined);
                 setFormData(prev => ({
                     ...prev,
                     optionType: prev.optionType || 'choose-system',
-                    productCategory: prev.productCategory || 'full-kit',
+                    productCategory: resolvedCategory ?? prev.productCategory ?? 'full-kit',
                     customerType: prev.customerType || 'residential',
                 }));
             }
@@ -656,13 +799,19 @@ const BNPLFlow = () => {
         fetchConfig();
     }, []);
 
-    // When landing on step 3.5 with q (from Load Calculator), fetch bundles by load
+    // Map product category to backend bundle_type for filtering (match exactly; do not recommend wrong category)
+    const categoryToBundleType = {
+        'full-kit': 'Solar+Inverter+Battery',
+        'inverter-battery': 'Inverter + Battery',
+        'battery-only': 'Battery only',
+    };
+
+    // When landing on step 3.5 with q (from Load Calculator), fetch bundles by load then filter by category
     React.useEffect(() => {
         const qParam = searchParams.get('q');
         if (step === 3.5 && qParam && !Number.isNaN(Number(qParam)) && !bundlesFetchedForLoadRef.current) {
             bundlesFetchedForLoadRef.current = true;
             setBundles([]);
-            // Request bundles for 30% above user's load (headroom)
             const userLoadW = Number(qParam);
             const loadW = Math.round(userLoadW * 1.3);
             const fetchBundlesByLoad = async () => {
@@ -677,15 +826,19 @@ const BNPLFlow = () => {
                         },
                     });
                     const root = response.data?.data ?? response.data;
-                    // Handle both array and single object responses
                     let arr = [];
                     if (Array.isArray(root)) {
                         arr = root;
                     } else if (Array.isArray(root?.data)) {
                         arr = root.data;
                     } else if (root && typeof root === "object" && root.id) {
-                        // Single bundle object - wrap in array
                         arr = [root];
+                    }
+                    // Filter by selected category so we only recommend matching bundles (e.g. full-kit -> Solar+Inverter+Battery only)
+                    const productCategory = searchParams.get('category') || 'full-kit';
+                    const expectedType = categoryToBundleType[productCategory];
+                    if (expectedType) {
+                        arr = arr.filter((b) => (b.bundle_type || '').trim() === expectedType);
                     }
                     setBundles(arr);
                 } catch (error) {
@@ -701,6 +854,13 @@ const BNPLFlow = () => {
             bundlesFetchedForLoadRef.current = false;
         }
     }, [step, searchParams]);
+
+    // Enrich selected bundles with full detail data when entering order summary
+    React.useEffect(() => {
+        if (step === 6.5 && formData.selectedBundles.length > 0) {
+            enrichSelectedBundles();
+        }
+    }, [step]);
 
     // --- Handlers ---
 
@@ -1059,6 +1219,73 @@ const BNPLFlow = () => {
         });
         // Don't auto-navigate - let user select multiple items
     };
+
+    // --- BNPL Terms Gate (loan agreement before flow) ---
+    const handleAcceptTermsAndProceed = () => {
+        if (!bnplTermsCheckbox) return;
+        try { sessionStorage.setItem('bnpl_terms_accepted', 'true'); } catch (e) { void e; }
+        setBnplTermsAccepted(true);
+    };
+
+    // Terms page (full text) — opens in new tab so user can read before accepting
+    const financeTermsPageUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/terms`;
+
+    const renderTermsGate = () => (
+        <div className="min-h-screen bg-gray-50 flex flex-col">
+            <div className="bg-white shadow-sm p-4 sticky top-0 z-50">
+                <div className="max-w-7xl mx-auto flex justify-between items-center">
+                    <div className="font-bold text-xl text-[#273e8e]">Troosolar</div>
+                    <button onClick={() => navigate('/')} className="text-gray-600 hover:text-[#273e8e]">Exit</button>
+                </div>
+            </div>
+            <div className="flex-grow flex items-center justify-center p-6">
+                <div className="w-full max-w-lg bg-white rounded-2xl shadow-lg overflow-hidden flex flex-col">
+                    <div className="px-6 pt-6 pb-2 flex-shrink-0">
+                        <p className="text-center text-xl font-semibold text-[#273e8e]">Terms of Use Agreement</p>
+                        <p className="text-gray-600 text-sm text-center mt-2">Accept the finance terms and privacy policy to continue</p>
+                    </div>
+                    <div className="px-6 py-4 flex-shrink-0 space-y-4">
+                        <label className="flex items-start gap-3 font-medium cursor-pointer text-sm">
+                            <input
+                                type="checkbox"
+                                checked={bnplTermsCheckbox}
+                                onChange={(e) => setBnplTermsCheckbox(e.target.checked)}
+                                className="h-4 w-4 mt-0.5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded flex-shrink-0"
+                            />
+                            <span>
+                                I accept the{' '}
+                                <a
+                                    href={financeTermsPageUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[#273e8e] underline hover:text-[#1d2f6b]"
+                                >
+                                    Finance Terms and Conditions
+                                </a>
+                                {' '}and the{' '}
+                                <a
+                                    href={financeTermsPageUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[#273e8e] underline hover:text-[#1d2f6b]"
+                                >
+                                    Privacy Policy
+                                </a>
+                                {' '}(opens in new tab)
+                            </span>
+                        </label>
+                        <button
+                            onClick={handleAcceptTermsAndProceed}
+                            disabled={!bnplTermsCheckbox}
+                            className={`w-full py-3 rounded-full font-medium transition-colors ${bnplTermsCheckbox ? 'bg-[#273e8e] text-white hover:bg-[#1d2f6b]' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                        >
+                            Proceed
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 
     // --- Render Steps ---
 
@@ -1526,7 +1753,7 @@ const BNPLFlow = () => {
                     </div>
                     <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose My Solar Bundle</h3>
                 </button>
-                <button onClick={() => navigate('/tools?inverter=true&returnTo=bnpl')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                <button onClick={() => navigate(`/tools?inverter=true&returnTo=bnpl&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`)} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <Wrench size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
@@ -1572,7 +1799,7 @@ const BNPLFlow = () => {
                 </p>
                 {searchParams.get('q') && (
                     <p className="text-center mb-8">
-                        <a href="/tools?inverter=true&returnTo=bnpl" className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
+                        <a href={`/tools?inverter=true&returnTo=bnpl&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`} className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
                     </p>
                 )}
                 {!searchParams.get('q') && <div className="mb-8" />}
@@ -1630,8 +1857,10 @@ const BNPLFlow = () => {
                 ) : filteredBundles.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-2xl border border-gray-200">
                         <p className="text-gray-600 mb-4">
-                            {selectedSystemSize !== "all" 
-                                ? `No bundles found for ${selectedSizeLabel}.` 
+                            {searchParams.get('q')
+                                ? "No bundle available for your load and selected category. Your load may be higher than what we have, or there are no bundles in this category. Try editing your load or choosing a different category."
+                                : selectedSystemSize !== "all"
+                                ? `No bundles found for ${selectedSizeLabel}.`
                                 : "No bundles available at the moment."}
                         </p>
                         {selectedSystemSize !== "all" && (
@@ -1945,46 +2174,29 @@ const BNPLFlow = () => {
                                                     <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{bundle.what_bundle_powers_text}</p>
                                                 </>
                                             )}
-                                            {(bundle.product_model && String(bundle.product_model).trim()) && (
-                                                <>
-                                                    <h4 className="text-sm font-semibold text-gray-800 mt-3">Product model</h4>
-                                                    <p className="text-sm text-gray-600">{bundle.product_model}</p>
-                                                </>
-                                            )}
                                         </div>
                                     )}
 
                                     {bundleDetailTab === 'specs' && (
-                                        <div className="overflow-x-auto">
-                                            {itemsIncluded.length > 0 ? (
-                                                <table className="w-full text-sm border-collapse">
-                                                    <thead>
-                                                        <tr className="border-b border-gray-200">
-                                                            <th className="text-left py-2 pr-4 text-gray-500 font-medium w-10">#</th>
-                                                            <th className="text-left py-2 pr-4 text-gray-700 font-medium">Item</th>
-                                                            <th className="text-right py-2 pr-4 text-gray-500 font-medium w-16">Qty</th>
-                                                            <th className="text-left py-2 text-gray-500 font-medium w-16">Unit</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {itemsIncluded.map((item, index) => {
-                                                            const product = item.product || item;
-                                                            const itemName = product?.name || product?.title || item?.name || `Item #${index + 1}`;
-                                                            const itemQuantity = item.quantity ?? product?.quantity ?? 1;
-                                                            const itemUnit = item.unit ?? product?.unit ?? "—";
-                                                            return (
-                                                                <tr key={index} className="border-b border-gray-100">
-                                                                    <td className="py-2.5 pr-4 text-gray-500">{index + 1}</td>
-                                                                    <td className="py-2.5 pr-4 text-[#273E8E] font-medium">{itemName}</td>
-                                                                    <td className="py-2.5 pr-4 text-right text-gray-600">{itemQuantity}</td>
-                                                                    <td className="py-2.5 text-gray-600">{itemUnit}</td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                    </tbody>
-                                                </table>
+                                        <div className="min-h-[80px]">
+                                            {bundle.specifications && typeof bundle.specifications === 'object' && Object.keys(bundle.specifications).length > 0 ? (
+                                                <dl className="space-y-2 text-sm">
+                                                    {BUNDLE_SPEC_ORDER.filter((key) => {
+                                                        const value = bundle.specifications[key];
+                                                        return value != null && value !== '' && !SPEC_KEYS_HIDDEN.includes(key);
+                                                    }).map((key) => {
+                                                        const value = bundle.specifications[key];
+                                                        const label = SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                                        return (
+                                                            <div key={key} className="flex justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
+                                                                <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
+                                                                <dd className="text-gray-900 text-right">{String(value)}</dd>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </dl>
                                             ) : (
-                                                <p className="text-sm text-gray-500 py-4">No items attached to this bundle.</p>
+                                                <p className="text-sm text-gray-500 py-4">No specifications available.</p>
                                             )}
                                         </div>
                                     )}
@@ -2006,7 +2218,7 @@ const BNPLFlow = () => {
                             </div>
                         </div>
 
-                        {/* Right Column - Stats */}
+                        {/* Right Column - Stats: 4 boxes (Total Load, Inverter Rating, Battery Capacity, Solar Panel Capacity) */}
                         <div className="w-[380px] flex-shrink-0">
                             <div className="flex flex-col gap-3 rounded-2xl">
                                 <div className="grid grid-cols-2 gap-2 rounded-2xl overflow-hidden">
@@ -2016,19 +2228,23 @@ const BNPLFlow = () => {
                                             <span className="text-sm text-center break-words leading-tight">{bundle.total_load || "—"}</span>
                                         </div>
                                     </div>
-
                                     <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
                                         <div className="text-xs text-left font-medium">Inverter Rating</div>
                                         <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
                                             <span className="text-sm text-center break-words leading-tight">{bundle.inver_rating || "—"}</span>
                                         </div>
                                     </div>
-                                </div>
-
-                                <div className="bg-[#273E8E] text-white px-4 py-3 rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 min-h-0">
-                                    <div className="text-sm font-bold shrink-0">Total Output</div>
-                                    <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] px-2 py-1 flex-1 min-w-0">
-                                        <span className="text-sm text-center break-words leading-tight">{bundle.total_output || "—"}</span>
+                                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
+                                        <div className="text-xs text-left font-medium">Battery Capacity</div>
+                                        <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
+                                            <span className="text-sm text-center break-words leading-tight">{(bundle.specifications && bundle.specifications.battery_capacity_kwh) ?? bundle.battery_capacity_kwh ?? bundle.battery_capacity ?? "—"}</span>
+                                        </div>
+                                    </div>
+                                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
+                                        <div className="text-xs text-left font-medium">Solar Panel Capacity</div>
+                                        <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
+                                            <span className="text-sm text-center break-words leading-tight">{(bundle.specifications && (bundle.specifications.solar_panels_wattage || bundle.specifications.solar_panel_capacity_kw)) ?? bundle.solar_panels_wattage ?? bundle.solar_panel_capacity_kw ?? "—"}</span>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -2187,46 +2403,29 @@ const BNPLFlow = () => {
                                                 <p className="text-[11px] text-gray-600 whitespace-pre-wrap">{bundle.what_bundle_powers_text}</p>
                                             </>
                                         )}
-                                        {bundle.product_model && (
-                                            <>
-                                                <h4 className="text-[11px] font-semibold text-gray-800 mt-2">Product model</h4>
-                                                <p className="text-[11px] text-gray-600">{bundle.product_model}</p>
-                                            </>
-                                        )}
                                     </div>
                                 )}
 
                                 {bundleDetailTab === 'specs' && (
-                                    <div className="overflow-x-auto -mx-1">
-                                        {itemsIncluded.length > 0 ? (
-                                            <table className="w-full text-[11px] lg:text-[12px] border-collapse">
-                                                <thead>
-                                                    <tr className="border-b border-gray-200">
-                                                        <th className="text-left py-2 pr-2 text-gray-500 font-medium w-8">#</th>
-                                                        <th className="text-left py-2 pr-2 text-gray-700 font-medium">Item</th>
-                                                        <th className="text-right py-2 pr-2 text-gray-500 font-medium w-10">Qty</th>
-                                                        <th className="text-left py-2 text-gray-500 font-medium w-10">Unit</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {itemsIncluded.map((item, idx) => {
-                                                        const product = item.product || item;
-                                                        const itemName = product?.name || product?.title || item?.name || `Item #${idx + 1}`;
-                                                        const itemQuantity = item.quantity ?? product?.quantity ?? 1;
-                                                        const itemUnit = item.unit ?? product?.unit ?? "—";
-                                                        return (
-                                                            <tr key={idx} className="border-b border-gray-100">
-                                                                <td className="py-2 pr-2 text-gray-500">{idx + 1}</td>
-                                                                <td className="py-2 pr-2 text-[#273E8E] font-medium">{itemName}</td>
-                                                                <td className="py-2 pr-2 text-right text-gray-600">{itemQuantity}</td>
-                                                                <td className="py-2 text-gray-600">{itemUnit}</td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
+                                    <div className="min-h-[60px]">
+                                        {bundle.specifications && typeof bundle.specifications === 'object' && Object.keys(bundle.specifications).length > 0 ? (
+                                            <dl className="space-y-1.5 text-[11px] lg:text-[12px]">
+                                                {BUNDLE_SPEC_ORDER.filter((key) => {
+                                                    const value = bundle.specifications[key];
+                                                    return value != null && value !== '' && !SPEC_KEYS_HIDDEN.includes(key);
+                                                }).map((key) => {
+                                                    const value = bundle.specifications[key];
+                                                    const label = SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                                    return (
+                                                        <div key={key} className="flex justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
+                                                            <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
+                                                            <dd className="text-gray-900 text-right">{String(value)}</dd>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </dl>
                                         ) : (
-                                            <p className="text-[11px] text-gray-500 py-3">No items attached to this bundle.</p>
+                                            <p className="text-[11px] text-gray-500 py-3">No specifications available.</p>
                                         )}
                                     </div>
                                 )}
@@ -2502,7 +2701,7 @@ const BNPLFlow = () => {
                     Your commercial audit request has been submitted successfully (Request ID: #{formData.auditRequestId}).
                 </p>
                 <p className="text-gray-600 mb-6">
-                    Our team will contact you within 24 - 48 hours to discuss your energy audit.
+                    Our team will contact you within 24 - 72 hours to discuss your energy audit.
                 </p>
                 <div className="space-y-3">
                     <button 
@@ -2544,30 +2743,146 @@ const BNPLFlow = () => {
         </div>
     );
 
+    // Helper: extract individual line items from a bundle object (products, materials, services)
+    // Each product and each material is returned as its OWN row (no grouping).
+    const extractBundleLineItems = (bundle) => {
+        const items = [];
+        const toNumber = (v) => typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.]/g, '')) || 0;
+
+        // Products from bundleItems / bundle_items
+        const relItems = bundle?.bundleItems ?? bundle?.bundle_items ?? [];
+        relItems.forEach((bi) => {
+            const p = bi?.product || bi;
+            const name = p?.title || p?.name || bi?.title || bi?.name || null;
+            if (!name) return;
+            items.push({
+                description: name,
+                quantity: bi?.quantity ?? p?.quantity ?? 1,
+                unit: 'Nos',
+                rate: toNumber(p?.price || p?.selling_price || p?.total_price || bi?.price || 0),
+            });
+        });
+
+        // Materials — each material gets its own row
+        const relMaterials = bundle?.bundle_materials ?? [];
+        const materialsList = relMaterials.length > 0 ? relMaterials : (relItems.length > 0 ? (bundle?.materials ?? []) : []);
+        materialsList.forEach((m) => {
+            const mat = m?.material || m;
+            const name = mat?.name || m?.name || null;
+            if (!name) return;
+            items.push({
+                description: name,
+                quantity: m?.quantity ?? mat?.quantity ?? 1,
+                unit: mat?.unit || m?.unit || 'Nos',
+                rate: toNumber(mat?.selling_rate || mat?.rate || mat?.price || 0),
+            });
+        });
+
+        // If no bundleItems found, try bundle.materials as the full items list
+        if (items.length === 0) {
+            const allItems = bundle?.materials ?? [];
+            if (Array.isArray(allItems) && allItems.length > 0) {
+                allItems.forEach(item => {
+                    if (item?.product) {
+                        const p = item.product;
+                        items.push({
+                            description: p?.title || p?.name || 'Product',
+                            quantity: item?.quantity ?? 1,
+                            unit: 'Nos',
+                            rate: toNumber(p?.price || p?.selling_price || 0),
+                        });
+                    } else {
+                        const mat = item?.material || item;
+                        const name = mat?.name || item?.name || null;
+                        if (!name) return;
+                        items.push({
+                            description: name,
+                            quantity: item?.quantity ?? mat?.quantity ?? 1,
+                            unit: mat?.unit || item?.unit || 'Nos',
+                            rate: toNumber(mat?.selling_rate || mat?.rate || mat?.price || 0),
+                        });
+                    }
+                });
+            }
+        }
+
+        // Custom services
+        const relServices = bundle?.customServices ?? bundle?.custom_services ?? [];
+        relServices.forEach((s) => {
+            items.push({
+                description: s?.title || 'Custom Service',
+                quantity: s?.quantity ?? 1,
+                unit: 'Nos',
+                rate: toNumber(s?.service_amount),
+            });
+        });
+
+        const itemsTotal = items.reduce((s, i) => s + (i.rate * i.quantity), 0);
+        return { items, itemsTotal };
+    };
+
     const renderStep6_5 = () => {
-        // Calculate total amount for order summary
-        // NEW: Calculate from all selected bundles and products (accounting for quantity)
+        // Calculate totals
         const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
         const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
         const itemsSubtotal = bundlesTotal + productsTotal;
-        
-        // Use itemsSubtotal if available, otherwise fallback to selectedProductPrice (for backward compatibility)
         const basePrice = itemsSubtotal > 0 ? itemsSubtotal : formData.selectedProductPrice;
-        
-        const insuranceAddOn = addOns.find(a => a.is_compulsory_bnpl);
-        const insuranceFee = insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
-            ? (basePrice * insuranceAddOn.calculation_value) / 100
-            : (insuranceAddOn?.price || basePrice * 0.005);
-        
-        const materialCost = 50000;
-        const installationFee = 50000;
-        const deliveryFee = 25000;
-        const inspectionFee = 10000;
-        const totalAmount = basePrice + insuranceFee + materialCost + installationFee + deliveryFee + inspectionFee;
 
-        const formatPrice = (price) => {
-            return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
-        };
+        // ORDER LIST FOR CUSTOMERS: each bundle shows its component items
+        // The bundle's total price (sb.price) is ALWAYS the authoritative Sub-Total —
+        // individual item prices from the API may be ₦0 (backend doesn't expose component prices).
+        const bundleSections = formData.selectedBundles.map((sb) => {
+            const bundleQty = sb.quantity || 1;
+            const bundleObj = sb.bundle;
+            const bundleName = bundleObj?.title || bundleObj?.name || `Bundle #${sb.id}`;
+            const bundleTotalPrice = (sb.price || 0) * bundleQty;
+            const { items: lineItems } = extractBundleLineItems(bundleObj);
+
+            // Items to display (component items OR fallback to bundle name)
+            let rows;
+            if (lineItems.length > 0) {
+                rows = lineItems.map((item, idx) => ({
+                    id: `b-${sb.id}-${idx}`,
+                    description: item.description,
+                    quantity: item.quantity * bundleQty,
+                    unit: item.unit,
+                    rate: item.rate,
+                    totalCost: item.rate * item.quantity * bundleQty,
+                }));
+            } else {
+                rows = [{
+                    id: `b-${sb.id}`,
+                    description: bundleName,
+                    quantity: bundleQty,
+                    unit: 'Nos',
+                    rate: sb.price || 0,
+                    totalCost: bundleTotalPrice,
+                }];
+            }
+            return { bundleName, rows, subTotal: bundleTotalPrice };
+        });
+
+        // Individual products (not in a bundle)
+        const productRows = formData.selectedProducts.map((sp) => {
+            const qty = sp.quantity || 1;
+            const unitPrice = sp.price || 0;
+            return {
+                id: `p-${sp.id}`,
+                description: sp.product?.title || sp.product?.name || `Product #${sp.id}`,
+                quantity: qty,
+                unit: 'Nos',
+                rate: unitPrice,
+                totalCost: unitPrice * qty,
+            };
+        });
+
+        // Fallback single item
+        if (bundleSections.length === 0 && productRows.length === 0 && (formData.selectedBundle || formData.selectedProduct || formData.optionType === 'audit')) {
+            const label = formData.optionType === 'audit' ? 'Professional Energy Audit' : (formData.selectedBundle?.title || formData.selectedProduct?.title || formData.selectedProduct?.name || 'Item');
+            productRows.push({ id: 'single', description: label, quantity: 1, unit: 'Nos', rate: basePrice, totalCost: basePrice });
+        }
+
+        const overallSubTotal = bundleSections.reduce((s, sec) => s + sec.subTotal, 0) + productRows.reduce((s, r) => s + r.totalCost, 0);
 
         return (
             <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
@@ -2575,157 +2890,118 @@ const BNPLFlow = () => {
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
                 <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary</h2>
-                
-                <div className="space-y-4 mb-6">
-                    {/* NEW: Show all selected bundles */}
-                    {formData.selectedBundles.length > 0 && (
-                        <div className="space-y-3">
-                            <h3 className="font-semibold text-gray-700 mb-2">Selected Bundles ({formData.selectedBundles.length})</h3>
-                            {formData.selectedBundles.map((selectedBundle) => {
-                                const quantity = selectedBundle.quantity || 1;
-                                const unitPrice = selectedBundle.price || 0;
-                                const totalPrice = unitPrice * quantity;
-                                
-                                return (
-                                    <div key={selectedBundle.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
-                                        <div className="flex items-center flex-1">
-                                            <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                                <Sun size={20} className="text-gray-600" />
-                                            </div>
-                                            <div className="flex-1">
-                                                <p className="font-bold text-gray-800">
-                                                    {selectedBundle.bundle.title || selectedBundle.bundle.name || `Bundle #${selectedBundle.id}`}
-                                                </p>
-                                                <p className="text-sm text-gray-500">Solar System Bundle</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-4">
-                                            {/* Quantity Controls */}
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={() => updateBundleQuantity(selectedBundle.id, Math.max(1, quantity - 1))}
-                                                    className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors"
-                                                    disabled={quantity <= 1}
-                                                >
-                                                    <Minus size={16} />
-                                                </button>
-                                                <span className="w-8 text-center font-medium">{quantity}</span>
-                                                <button
-                                                    onClick={() => updateBundleQuantity(selectedBundle.id, quantity + 1)}
-                                                    className="bg-[#273e8e] text-white rounded p-1.5 cursor-pointer hover:bg-[#1a2b6b] transition-colors"
-                                                >
-                                                    <Plus size={16} />
-                                                </button>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="font-bold block">₦{Number(totalPrice).toLocaleString()}</span>
-                                                {quantity > 1 && (
-                                                    <span className="text-xs text-gray-500">₦{Number(unitPrice).toLocaleString()} each</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                    
-                    {/* NEW: Show all selected products */}
-                    {formData.selectedProducts.length > 0 && (
-                        <div className="space-y-3">
-                            <h3 className="font-semibold text-gray-700 mb-2">Selected Products ({formData.selectedProducts.length})</h3>
-                            {formData.selectedProducts.map((selectedProduct) => (
-                                <div key={selectedProduct.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
-                                    <div className="flex items-center">
-                                        <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                            <Battery size={20} className="text-gray-600" />
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-gray-800">
-                                                {selectedProduct.product.title || selectedProduct.product.name || `Product #${selectedProduct.id}`}
-                                            </p>
-                                            <p className="text-sm text-gray-500">Individual Component</p>
-                                        </div>
-                                    </div>
-                                    <span className="font-bold">₦{Number(selectedProduct.price || 0).toLocaleString()}</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                    
-                    {/* OLD: Show single bundle/product (for backward compatibility) */}
-                    {formData.selectedBundles.length === 0 && formData.selectedProducts.length === 0 && (
-                    <div className="flex justify-between items-center">
-                        <div className="flex items-center">
-                            <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                <Sun size={24} className="text-gray-600" />
-                            </div>
-                            <div>
-                                <p className="font-bold text-gray-800">
-                                        {formData.optionType === 'audit' ? 'Professional Energy Audit' : 
-                                         formData.selectedBundle ? (formData.selectedBundle.title || 'Solar System Bundle') :
-                                         formData.selectedProduct ? (formData.selectedProduct.title || formData.selectedProduct.name || 'Product') :
-                                         'Solar System Bundle'}
-                                </p>
-                                <p className="text-sm text-gray-500">
-                                    {formData.optionType === 'audit' 
-                                        ? 'Home/Office Audit Service' 
-                                        : 'Inverter + Batteries + Panels'}
-                                </p>
-                            </div>
-                        </div>
-                            <span className="font-bold">₦{Number(basePrice || 0).toLocaleString()}</span>
-                    </div>
-                    )}
-                    
-                    {/* Subtotal for multiple items */}
-                    {(formData.selectedBundles.length > 0 || formData.selectedProducts.length > 0) && (
-                        <div className="border-t pt-3 mt-3">
-                            <div className="flex justify-between items-center">
-                                <span className="font-semibold text-gray-700">Items Subtotal:</span>
-                                <span className="font-bold text-lg">₦{Number(basePrice || 0).toLocaleString()}</span>
-                            </div>
-                        </div>
-                    )}
 
-                    {formData.optionType !== 'audit' && (formData.selectedBundles.length > 0 || formData.selectedProducts.length > 0) && (
-                        <>
-                            <div className="text-sm text-gray-600 pl-14 space-y-1">
-                                <p><strong>Order summary:</strong> {formData.selectedBundles.length} bundle{formData.selectedBundles.length !== 1 ? 's' : ''}, {formData.selectedProducts.length} product{formData.selectedProducts.length !== 1 ? 's' : ''} — {formData.selectedBundles.reduce((s, b) => s + (Number(b.quantity) || 1), 0) + formData.selectedProducts.reduce((s, p) => s + (Number(p.quantity) || 1), 0)} item{(formData.selectedBundles.reduce((s, b) => s + (Number(b.quantity) || 1), 0) + formData.selectedProducts.reduce((s, p) => s + (Number(p.quantity) || 1), 0)) !== 1 ? 's' : ''} total in your order</p>
-                                {formData.selectedBundles.length > 0 && (
-                                    <>
-                                <p><strong>Appliances:</strong> Standard household appliances</p>
-                                <p><strong>Backup Time:</strong> 8-12 hours (depending on usage)</p>
-                                    </>
-                                )}
-                            </div>
-                        </>
-                    )}
-                </div>
+                {enrichingBundles && (
+                    <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+                        <Loader className="animate-spin" size={16} /> Loading item details...
+                    </div>
+                )}
+
+                {/* Per-bundle ORDER LIST FOR CUSTOMERS (matches Excel sheet) */}
+                {bundleSections.map((section, sIdx) => (
+                    <div key={`section-${sIdx}`} className="mb-6">
+                        <h3 className="text-base font-semibold text-[#273e8e] mb-2 uppercase tracking-wide">
+                            Order List — {section.bundleName}
+                        </h3>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse text-sm">
+                                <thead>
+                                    <tr className="border-b-2 border-gray-300 bg-gray-50">
+                                        <th className="py-3 px-2 font-semibold text-gray-700">ITEM DESCRIPTION</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">QTY</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">UNIT</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-28">RATE</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-32">TOTAL COST</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {section.rows.map((row) => (
+                                        <tr key={row.id} className="border-b border-gray-100">
+                                            <td className="py-3 px-2 text-gray-800">{row.description}</td>
+                                            <td className="py-3 px-2 text-center">{row.quantity}</td>
+                                            <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
+                                            <td className="py-3 px-2 text-right text-gray-600">{row.rate > 0 ? `₦${Number(row.rate).toLocaleString()}` : <span className="italic text-gray-400">Included</span>}</td>
+                                            <td className="py-3 px-2 text-right font-semibold">{row.totalCost > 0 ? `₦${Number(row.totalCost).toLocaleString()}` : <span className="italic text-gray-400">Included</span>}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr className="border-t-2 border-gray-300">
+                                        <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Sub-Total</td>
+                                        <td className="py-3 px-2 text-right font-bold text-lg">₦{Number(section.subTotal).toLocaleString()}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                ))}
+
+                {/* Individual products (not part of a bundle) */}
+                {productRows.length > 0 && (
+                    <div className="mb-6">
+                        {bundleSections.length > 0 && (
+                            <h3 className="text-base font-semibold text-[#273e8e] mb-2 uppercase tracking-wide">
+                                Individual Products
+                            </h3>
+                        )}
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse text-sm">
+                                <thead>
+                                    <tr className="border-b-2 border-gray-300 bg-gray-50">
+                                        <th className="py-3 px-2 font-semibold text-gray-700">ITEM DESCRIPTION</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">QTY</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">UNIT</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-28">RATE</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-32">TOTAL COST</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {productRows.map((row) => (
+                                        <tr key={row.id} className="border-b border-gray-100">
+                                            <td className="py-3 px-2 text-gray-800">{row.description}</td>
+                                            <td className="py-3 px-2 text-center">{row.quantity}</td>
+                                            <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
+                                            <td className="py-3 px-2 text-right">₦{Number(row.rate).toLocaleString()}</td>
+                                            <td className="py-3 px-2 text-right font-semibold">₦{Number(row.totalCost).toLocaleString()}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr className="border-t-2 border-gray-300">
+                                        <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Sub-Total</td>
+                                        <td className="py-3 px-2 text-right font-bold text-lg">₦{Number(productRows.reduce((s, r) => s + r.totalCost, 0)).toLocaleString()}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* Overall Sub-Total if multiple sections */}
+                {(bundleSections.length + (productRows.length > 0 ? 1 : 0)) > 1 && (
+                    <div className="border-t-2 border-[#273e8e] pt-3 mb-6 flex justify-between items-center">
+                        <span className="font-bold text-lg text-gray-800">Overall Sub-Total</span>
+                        <span className="font-bold text-xl text-[#273e8e]">₦{Number(overallSubTotal || basePrice || 0).toLocaleString()}</span>
+                    </div>
+                )}
 
                 <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6">
                     <p className="text-sm text-blue-700">
-                        <strong>Note:</strong> This is a summary of your order. Detailed invoice with all fees will be shown after loan calculation.
+                        <strong>Note:</strong> This is your order list. The full invoice with fees, VAT, and grand total will be shown on the next step.
                     </p>
                 </div>
 
                 <button
                     onClick={() => {
                         if (formData.optionType === 'audit') {
-                            setStep(7); // Go to Audit Invoice
+                            setStep(7);
                         } else {
-                            // Check minimum order value (N1.5m) before proceeding to invoice
-                            const minOrderValue = 1500000;
-                            if (totalAmount < minOrderValue) {
-                                alert(`Your order total (₦${totalAmount.toLocaleString()}) does not meet the minimum ₦1,500,000 amount required for credit financing. To qualify for Buy Now, Pay Later, please add more items to your cart. Thank you.`);
-                                return;
-                            }
-                            setStep(6.75); // Go to Invoice (before loan calculator)
+                            setStep(6.75); // Go to Invoice
                         }
                     }}
                     className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
                 >
-                    {formData.optionType === 'audit' ? 'Proceed to Invoice' : 'Proceed to Invoice'}
+                    {formData.optionType === 'audit' ? 'Proceed to Audit Invoice' : 'Proceed to Invoice'}
                 </button>
             </div>
         );
@@ -2989,29 +3265,112 @@ const BNPLFlow = () => {
     };
 
     const renderStep6_75 = () => {
-        // Calculate total amount for invoice
-        // Calculate from all selected bundles and products (accounting for quantity)
+        // Invoice: totals from selected bundles and products
         const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
         const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
         const itemsSubtotal = bundlesTotal + productsTotal;
-        
-        // Use itemsSubtotal if available, otherwise fallback to selectedProductPrice (for backward compatibility)
         const basePrice = itemsSubtotal > 0 ? itemsSubtotal : formData.selectedProductPrice;
-        
+
         const insuranceAddOn = addOns.find(a => a.is_compulsory_bnpl);
         const insuranceFee = insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
             ? (basePrice * insuranceAddOn.calculation_value) / 100
-            : (insuranceAddOn?.price || basePrice * 0.005);
-        
-        const materialCost = 50000;
+            : (insuranceAddOn?.price ?? (basePrice * DEFAULT_INSURANCE_PERCENT) / 100);
+
         const installationFee = 50000;
         const deliveryFee = 25000;
         const inspectionFee = 10000;
-        const totalAmount = basePrice + insuranceFee + materialCost + installationFee + deliveryFee + inspectionFee;
+        const vatPercent = 7.5;
 
-        const formatPrice = (price) => {
-            return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
-        };
+        // Build per-bundle invoice sections (each bundle has its own invoice per sheet)
+        // The bundle's total price (sb.price) is ALWAYS the authoritative price.
+        const bundleInvoiceSections = formData.selectedBundles.map((sb) => {
+            const bundleQty = sb.quantity || 1;
+            const bundleObj = sb.bundle;
+            const bundleName = bundleObj?.title || bundleObj?.name || `Bundle #${sb.id}`;
+            const bundleTotalPrice = (sb.price || 0) * bundleQty;
+            const { items: lineItems } = extractBundleLineItems(bundleObj);
+            const hasComponentPrices = lineItems.length > 0 && lineItems.reduce((s, i) => s + i.rate, 0) > 0;
+
+            // Item rows: show component items if available, otherwise just the bundle name
+            let itemRows;
+            if (hasComponentPrices) {
+                // API returned individual item prices — show them
+                itemRows = lineItems.map((item, idx) => ({
+                    id: `inv-${sb.id}-${idx}`,
+                    description: item.description,
+                    quantity: item.quantity * bundleQty,
+                    unit: item.unit,
+                    rate: item.rate,
+                    totalCost: item.rate * item.quantity * bundleQty,
+                }));
+            } else {
+                // Component prices are ₦0 — show bundle as one priced row,
+                // plus component items as detail rows underneath
+                itemRows = [{
+                    id: `inv-${sb.id}-main`,
+                    description: bundleName,
+                    quantity: bundleQty,
+                    unit: 'Nos',
+                    rate: sb.price || 0,
+                    totalCost: bundleTotalPrice,
+                    isBold: true,
+                }];
+                if (lineItems.length > 0) {
+                    lineItems.forEach((item, idx) => {
+                        itemRows.push({
+                            id: `inv-${sb.id}-detail-${idx}`,
+                            description: `  └ ${item.description}`,
+                            quantity: item.quantity * bundleQty,
+                            unit: item.unit,
+                            rate: 0,
+                            totalCost: 0,
+                            isDetail: true,
+                        });
+                    });
+                }
+            }
+
+            // Fee rows per bundle (matches sheet: Installation Fees, Delivery Fees, Inspection Fees)
+            const feeRows = [
+                { id: `inv-${sb.id}-install`, description: `Installation Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: installationFee, totalCost: installationFee },
+                { id: `inv-${sb.id}-delivery`, description: `Delivery Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: deliveryFee, totalCost: deliveryFee },
+                { id: `inv-${sb.id}-inspection`, description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: inspectionFee, totalCost: inspectionFee },
+            ];
+
+            const allRows = [...itemRows, ...feeRows];
+            const feesTotal = feeRows.reduce((s, r) => s + r.totalCost, 0);
+            const sectionNetTotal = bundleTotalPrice + feesTotal;
+            const sectionVat = (sectionNetTotal * vatPercent) / 100;
+            const sectionGrandTotal = sectionNetTotal + sectionVat;
+
+            return { bundleName, allRows, netTotal: sectionNetTotal, vatAmount: sectionVat, grandTotal: sectionGrandTotal };
+        });
+
+        // Individual products invoice rows (if any)
+        const productInvoiceRows = formData.selectedProducts.map((p) => {
+            const qty = p.quantity || 1;
+            const unitPrice = p.price || 0;
+            return {
+                id: `inv-p-${p.id}`,
+                description: p.product?.title || p.product?.name || `Product #${p.id}`,
+                quantity: qty,
+                unit: 'Nos',
+                rate: unitPrice,
+                totalCost: unitPrice * qty,
+            };
+        });
+
+        // Fallback single item
+        if (bundleInvoiceSections.length === 0 && productInvoiceRows.length === 0 && (formData.selectedBundle || formData.selectedProduct)) {
+            const label = formData.selectedBundle?.title || formData.selectedProduct?.title || formData.selectedProduct?.name || 'Item';
+            productInvoiceRows.push({ id: 'inv-single', description: label, quantity: 1, unit: 'Nos', rate: basePrice, totalCost: basePrice });
+        }
+
+        // Overall totals across all bundles and products
+        const allItemsTotal = bundleInvoiceSections.reduce((s, sec) => s + sec.netTotal, 0) + productInvoiceRows.reduce((s, r) => s + r.totalCost, 0);
+        const overallNetTotal = allItemsTotal + insuranceFee;
+        const overallVat = (overallNetTotal * vatPercent) / 100;
+        const overallGrandTotal = overallNetTotal + overallVat;
 
         return (
             <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
@@ -3019,136 +3378,116 @@ const BNPLFlow = () => {
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
                 <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Invoice</h2>
-                
-                <div className="space-y-4 mb-8">
-                    <div className="border-b pb-4 mb-4">
-                        <h3 className="font-bold text-gray-800 mb-3">Invoice Details</h3>
-                    </div>
 
-                    {/* Selected Bundles */}
-                    {formData.selectedBundles.length > 0 && (
-                        <div className="space-y-3 mb-4">
-                            {formData.selectedBundles.map((selectedBundle) => {
-                                const quantity = selectedBundle.quantity || 1;
-                                const unitPrice = selectedBundle.price || 0;
-                                const totalPrice = unitPrice * quantity;
-                                
-                                return (
-                                    <div key={selectedBundle.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
-                                        <div className="flex-1">
-                                            <p className="font-medium text-gray-800">
-                                                {selectedBundle.bundle.title || selectedBundle.bundle.name || `Bundle #${selectedBundle.id}`}
-                                            </p>
-                                            <p className="text-sm text-gray-500">
-                                                Solar System Bundle
-                                                {quantity > 1 && <span className="ml-2">× {quantity}</span>}
-                                            </p>
-                                        </div>
-                                        <div className="text-right">
-                                            <span className="font-bold block">₦{Number(totalPrice).toLocaleString()}</span>
-                                            {quantity > 1 && (
-                                                <span className="text-xs text-gray-500">₦{Number(unitPrice).toLocaleString()} each</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                    
-                    {/* Selected Products */}
-                    {formData.selectedProducts.length > 0 && (
-                        <div className="space-y-3 mb-4">
-                            {formData.selectedProducts.map((selectedProduct) => {
-                                const quantity = selectedProduct.quantity || 1;
-                                const unitPrice = selectedProduct.price || 0;
-                                const totalPrice = unitPrice * quantity;
-                                
-                                return (
-                                    <div key={selectedProduct.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
-                                        <div className="flex-1">
-                                            <p className="font-medium text-gray-800">
-                                                {selectedProduct.product.title || selectedProduct.product.name || `Product #${selectedProduct.id}`}
-                                            </p>
-                                            <p className="text-sm text-gray-500">
-                                                Individual Component
-                                                {quantity > 1 && <span className="ml-2">× {quantity}</span>}
-                                            </p>
-                                        </div>
-                                        <div className="text-right">
-                                            <span className="font-bold block">₦{Number(totalPrice).toLocaleString()}</span>
-                                            {quantity > 1 && (
-                                                <span className="text-xs text-gray-500">₦{Number(unitPrice).toLocaleString()} each</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {/* Fallback for single item (backward compatibility) */}
-                    {formData.selectedBundles.length === 0 && formData.selectedProducts.length === 0 && (
-                        <div className="flex justify-between items-center mb-4">
-                            <div>
-                                <p className="font-medium text-gray-800">
-                                    {formData.selectedBundle ? (formData.selectedBundle.title || 'Solar System Bundle') :
-                                     formData.selectedProduct ? (formData.selectedProduct.title || formData.selectedProduct.name || 'Product') :
-                                     'Solar System'}
-                                </p>
-                                <p className="text-sm text-gray-500">Product</p>
-                            </div>
-                            <span className="font-bold">₦{Number(basePrice || 0).toLocaleString()}</span>
-                        </div>
-                    )}
-
-                    {/* Items Subtotal */}
-                    {(formData.selectedBundles.length > 0 || formData.selectedProducts.length > 0) && (
-                        <div className="border-t pt-3 mt-3 mb-4">
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-600">Items Subtotal:</span>
-                                <span className="font-semibold">₦{Number(basePrice || 0).toLocaleString()}</span>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Fees */}
-                    <div className="border-t pt-4 space-y-2">
-                        <div className="flex justify-between text-sm text-gray-600">
-                            <span>Material Cost:</span>
-                            <span>₦{Number(materialCost).toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between text-sm text-gray-600">
-                            <span>Installation Fee:</span>
-                            <span>₦{Number(installationFee).toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between text-sm text-gray-600">
-                            <span>Delivery Fee:</span>
-                            <span>₦{Number(deliveryFee).toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between text-sm text-gray-600">
-                            <span>Inspection Fee:</span>
-                            <span>₦{Number(inspectionFee).toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between text-sm text-gray-600">
-                            <span>Insurance Fee:</span>
-                            <span>₦{Number(insuranceFee).toLocaleString()}</span>
+                {/* Per-bundle invoice sections (matches Excel FOR INVOICE template) */}
+                {bundleInvoiceSections.map((section, sIdx) => (
+                    <div key={`inv-section-${sIdx}`} className="mb-8">
+                        <h3 className="text-base font-semibold text-[#273e8e] mb-2 uppercase tracking-wide">
+                            Invoice — {section.bundleName}
+                        </h3>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse text-sm">
+                                <thead>
+                                    <tr className="border-b-2 border-gray-300 bg-gray-50">
+                                        <th className="py-3 px-2 font-semibold text-gray-700">ITEM DESCRIPTION</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">QTY</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">UNIT</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-28">RATE</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-32">TOTAL COST</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {section.allRows.map((row) => (
+                                        <tr key={row.id} className={`border-b border-gray-100 ${row.isDetail ? 'bg-gray-50/50' : ''}`}>
+                                            <td className={`py-3 px-2 ${row.isBold ? 'font-semibold text-gray-900' : row.isDetail ? 'text-gray-500 text-xs' : 'text-gray-800'}`}>{row.description}</td>
+                                            <td className="py-3 px-2 text-center">{row.isDetail ? row.quantity : row.quantity}</td>
+                                            <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
+                                            <td className="py-3 px-2 text-right">{row.isDetail ? <span className="text-gray-400 text-xs">Included</span> : (row.rate > 0 ? `₦${Number(row.rate).toLocaleString()}` : '—')}</td>
+                                            <td className="py-3 px-2 text-right font-semibold">{row.isDetail ? '' : (row.totalCost > 0 ? `₦${Number(row.totalCost).toLocaleString()}` : '—')}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr className="border-t-2 border-gray-300">
+                                        <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Net-Total</td>
+                                        <td className="py-3 px-2 text-right font-bold">₦{Number(section.netTotal).toLocaleString()}</td>
+                                    </tr>
+                                    <tr className="border-b border-gray-200">
+                                        <td colSpan={3} className="py-2 px-2 text-gray-700">VAT</td>
+                                        <td className="py-2 px-2 text-right text-gray-600">{vatPercent}%</td>
+                                        <td className="py-2 px-2 text-right font-semibold">₦{Number(section.vatAmount).toLocaleString()}</td>
+                                    </tr>
+                                    <tr className="bg-[#273e8e]/5">
+                                        <td colSpan={4} className="py-3 px-2 font-bold text-[#273e8e]">Grand-Total</td>
+                                        <td className="py-3 px-2 text-right font-bold text-[#273e8e]">₦{Number(section.grandTotal).toLocaleString()}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
                         </div>
                     </div>
+                ))}
 
-                    {/* Total */}
-                    <div className="border-t pt-4 font-bold text-xl flex justify-between">
-                        <span>Total</span>
-                        <span className="text-[#273e8e]">₦{Number(totalAmount).toLocaleString()}</span>
+                {/* Individual products section */}
+                {productInvoiceRows.length > 0 && (
+                    <div className="mb-8">
+                        {bundleInvoiceSections.length > 0 && (
+                            <h3 className="text-base font-semibold text-[#273e8e] mb-2 uppercase tracking-wide">
+                                Individual Products
+                            </h3>
+                        )}
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse text-sm">
+                                <thead>
+                                    <tr className="border-b-2 border-gray-300 bg-gray-50">
+                                        <th className="py-3 px-2 font-semibold text-gray-700">ITEM DESCRIPTION</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">QTY</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">UNIT</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-28">RATE</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-32">TOTAL COST</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {productInvoiceRows.map((row) => (
+                                        <tr key={row.id} className="border-b border-gray-100">
+                                            <td className="py-3 px-2 text-gray-800">{row.description}</td>
+                                            <td className="py-3 px-2 text-center">{row.quantity}</td>
+                                            <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
+                                            <td className="py-3 px-2 text-right">₦{Number(row.rate).toLocaleString()}</td>
+                                            <td className="py-3 px-2 text-right font-semibold">₦{Number(row.totalCost).toLocaleString()}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* Insurance Fee note */}
+                <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg text-sm text-yellow-800 mb-4">
+                    Insurance Fee ({DEFAULT_INSURANCE_PERCENT}%): ₦{Number(insuranceFee).toLocaleString()} (included in overall total)
+                </div>
+
+                {/* Overall Grand Total (across all bundles) */}
+                <div className="bg-[#273e8e]/5 border border-[#273e8e]/20 rounded-lg p-4 mb-6">
+                    <div className="flex justify-between items-center text-sm text-gray-700 mb-1">
+                        <span>Overall Net-Total</span>
+                        <span className="font-semibold">₦{Number(overallNetTotal).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm text-gray-700 mb-2">
+                        <span>VAT ({vatPercent}%)</span>
+                        <span className="font-semibold">₦{Number(overallVat).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center border-t border-[#273e8e]/20 pt-2">
+                        <span className="font-bold text-lg text-[#273e8e]">Overall Grand-Total</span>
+                        <span className="font-bold text-xl text-[#273e8e]">₦{Number(overallGrandTotal).toLocaleString()}</span>
                     </div>
                 </div>
 
                 <button
                     onClick={() => {
-                        // Check minimum order value (N1.5m) before proceeding to loan calculator
                         const minOrderValue = 1500000;
-                        if (totalAmount < minOrderValue) {
-                            alert(`Your order total (₦${totalAmount.toLocaleString()}) does not meet the minimum ₦1,500,000 amount required for credit financing. To qualify for Buy Now, Pay Later, please add more items to your cart. Thank you.`);
+                        if (overallGrandTotal < minOrderValue) {
+                            alert(`Your order total (₦${overallGrandTotal.toLocaleString()}) does not meet the minimum ₦1,500,000 amount required for credit financing. To qualify for Buy Now, Pay Later, please add more items to your cart. Thank you.`);
                             return;
                         }
                         setStep(8); // Go to Loan Calculator
@@ -3332,7 +3671,7 @@ const BNPLFlow = () => {
         const insuranceAddOn = addOns.find(a => a.is_compulsory_bnpl);
         const insuranceFee = insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
             ? (basePrice * insuranceAddOn.calculation_value) / 100
-            : (insuranceAddOn?.price || 0);
+            : (insuranceAddOn?.price ?? (basePrice * DEFAULT_INSURANCE_PERCENT) / 100);
         
         // Use API data if available, otherwise use defaults
         // Material cost, installation fee, delivery fee, inspection fee should come from API
@@ -3390,37 +3729,52 @@ const BNPLFlow = () => {
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Review Your Loan Plan</h2>
-            {formData.loanDetails && (
+            {formData.loanDetails && (() => {
+                const ld = formData.loanDetails;
+                const totalAmount = Number(ld.totalAmount || 0);
+                const initialDeposit = Number(ld.depositAmount || 0);
+                const totalLoanAmount = Number(ld.totalLoanAmount ?? ld.principal ?? 0);
+                const totalInterestAmount = Number(ld.totalInterestAmount ?? ld.totalInterest ?? 0);
+                const totalRepaymentAmount = Number(ld.totalRepaymentAmount ?? ld.totalRepayment ?? 0);
+                const monthlyRepaymentAmount = Number(ld.monthlyRepaymentAmount ?? ld.monthlyRepayment ?? 0);
+                const tenor = ld.tenor;
+                const interestRate = ld.interestRate;
+                return (
                 <div className="bg-blue-50 border border-blue-200 p-6 rounded-lg mb-6">
                     <h3 className="font-bold text-gray-800 mb-4">Loan Summary</h3>
                     <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                            <span>Total Amount:</span>
-                            <span className="font-bold">₦{Number(formData.loanDetails.totalAmount || 0).toLocaleString()}</span>
+                            <span>1. Total Amount</span>
+                            <span className="font-bold">₦{totalAmount.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span>Deposit ({formData.loanDetails.depositPercent}%):</span>
-                            <span className="font-bold">₦{Number(formData.loanDetails.depositAmount || 0).toLocaleString()}</span>
+                            <span>2. Initial Deposit{ld.depositPercent != null ? ` (${ld.depositPercent}%)` : ''}</span>
+                            <span className="font-bold">₦{initialDeposit.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span>Loan Amount:</span>
-                            <span className="font-bold">₦{Number(formData.loanDetails.principal || 0).toLocaleString()}</span>
+                            <span>3. Total Loan Amount</span>
+                            <span className="font-bold">₦{totalLoanAmount.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span>Monthly Repayment:</span>
-                            <span className="font-bold">₦{Number(formData.loanDetails.monthlyRepayment || 0).toLocaleString()}</span>
+                            <span>4. Total Interest Amount{interestRate != null ? ` (${interestRate}% of loan)` : ''}</span>
+                            <span className="font-bold">₦{totalInterestAmount.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span>Tenor:</span>
-                            <span className="font-bold">{formData.loanDetails.tenor} months</span>
+                            <span>5. Total Repayment Amount</span>
+                            <span className="font-bold">₦{totalRepaymentAmount.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span>6. Monthly Repayment Amount</span>
+                            <span className="font-bold">₦{monthlyRepaymentAmount.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between border-t pt-2 mt-2">
-                            <span>Total Repayment:</span>
-                            <span className="font-bold text-[#273e8e]">₦{Number(formData.loanDetails.totalRepayment || 0).toLocaleString()}</span>
+                            <span>7. Loan Tenor</span>
+                            <span className="font-bold text-[#273e8e]">{tenor} months</span>
                         </div>
                     </div>
                 </div>
-            )}
+                );
+            })()}
             <p className="text-gray-600 mb-6">
                 Do you want to proceed with this loan plan? You'll need to complete a credit check and provide additional information.
             </p>
@@ -3675,7 +4029,7 @@ const BNPLFlow = () => {
             return;
         }
 
-        const creditCheckFee = 1000; // Fixed credit check fee (can be controlled from admin settings)
+        const creditCheckFee = Number(loanConfig?.credit_check_fee) || DEFAULT_CREDIT_CHECK_FEE;
         setProcessingCreditCheckPayment(true);
         
         try {
@@ -3853,36 +4207,82 @@ const BNPLFlow = () => {
                         </p>
                     </div>
 
-                    {/* Live Photo Upload */}
+                    {/* Live Photo / Selfie - camera capture */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                             Live Photo / Selfie <span className="text-red-500">*</span>
                         </label>
-                        <input
-                            type="file"
-                            accept=".jpg,.jpeg,.png"
-                            onChange={(e) => {
-                                const file = e.target.files[0];
-                                if (file) {
-                                    // Validate file size (max 5MB)
-                                    if (file.size > 5 * 1024 * 1024) {
-                                        alert("Live photo file size must be less than 5MB");
-                                        e.target.value = '';
-                                        return;
-                                    }
-                                    setFormData(prev => ({ ...prev, livePhoto: file }));
-                                }
-                            }}
-                            required
-                            className="w-full p-3 border rounded-lg file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[#273e8e] file:text-white hover:file:bg-[#1a2b6b]"
-                        />
-                        {formData.livePhoto && (
-                            <p className="text-sm text-green-600 mt-1">
-                                ✓ {formData.livePhoto.name}
-                            </p>
+
+                        {/* Camera preview area */}
+                        {cameraStream ? (
+                            <div className="relative rounded-lg overflow-hidden border-2 border-[#273e8e] mb-2">
+                                <video
+                                    ref={cameraVideoRef}
+                                    autoPlay
+                                    playsInline
+                                    muted
+                                    className="w-full h-64 object-cover bg-black"
+                                />
+                                <canvas ref={cameraCanvasRef} className="hidden" />
+                                <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={captureLivePhoto}
+                                        className="bg-white text-[#273e8e] rounded-full p-3 shadow-lg hover:bg-gray-100 transition-colors border-2 border-[#273e8e]"
+                                        title="Capture Photo"
+                                    >
+                                        <Camera size={28} />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={stopCamera}
+                                        className="bg-red-500 text-white rounded-full p-3 shadow-lg hover:bg-red-600 transition-colors"
+                                        title="Close Camera"
+                                    >
+                                        <X size={28} />
+                                    </button>
+                                </div>
+                            </div>
+                        ) : formData.livePhoto ? (
+                            <div className="relative rounded-lg overflow-hidden border border-green-300 bg-green-50 mb-2">
+                                <img
+                                    src={formData.livePhotoPreview || URL.createObjectURL(formData.livePhoto)}
+                                    alt="Live Photo Preview"
+                                    className="w-full h-64 object-cover"
+                                />
+                                <div className="absolute top-2 right-2 flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setFormData(prev => ({ ...prev, livePhoto: null, livePhotoPreview: null }));
+                                        }}
+                                        className="bg-red-500 text-white rounded-full p-1.5 shadow hover:bg-red-600"
+                                        title="Remove Photo"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                                <p className="text-sm text-green-700 font-medium p-2 text-center">
+                                    ✓ Live photo captured
+                                </p>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={openCamera}
+                                className="w-full p-6 border-2 border-dashed border-[#273e8e] rounded-lg bg-[#273e8e]/5 hover:bg-[#273e8e]/10 transition-colors flex flex-col items-center justify-center gap-2 cursor-pointer"
+                            >
+                                <Camera size={40} className="text-[#273e8e]" />
+                                <span className="text-[#273e8e] font-semibold">Tap to Open Camera & Take Selfie</span>
+                                <span className="text-xs text-gray-500">Your camera will open to capture a live photo</span>
+                            </button>
+                        )}
+
+                        {cameraError && (
+                            <p className="text-sm text-red-500 mt-1">{cameraError}</p>
                         )}
                         <p className="text-xs text-gray-500 mt-1">
-                            Accepted formats: JPG, PNG (Max 5MB)
+                            A live selfie is required for identity verification.
                         </p>
                     </div>
                 </div>
@@ -3943,11 +4343,11 @@ const BNPLFlow = () => {
                                 ) : null;
                             })()}
                             
-                            {/* Credit Check Fee Display */}
+                            {/* Credit Check Fee Display (editable via backend loan-config credit_check_fee) */}
                             <div className="text-center">
                                 <p className="text-sm text-gray-600 mb-2">Credit Check Fee</p>
                                 <p className="text-3xl font-bold text-[#273e8e]">
-                                    ₦1,000
+                                    ₦{(Number(loanConfig?.credit_check_fee) || DEFAULT_CREDIT_CHECK_FEE).toLocaleString()}
                                 </p>
                             </div>
                             
@@ -4362,7 +4762,7 @@ const BNPLFlow = () => {
             <div className="bg-white p-8 rounded-2xl shadow-sm border border-blue-100">
                 <Clock size={64} className="text-[#273e8e] mx-auto mb-6 animate-pulse" />
                 <p className="text-xl font-medium text-gray-800 mb-4">Your application is under review.</p>
-                <p className="text-gray-600 mb-4">We are processing your details. This usually takes 24-48 hours.</p>
+                <p className="text-gray-600 mb-4">We are processing your details. This usually takes 24-72 hours.</p>
                 <p className="text-sm text-gray-500 mb-8">Status: <span className="font-bold text-[#273e8e]">{applicationStatus}</span></p>
                 <div className="flex gap-4 justify-center">
                     <button 
@@ -4580,7 +4980,8 @@ const BNPLFlow = () => {
         try {
             const token = localStorage.getItem('access_token');
             const uploadData = new FormData();
-            uploadData.append('guarantor_id', guarantorId);
+            if (guarantorId) uploadData.append('guarantor_id', String(guarantorId));
+            if (applicationId) uploadData.append('loan_application_id', String(applicationId));
             uploadData.append('signed_form', file);
 
             const response = await axios.post(API.BNPL_GUARANTOR_UPLOAD, uploadData, {
@@ -4631,7 +5032,7 @@ const BNPLFlow = () => {
                                     Important Notice Regarding Guarantor Documents
                                 </p>
                                 <p className="text-gray-700 leading-relaxed mb-4">
-                                    Your signed Guarantors, along with undated signed cheques will be received on the day of installation of your system as installation won't proceed without receiving them.
+                                    Signed guarantor forms and undated cheques are required before installation. Signed guarantor forms should be uploaded on or before the installation date and undated cheques must be made available on or before the day of installation; installation will not proceed without them.
                                 </p>
                             </div>
                         </div>
@@ -4830,9 +5231,20 @@ const BNPLFlow = () => {
                                         headers: { Authorization: `Bearer ${token}` },
                                         responseType: 'blob'
                                     });
-                                    
+                                    const blob = response.data;
+                                    const contentType = response.headers?.['content-type'] || '';
+                                    if (!blob || blob.size === 0) {
+                                        alert('Received empty file. Please try again or contact support.');
+                                        return;
+                                    }
+                                    if (contentType.includes('application/json')) {
+                                        const text = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsText(blob); });
+                                        const err = typeof text === 'string' && text.length ? JSON.parse(text) : {};
+                                        alert(err.message || 'Failed to download guarantor form. Please try again.');
+                                        return;
+                                    }
                                     // Create download link
-                                    const url = window.URL.createObjectURL(new Blob([response.data]));
+                                    const url = window.URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
                                     const link = document.createElement('a');
                                     link.href = url;
                                     link.setAttribute('download', `guarantor-form-${applicationId}.pdf`);
@@ -4842,6 +5254,11 @@ const BNPLFlow = () => {
                                     window.URL.revokeObjectURL(url);
                                 } catch (error) {
                                     console.error("Download error:", error);
+                                    const fallbackUrl = import.meta.env.VITE_GUARANTOR_FORM_FALLBACK_URL;
+                                    if (fallbackUrl) {
+                                        window.open(fallbackUrl, '_blank');
+                                        return;
+                                    }
                                     if (error.response?.status === 404) {
                                         alert("Guarantor form is not available yet. Please contact support or try again later.");
                                     } else {
@@ -4909,7 +5326,7 @@ const BNPLFlow = () => {
                     const insuranceAddOn = addOns.find(a => a.is_compulsory_bnpl);
                     const insuranceFee = insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
                         ? (formData.selectedProductPrice * insuranceAddOn.calculation_value) / 100
-                        : (insuranceAddOn?.price || formData.selectedProductPrice * 0.005);
+                        : (insuranceAddOn?.price ?? (formData.selectedProductPrice * DEFAULT_INSURANCE_PERCENT) / 100);
                     
                     setInvoiceData({
                         product_price: formData.selectedProductPrice,
@@ -4940,8 +5357,8 @@ const BNPLFlow = () => {
             installation_fee: 50000,
             delivery_fee: 25000,
             inspection_fee: 10000,
-            insurance_fee: formData.selectedProductPrice * 0.005,
-            total: formData.selectedProductPrice + 50000 + 50000 + 25000 + 10000 + (formData.selectedProductPrice * 0.005)
+            insurance_fee: (formData.selectedProductPrice * DEFAULT_INSURANCE_PERCENT) / 100,
+            total: formData.selectedProductPrice + 50000 + 50000 + 25000 + 10000 + ((formData.selectedProductPrice * DEFAULT_INSURANCE_PERCENT) / 100)
         };
 
         // Use product_price from API if available, otherwise use formData
@@ -5108,7 +5525,7 @@ const BNPLFlow = () => {
             <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6 flex items-start">
                 <Calendar className="text-blue-600 mr-3 mt-1" size={20} />
                 <p className="text-sm text-blue-700">
-                    Within 24 – 48 hours, our team will contact you to schedule your installation date.
+                    Within 24 – 72 hours, our team will contact you to schedule your installation date.
                 </p>
             </div>
 
@@ -5143,6 +5560,8 @@ const BNPLFlow = () => {
         </div>
         );
     };
+
+    if (!bnplTermsAccepted) return renderTermsGate();
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col" >

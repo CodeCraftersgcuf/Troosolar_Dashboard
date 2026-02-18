@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronLeft, X } from 'lucide-react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 const TermsPage = ({ link }) => {
   const location = useLocation();
@@ -64,20 +64,33 @@ const TermsPage = ({ link }) => {
 
   if (!hide) return null;
 
+  const isStandaloneTerms = location.pathname === '/terms';
+
   return (
-    <div className="w-full bg-[] rounded-2xl shadow-md px-4 overflow-hidden flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {isStandaloneTerms && (
+        <div className="bg-white shadow-sm border-b px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+          <Link to="/" className="text-[#273e8e] font-medium flex items-center gap-1 hover:underline">
+            <ChevronLeft size={20} /> Back to Home
+          </Link>
+          <span className="font-bold text-[#273e8e]">Troosolar</span>
+        </div>
+      )}
+    <div className="w-full max-w-2xl mx-auto flex-1 bg-white rounded-2xl shadow-md px-4 py-6 my-6 overflow-hidden flex flex-col">
       <div className="relative pt-3 flex-shrink-0">
         {!isCreditScorePage && (
-            <div className='flex'>
-                <ChevronLeft/>
-                <p className="text-center text-xl pb-5 absolute top-4 right-36 mb-6 font-semibold">Terms of Use Agreement</p>
+            <div className='flex items-center gap-2'>
+                {!isStandaloneTerms && <ChevronLeft size={20} />}
+                <p className="text-center text-xl flex-1 font-semibold text-[#273e8e]">
+                  {isStandaloneTerms ? 'Finance Terms and Conditions & Privacy Policy' : 'Terms of Use Agreement'}
+                </p>
             </div>
         )}
       </div>
 
       <div className="px-6 text-sm mt-6 flex-1 flex flex-col">
         <h2 className="text-[#273e8e] font-semibold text-base mb-2 flex-shrink-0">
-          Read and accept the following terms before proceeding
+          {isStandaloneTerms ? 'Please read the following terms and privacy policy.' : 'Read and accept the following terms before proceeding'}
         </h2>
 
         {isCreditScorePage && (
@@ -95,8 +108,8 @@ const TermsPage = ({ link }) => {
           <div className="overflow-y-auto p-4 space-y-3 flex-1">
             <h3 className="text-[#273e8e] font-semibold">Terms of Use</h3>
             <p>
-              Welcome to Mono. By accessing or using our loan application platform ("Service"), you agree to be
-              bound by the following Terms of Usage. Please read them carefully before applying for a loan.
+              Welcome. By accessing or using our Buy Now Pay Later / loan application platform (&quot;Service&quot;), you agree to be
+              bound by the following Terms of Usage and our Privacy Policy. Please read them carefully before proceeding.
             </p>
 
             {termsContent.map((term, index) => (
@@ -115,7 +128,7 @@ const TermsPage = ({ link }) => {
           </div>
         </div>
 
-        {!isCreditScorePage && (
+        {!isCreditScorePage && !isStandaloneTerms && (
           <div className="space-y-4 mt-4 pt-4 flex-shrink-0">
             <label htmlFor="accept-terms" className="flex items-center gap-2 font-medium cursor-pointer">
               <input
@@ -144,6 +157,7 @@ const TermsPage = ({ link }) => {
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 };

@@ -87,7 +87,8 @@ const SolarBundle = () => {
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const qParam = searchParams.get("q")?.trim();
 
-  const [bundles, setBundles] = useState([]);
+  const [rawBundles, setRawBundles] = useState([]); // API response before mapBundle
+  const [displayBundles, setDisplayBundles] = useState([]); // what we show (all or filtered)
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
@@ -98,7 +99,6 @@ const SolarBundle = () => {
       try {
         const token = localStorage.getItem("access_token");
 
-        // decide URL based on presence of ?q=
         const url = qParam && !Number.isNaN(Number(qParam))
           ? `${API.BUNDLES}?q=${encodeURIComponent(qParam)}`
           : API.BUNDLES;
@@ -110,13 +110,15 @@ const SolarBundle = () => {
           },
         });
 
-        const arr = normalizeBundles(data).map(mapBundle);
-        setBundles(arr);
+        const arr = normalizeBundles(data);
+        setRawBundles(arr);
+        setDisplayBundles(arr.map(mapBundle));
       } catch (e) {
         setErr(
           e?.response?.data?.message || e?.message || "Failed to load bundles."
         );
-        setBundles([]);
+        setRawBundles([]);
+        setDisplayBundles([]);
       } finally {
         setLoading(false);
       }
@@ -125,8 +127,19 @@ const SolarBundle = () => {
     fetchBundles();
   }, [qParam]);
 
+  // When raw bundles change, reset display to all (SearchBar may filter later)
+  useEffect(() => {
+    setDisplayBundles(rawBundles.map(mapBundle));
+  }, [rawBundles]);
+
+  // Products for SearchBar: each item has mapBundle fields + raw bundle for size filter
+  const searchBarProducts = useMemo(
+    () => rawBundles.map((r) => ({ ...mapBundle(r), bundle: r })),
+    [rawBundles]
+  );
+
   return (
-    <div className="flex w/full min-h-screen bg-gray-100">
+    <div className="flex w-full min-h-screen bg-gray-100">
       {/* Sidebar */}
       <div className="w-auto">
         <SideBar />
@@ -147,7 +160,13 @@ const SolarBundle = () => {
                   : "Welcome to the dashboard"}
               </p>
             </div>
-            {!qParam && <SearchBar />}
+            {!qParam && (
+              <SearchBar
+                categories={[]}
+                products={searchBarProducts}
+                onFilteredResults={setDisplayBundles}
+              />
+            )}
           </div>
           {qParam && (
             <div className="mt-4">
@@ -176,7 +195,7 @@ const SolarBundle = () => {
           )}
 
           <div className="grid xl:grid-cols-4 lg:grid-cols-4 md:grid-cols-2 grid-cols-1 gap-3">
-            {bundles.map((item) => (
+            {displayBundles.map((item) => (
               <SolarBundleComponent
                 key={item.id}
                 id={item.id}
@@ -191,7 +210,7 @@ const SolarBundle = () => {
               />
             ))}
 
-            {!loading && !err && bundles.length === 0 && (
+            {!loading && !err && displayBundles.length === 0 && (
               <div className="text-gray-500 bg-white border rounded-xl p-4">
                 {qParam
                   ? "No matching bundle found for that target."

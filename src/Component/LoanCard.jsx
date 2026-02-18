@@ -6,7 +6,7 @@ const LoanCard = ({ amount = "1,000,000", duration = "12 Months" }) => {
       <div className="flex justify-between h-full">
         <div className="flex flex-col justify-between px-1 py-1">
           <p className="text-[12px]">Congratulations you are eligible for</p>
-          <h1 className="text-2xl font-semibold">N{amount}</h1>
+          <h1 className="text-2xl font-semibold">₦{amount}</h1>
         </div>
         <div className="flex flex-col justify-between text-left">
           <div>
