@@ -578,12 +578,6 @@ const ProductBundle = () => {
                         ) : (
                           <p className="text-sm text-gray-400 italic">No description available.</p>
                         )}
-                        {productData.backupInfo && (
-                          <>
-                            <h4 className="text-sm font-semibold text-gray-800 mt-3">Backup time</h4>
-                            <p className="text-sm text-gray-600 whitespace-pre-line">{formatBackupTime(productData.backupInfo)}</p>
-                          </>
-                        )}
                         {productData.systemCapacityDisplay && (
                           <>
                             <h4 className="text-sm font-semibold text-gray-800 mt-3">System capacity</h4>
@@ -607,21 +601,20 @@ const ProductBundle = () => {
 
                     {bundleDetailTab === "specs" && (
                       <div className="min-h-[80px]">
-                        {productData.specifications && Object.keys(productData.specifications).length > 0 ? (
+                        {productData.specifications && typeof productData.specifications === "object" && Object.keys(productData.specifications).filter((k) => !SPEC_KEYS_HIDDEN.includes(k) && productData.specifications[k] != null && productData.specifications[k] !== "").length > 0 ? (
                           <dl className="space-y-2 text-sm">
-                            {BUNDLE_SPEC_ORDER.filter((key) => {
-                              const value = productData.specifications[key];
-                              return value != null && value !== "" && !SPEC_KEYS_HIDDEN.includes(key);
-                            }).map((key) => {
-                              const value = productData.specifications[key];
-                              const label = SPEC_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-                              return (
-                                <div key={key} className="flex justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
-                                  <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
-                                  <dd className="text-gray-900 text-right">{String(value)}</dd>
-                                </div>
-                              );
-                            })}
+                            {Object.keys(productData.specifications)
+                              .filter((key) => !SPEC_KEYS_HIDDEN.includes(key) && productData.specifications[key] != null && productData.specifications[key] !== "")
+                              .map((key) => {
+                                const value = productData.specifications[key];
+                                const label = SPEC_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                                return (
+                                  <div key={key} className="flex justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
+                                    <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
+                                    <dd className="text-gray-900 text-right">{String(value)}</dd>
+                                  </div>
+                                );
+                              })}
                           </dl>
                         ) : (
                           <p className="text-sm text-gray-500 py-4">No specifications available.</p>
@@ -852,12 +845,6 @@ const ProductBundle = () => {
                       ) : (
                         <p className="text-[11px] text-gray-400 italic">No description available.</p>
                       )}
-                      {productData.backupInfo && (
-                        <>
-                          <h4 className="text-[11px] font-semibold text-gray-800 mt-2">Backup time</h4>
-                          <p className="text-[11px] text-gray-600 whitespace-pre-line">{formatBackupTime(productData.backupInfo)}</p>
-                        </>
-                      )}
                       {productData.systemCapacityDisplay && (
                         <>
                           <h4 className="text-[11px] font-semibold text-gray-800 mt-2">System capacity</h4>
@@ -881,21 +868,20 @@ const ProductBundle = () => {
 
                   {bundleDetailTab === "specs" && (
                     <div className="min-h-[60px]">
-                      {productData.specifications && Object.keys(productData.specifications).length > 0 ? (
+                      {productData.specifications && typeof productData.specifications === "object" && Object.keys(productData.specifications).filter((k) => !SPEC_KEYS_HIDDEN.includes(k) && productData.specifications[k] != null && productData.specifications[k] !== "").length > 0 ? (
                         <dl className="space-y-1.5 text-[11px] lg:text-[12px]">
-                          {BUNDLE_SPEC_ORDER.filter((key) => {
-                            const value = productData.specifications[key];
-                            return value != null && value !== "" && !SPEC_KEYS_HIDDEN.includes(key);
-                          }).map((key) => {
-                            const value = productData.specifications[key];
-                            const label = SPEC_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-                            return (
-                              <div key={key} className="flex justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
-                                <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
-                                <dd className="text-gray-900 text-right">{String(value)}</dd>
-                              </div>
-                            );
-                          })}
+                          {Object.keys(productData.specifications)
+                            .filter((key) => !SPEC_KEYS_HIDDEN.includes(key) && productData.specifications[key] != null && productData.specifications[key] !== "")
+                            .map((key) => {
+                              const value = productData.specifications[key];
+                              const label = SPEC_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                              return (
+                                <div key={key} className="flex justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
+                                  <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
+                                  <dd className="text-gray-900 text-right">{String(value)}</dd>
+                                </div>
+                              );
+                            })}
                         </dl>
                       ) : (
                         <p className="text-[11px] text-gray-500 py-3">No specifications available.</p>

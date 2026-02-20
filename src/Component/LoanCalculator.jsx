@@ -54,7 +54,7 @@ const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: l
 
   const depositAmount = (totalAmount * depositPercent) / 100;
   const principal = totalAmount - depositAmount; // Total Loan Amount
-  const totalInterest = principal * (interestRate / 100); // Flat % of total loan amount (configurable)
+  const totalInterest = principal * (interestRate / 100) * tenor;
   const totalRepayment = principal + totalInterest; // Total Repayment Amount
   const monthlyRepayment = tenor > 0 ? totalRepayment / tenor : 0;
   const managementFee = principal * (managementFeePercent / 100);
@@ -156,15 +156,6 @@ const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: l
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Interest Rate (% of loan amount)
-                </label>
-                <div className="py-2 px-4 rounded-lg bg-[#273e8e] text-white text-sm font-medium inline-block">
-                  {interestRate}%
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Loan Tenor ({tenor} months)
                 </label>
                 <div className="grid grid-cols-4 gap-2">
@@ -197,7 +188,7 @@ const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: l
                 <span className="font-medium">{formatCurrency(principal)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Total Interest Amount ({interestRate}% of loan)</span>
+                <span className="text-gray-500">Total Interest Amount ({interestRate}% × {tenor} mo)</span>
                 <span className="font-medium text-orange-600">{formatCurrency(totalInterest)}</span>
               </div>
               <div className="flex justify-between text-sm pt-2 border-t">

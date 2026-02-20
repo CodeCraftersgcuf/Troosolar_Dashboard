@@ -7,7 +7,7 @@ const SmallBoxes = () => {
     { id: 1, title: "Buy Solar Bundles", color: "#0000ff", icon: assets.vec1, link: "/buy-now" },
     { id: 2, title: "Buy Now, Pay Later", color: "#ff0000", icon: assets.vec2, link: "/bnpl" },
     { id: 3, title: "Shop Solar Products", color: "#800080", icon: assets.vec3, link: "/shop" },
-    { id: 4, title: "Load Calculator", color: "#008000", icon: assets.vec4, link: "/tools?tool=inverter" },
+    { id: 4, title: "Load & Savings Calculator", color: "#008000", icon: assets.vec4, link: "/tools?tool=inverter" },
   ];
 
   return (

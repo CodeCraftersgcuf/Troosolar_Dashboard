@@ -341,12 +341,8 @@ const BNPLFlow = () => {
     // Fetch full details (bundle_items, materials, services) for all selected bundles
     const enrichSelectedBundles = async () => {
         const token = localStorage.getItem('access_token');
-        const toEnrich = formData.selectedBundles.filter(sb => {
-            const obj = sb.bundle;
-            const hasItems = (obj?.bundleItems ?? obj?.bundle_items ?? []).length > 0;
-            const alreadyEnriched = enrichedBundles[sb.id];
-            return !hasItems && !alreadyEnriched;
-        });
+        // Always re-fetch full details to get the latest custom_services / [OL] items
+        const toEnrich = formData.selectedBundles;
         if (toEnrich.length === 0) return;
         setEnrichingBundles(true);
         try {
@@ -1271,7 +1267,7 @@ const BNPLFlow = () => {
                                 >
                                     Privacy Policy
                                 </a>
-                                {' '}(opens in new tab)
+                               
                             </span>
                         </label>
                         <button
@@ -2179,21 +2175,20 @@ const BNPLFlow = () => {
 
                                     {bundleDetailTab === 'specs' && (
                                         <div className="min-h-[80px]">
-                                            {bundle.specifications && typeof bundle.specifications === 'object' && Object.keys(bundle.specifications).length > 0 ? (
+                                            {bundle.specifications && typeof bundle.specifications === 'object' && Object.keys(bundle.specifications).filter(k => !SPEC_KEYS_HIDDEN.includes(k) && bundle.specifications[k] != null && bundle.specifications[k] !== '').length > 0 ? (
                                                 <dl className="space-y-2 text-sm">
-                                                    {BUNDLE_SPEC_ORDER.filter((key) => {
-                                                        const value = bundle.specifications[key];
-                                                        return value != null && value !== '' && !SPEC_KEYS_HIDDEN.includes(key);
-                                                    }).map((key) => {
-                                                        const value = bundle.specifications[key];
-                                                        const label = SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                                                        return (
-                                                            <div key={key} className="flex justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
-                                                                <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
-                                                                <dd className="text-gray-900 text-right">{String(value)}</dd>
-                                                            </div>
-                                                        );
-                                                    })}
+                                                    {Object.keys(bundle.specifications)
+                                                        .filter((key) => !SPEC_KEYS_HIDDEN.includes(key) && bundle.specifications[key] != null && bundle.specifications[key] !== '')
+                                                        .map((key) => {
+                                                            const value = bundle.specifications[key];
+                                                            const label = SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                                            return (
+                                                                <div key={key} className="flex justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
+                                                                    <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
+                                                                    <dd className="text-gray-900 text-right">{String(value)}</dd>
+                                                                </div>
+                                                            );
+                                                        })}
                                                 </dl>
                                             ) : (
                                                 <p className="text-sm text-gray-500 py-4">No specifications available.</p>
@@ -2408,21 +2403,20 @@ const BNPLFlow = () => {
 
                                 {bundleDetailTab === 'specs' && (
                                     <div className="min-h-[60px]">
-                                        {bundle.specifications && typeof bundle.specifications === 'object' && Object.keys(bundle.specifications).length > 0 ? (
+                                        {bundle.specifications && typeof bundle.specifications === 'object' && Object.keys(bundle.specifications).filter(k => !SPEC_KEYS_HIDDEN.includes(k) && bundle.specifications[k] != null && bundle.specifications[k] !== '').length > 0 ? (
                                             <dl className="space-y-1.5 text-[11px] lg:text-[12px]">
-                                                {BUNDLE_SPEC_ORDER.filter((key) => {
-                                                    const value = bundle.specifications[key];
-                                                    return value != null && value !== '' && !SPEC_KEYS_HIDDEN.includes(key);
-                                                }).map((key) => {
-                                                    const value = bundle.specifications[key];
-                                                    const label = SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                                                    return (
-                                                        <div key={key} className="flex justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
-                                                            <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
-                                                            <dd className="text-gray-900 text-right">{String(value)}</dd>
-                                                        </div>
-                                                    );
-                                                })}
+                                                {Object.keys(bundle.specifications)
+                                                    .filter((key) => !SPEC_KEYS_HIDDEN.includes(key) && bundle.specifications[key] != null && bundle.specifications[key] !== '')
+                                                    .map((key) => {
+                                                        const value = bundle.specifications[key];
+                                                        const label = SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                                        return (
+                                                            <div key={key} className="flex justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
+                                                                <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
+                                                                <dd className="text-gray-900 text-right">{String(value)}</dd>
+                                                            </div>
+                                                        );
+                                                    })}
                                             </dl>
                                         ) : (
                                             <p className="text-[11px] text-gray-500 py-3">No specifications available.</p>
@@ -2743,82 +2737,125 @@ const BNPLFlow = () => {
         </div>
     );
 
-    // Helper: extract individual line items from a bundle object (products, materials, services)
-    // Each product and each material is returned as its OWN row (no grouping).
     const extractBundleLineItems = (bundle) => {
-        const items = [];
         const toNumber = (v) => typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.]/g, '')) || 0;
 
-        // Products from bundleItems / bundle_items
+        const isProductName = (name) => {
+            if (!name) return false;
+            const n = name.toLowerCase();
+            return n.includes('inverter') || n.includes('battery') || n.includes('solar panel') || n.includes('solar panel');
+        };
+        const isFeeName = (name) => {
+            if (!name) return false;
+            const n = name.toLowerCase();
+            return n.includes('installation fee') || n.includes('delivery fee') || n.includes('inspection fee');
+        };
+
+        // 1. Products from bundle_items (preferred source)
+        const productRows = [];
         const relItems = bundle?.bundleItems ?? bundle?.bundle_items ?? [];
         relItems.forEach((bi) => {
             const p = bi?.product || bi;
             const name = p?.title || p?.name || bi?.title || bi?.name || null;
             if (!name) return;
-            items.push({
+            productRows.push({
                 description: name,
                 quantity: bi?.quantity ?? p?.quantity ?? 1,
                 unit: 'Nos',
-                rate: toNumber(p?.price || p?.selling_price || p?.total_price || bi?.price || 0),
+                rate: toNumber(bi?.rate_override ?? (p?.price || p?.selling_price || p?.total_price || bi?.price || 0)),
             });
         });
 
-        // Materials — each material gets its own row
-        const relMaterials = bundle?.bundle_materials ?? [];
-        const materialsList = relMaterials.length > 0 ? relMaterials : (relItems.length > 0 ? (bundle?.materials ?? []) : []);
-        materialsList.forEach((m) => {
-            const mat = m?.material || m;
-            const name = mat?.name || m?.name || null;
-            if (!name) return;
-            items.push({
-                description: name,
-                quantity: m?.quantity ?? mat?.quantity ?? 1,
-                unit: mat?.unit || m?.unit || 'Nos',
-                rate: toNumber(mat?.selling_rate || mat?.rate || mat?.price || 0),
+        // 1b. Fallback: if bundle_items is empty, derive products from product_model field
+        if (productRows.length === 0 && bundle?.product_model) {
+            const modelParts = bundle.product_model.split('/').map(s => s.trim()).filter(Boolean);
+            modelParts.forEach((part) => {
+                productRows.push({ description: part, quantity: 1, unit: 'Nos', rate: 0 });
             });
-        });
-
-        // If no bundleItems found, try bundle.materials as the full items list
-        if (items.length === 0) {
-            const allItems = bundle?.materials ?? [];
-            if (Array.isArray(allItems) && allItems.length > 0) {
-                allItems.forEach(item => {
-                    if (item?.product) {
-                        const p = item.product;
-                        items.push({
-                            description: p?.title || p?.name || 'Product',
-                            quantity: item?.quantity ?? 1,
-                            unit: 'Nos',
-                            rate: toNumber(p?.price || p?.selling_price || 0),
-                        });
-                    } else {
-                        const mat = item?.material || item;
-                        const name = mat?.name || item?.name || null;
-                        if (!name) return;
-                        items.push({
-                            description: name,
-                            quantity: item?.quantity ?? mat?.quantity ?? 1,
-                            unit: mat?.unit || item?.unit || 'Nos',
-                            rate: toNumber(mat?.selling_rate || mat?.rate || mat?.price || 0),
-                        });
-                    }
-                });
-            }
         }
 
-        // Custom services
-        const relServices = bundle?.customServices ?? bundle?.custom_services ?? [];
-        relServices.forEach((s) => {
-            items.push({
-                description: s?.title || 'Custom Service',
-                quantity: s?.quantity ?? 1,
-                unit: 'Nos',
-                rate: toNumber(s?.service_amount),
-            });
+        // 2. Gather all materials from bundle_materials or materials
+        const relMaterials = bundle?.bundle_materials ?? [];
+        const materialsList = relMaterials.length > 0 ? relMaterials : (bundle?.materials ?? []);
+
+        // If bundle_items was empty, try to extract products and fees from materials list
+        const pureInstallMaterials = [];
+        const fallbackServiceRows = [];
+
+        materialsList.forEach((m) => {
+            const mat = m?.material || m;
+            if (mat?.product) return;
+            const name = mat?.name || mat?.title || '';
+            const qty = m?.quantity ?? mat?.quantity ?? 1;
+            const rate = toNumber(m?.rate_override ?? (mat?.selling_rate || mat?.rate || mat?.price || 0));
+
+            if (productRows.length === 0 && isProductName(name)) {
+                productRows.push({ description: name, quantity: qty, unit: 'Nos', rate });
+            } else if (isFeeName(name)) {
+                fallbackServiceRows.push({
+                    description: name,
+                    quantity: qty,
+                    unit: /inspection/i.test(name) ? 'Lots' : 'Nos',
+                    rate,
+                });
+            } else {
+                pureInstallMaterials.push({ name, qty, rate });
+            }
         });
 
-        const itemsTotal = items.reduce((s, i) => s + (i.rate * i.quantity), 0);
-        return { items, itemsTotal };
+        let materialsTotalCost = 0;
+        pureInstallMaterials.forEach((m) => { materialsTotalCost += m.rate * m.qty; });
+
+        const materialLine = pureInstallMaterials.length > 0 ? {
+            description: 'Installation Materials Cost (Cables, Breakers, Mounting Rails, Protectors, Trunking, Bypass Switch, Smart Metering)',
+            quantity: 1,
+            unit: 'Lots',
+            rate: materialsTotalCost,
+        } : null;
+
+        // 3. Custom services / fees (preferred source)
+        const OL_PREFIX = '[OL]';
+        const serviceRows = [];
+        const customOrderItems = [];
+        const relServices = bundle?.customServices ?? bundle?.custom_services ?? [];
+        relServices.forEach((s) => {
+            const rawTitle = s?.title || 'Custom Service';
+            if (rawTitle.startsWith(OL_PREFIX)) {
+                const cleanTitle = rawTitle.slice(OL_PREFIX.length);
+                customOrderItems.push({
+                    description: cleanTitle,
+                    quantity: 1,
+                    unit: 'Nos',
+                    rate: toNumber(s?.service_amount),
+                });
+            } else {
+                serviceRows.push({
+                    description: rawTitle,
+                    quantity: s?.quantity ?? 1,
+                    unit: /inspection/i.test(rawTitle) ? 'Lots' : 'Nos',
+                    rate: toNumber(s?.service_amount),
+                });
+            }
+        });
+
+        // Use fallback fees extracted from materials if no custom_services
+        if (serviceRows.length === 0 && fallbackServiceRows.length > 0) {
+            serviceRows.push(...fallbackServiceRows);
+        }
+
+        // Build the flat items list for ORDER LIST
+        // If admin has set [OL] custom order items, use those instead of bundle_items products
+        const orderListItems = customOrderItems.length > 0
+            ? [...customOrderItems]
+            : [...productRows];
+        if (materialLine) orderListItems.push(materialLine);
+
+        // Build the flat items list for INVOICE (order list items + services/fees)
+        const invoiceItems = [...orderListItems, ...serviceRows];
+
+        const orderListTotal = orderListItems.reduce((s, i) => s + (i.rate * i.quantity), 0);
+
+        return { items: orderListItems, itemsTotal: orderListTotal, orderListItems, invoiceItems, serviceRows, productRows, materialLine };
     };
 
     const renderStep6_5 = () => {
@@ -2836,18 +2873,17 @@ const BNPLFlow = () => {
             const bundleObj = sb.bundle;
             const bundleName = bundleObj?.title || bundleObj?.name || `Bundle #${sb.id}`;
             const bundleTotalPrice = (sb.price || 0) * bundleQty;
-            const { items: lineItems } = extractBundleLineItems(bundleObj);
+            const { orderListItems } = extractBundleLineItems(bundleObj);
 
-            // Items to display (component items OR fallback to bundle name)
             let rows;
-            if (lineItems.length > 0) {
-                rows = lineItems.map((item, idx) => ({
+            if (orderListItems.length > 0) {
+                rows = orderListItems.map((item, idx) => ({
                     id: `b-${sb.id}-${idx}`,
                     description: item.description,
-                    quantity: item.quantity * bundleQty,
+                    quantity: item.unit === 'Lots' ? 1 : item.quantity * bundleQty,
                     unit: item.unit,
                     rate: item.rate,
-                    totalCost: item.rate * item.quantity * bundleQty,
+                    totalCost: item.rate * (item.unit === 'Lots' ? 1 : item.quantity * bundleQty),
                 }));
             } else {
                 rows = [{
@@ -3281,32 +3317,26 @@ const BNPLFlow = () => {
         const inspectionFee = 10000;
         const vatPercent = 7.5;
 
-        // Build per-bundle invoice sections (each bundle has its own invoice per sheet)
-        // The bundle's total price (sb.price) is ALWAYS the authoritative price.
+        // Build per-bundle invoice sections matching the spreadsheet "FOR INVOICE" format
         const bundleInvoiceSections = formData.selectedBundles.map((sb) => {
             const bundleQty = sb.quantity || 1;
             const bundleObj = sb.bundle;
             const bundleName = bundleObj?.title || bundleObj?.name || `Bundle #${sb.id}`;
             const bundleTotalPrice = (sb.price || 0) * bundleQty;
-            const { items: lineItems } = extractBundleLineItems(bundleObj);
-            const hasComponentPrices = lineItems.length > 0 && lineItems.reduce((s, i) => s + i.rate, 0) > 0;
+            const { invoiceItems, serviceRows } = extractBundleLineItems(bundleObj);
 
-            // Item rows: show component items if available, otherwise just the bundle name
-            let itemRows;
-            if (hasComponentPrices) {
-                // API returned individual item prices — show them
-                itemRows = lineItems.map((item, idx) => ({
+            let allRows;
+            if (invoiceItems.length > 0) {
+                allRows = invoiceItems.map((item, idx) => ({
                     id: `inv-${sb.id}-${idx}`,
                     description: item.description,
-                    quantity: item.quantity * bundleQty,
+                    quantity: item.unit === 'Lots' ? 1 : item.quantity * bundleQty,
                     unit: item.unit,
                     rate: item.rate,
-                    totalCost: item.rate * item.quantity * bundleQty,
+                    totalCost: item.rate * (item.unit === 'Lots' ? 1 : item.quantity * bundleQty),
                 }));
             } else {
-                // Component prices are ₦0 — show bundle as one priced row,
-                // plus component items as detail rows underneath
-                itemRows = [{
+                allRows = [{
                     id: `inv-${sb.id}-main`,
                     description: bundleName,
                     quantity: bundleQty,
@@ -3315,30 +3345,20 @@ const BNPLFlow = () => {
                     totalCost: bundleTotalPrice,
                     isBold: true,
                 }];
-                if (lineItems.length > 0) {
-                    lineItems.forEach((item, idx) => {
-                        itemRows.push({
-                            id: `inv-${sb.id}-detail-${idx}`,
-                            description: `  └ ${item.description}`,
-                            quantity: item.quantity * bundleQty,
-                            unit: item.unit,
-                            rate: 0,
-                            totalCost: 0,
-                            isDetail: true,
-                        });
-                    });
-                }
             }
 
-            // Fee rows per bundle (matches sheet: Installation Fees, Delivery Fees, Inspection Fees)
-            const feeRows = [
-                { id: `inv-${sb.id}-install`, description: `Installation Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: installationFee, totalCost: installationFee },
-                { id: `inv-${sb.id}-delivery`, description: `Delivery Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: deliveryFee, totalCost: deliveryFee },
-                { id: `inv-${sb.id}-inspection`, description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: inspectionFee, totalCost: inspectionFee },
-            ];
+            // If no custom_services came from the API, fall back to hardcoded fees
+            if (serviceRows.length === 0) {
+                allRows.push(
+                    { id: `inv-${sb.id}-install`, description: `Installation Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: installationFee, totalCost: installationFee },
+                    { id: `inv-${sb.id}-delivery`, description: `Delivery Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: deliveryFee, totalCost: deliveryFee },
+                    { id: `inv-${sb.id}-inspection`, description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: inspectionFee, totalCost: inspectionFee },
+                );
+            }
 
-            const allRows = [...itemRows, ...feeRows];
-            const feesTotal = feeRows.reduce((s, r) => s + r.totalCost, 0);
+            const feesTotal = serviceRows.length > 0
+                ? serviceRows.reduce((s, r) => s + (r.rate * r.quantity), 0)
+                : (installationFee + deliveryFee + inspectionFee);
             const sectionNetTotal = bundleTotalPrice + feesTotal;
             const sectionVat = (sectionNetTotal * vatPercent) / 100;
             const sectionGrandTotal = sectionNetTotal + sectionVat;
@@ -3411,15 +3431,6 @@ const BNPLFlow = () => {
                                     <tr className="border-t-2 border-gray-300">
                                         <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Net-Total</td>
                                         <td className="py-3 px-2 text-right font-bold">₦{Number(section.netTotal).toLocaleString()}</td>
-                                    </tr>
-                                    <tr className="border-b border-gray-200">
-                                        <td colSpan={3} className="py-2 px-2 text-gray-700">VAT</td>
-                                        <td className="py-2 px-2 text-right text-gray-600">{vatPercent}%</td>
-                                        <td className="py-2 px-2 text-right font-semibold">₦{Number(section.vatAmount).toLocaleString()}</td>
-                                    </tr>
-                                    <tr className="bg-[#273e8e]/5">
-                                        <td colSpan={4} className="py-3 px-2 font-bold text-[#273e8e]">Grand-Total</td>
-                                        <td className="py-3 px-2 text-right font-bold text-[#273e8e]">₦{Number(section.grandTotal).toLocaleString()}</td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -3756,7 +3767,7 @@ const BNPLFlow = () => {
                             <span className="font-bold">₦{totalLoanAmount.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span>4. Total Interest Amount{interestRate != null ? ` (${interestRate}% of loan)` : ''}</span>
+                            <span>4. Total Interest Amount{interestRate != null && tenor ? ` (${interestRate}% × ${tenor} mo)` : interestRate != null ? ` (${interestRate}% of loan)` : ''}</span>
                             <span className="font-bold">₦{totalInterestAmount.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">

@@ -1306,21 +1306,24 @@ const BNPLLoanDetails = () => {
                 {loanCalc && (() => {
                     const totalAmount = parseAmount(loanCalc.total_amount);
                     const initialDeposit = parseAmount(loanCalc.down_payment);
-                    const totalLoanAmount = totalAmount - initialDeposit;
+                    // Use the backend's loan_amount if available; fallback to totalAmount - initialDeposit
+                    const totalLoanAmount = parseAmount(loanCalc.loan_amount) || (totalAmount - initialDeposit);
                     const interestRatePercent = typeof loanCalc.interest_rate === 'number' && !Number.isNaN(loanCalc.interest_rate)
                         ? loanCalc.interest_rate
                         : DEFAULT_BNPL_INTEREST_RATE_PERCENT;
-                    const totalInterestAmount = (interestRatePercent / 100) * totalLoanAmount;
-                    const totalRepaymentAmount = totalLoanAmount + totalInterestAmount;
                     const tenor = Number(loanCalc.repayment_duration || loanCalc.tenor || 12) || 12;
+                    // Interest = monthly rate × loan amount × number of months
+                    const totalInterestAmount = (interestRatePercent / 100) * totalLoanAmount * tenor;
+                    // Total repayment = loan amount + total interest (down payment already excluded)
+                    const totalRepaymentAmount = totalLoanAmount + totalInterestAmount;
                     const monthlyRepaymentAmount = tenor > 0 ? totalRepaymentAmount / tenor : 0;
                     const rows = [
-                        { label: 'Total Amount', sublabel: 'Total cost of product, interest, etc.', value: totalAmount },
-                        { label: 'Initial Deposit', sublabel: null, value: initialDeposit },
-                        { label: 'Total Loan Amount', sublabel: 'Total Amount − Initial Deposit', value: totalLoanAmount },
-                        { label: 'Total Interest Amount', sublabel: `${interestRatePercent}% of Total Loan Amount`, value: totalInterestAmount },
-                        { label: 'Total Repayment Amount', sublabel: 'Total Loan Amount + Total Interest Amount', value: totalRepaymentAmount },
-                        { label: 'Monthly Repayment Amount', sublabel: `Total Repayment Amount ÷ ${tenor} months`, value: monthlyRepaymentAmount },
+                        { label: 'Total Amount', value: totalAmount },
+                        { label: 'Initial Deposit', value: initialDeposit },
+                        { label: 'Total Loan Amount', value: totalLoanAmount },
+                        { label: `Total Interest Amount (${interestRatePercent}% × ${tenor} mo)`, value: totalInterestAmount },
+                        { label: 'Total Repayment Amount', value: totalRepaymentAmount },
+                        { label: `Monthly Repayment Amount (${tenor} months)`, value: monthlyRepaymentAmount },
                     ];
                     return (
                     <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl shadow-sm border border-green-200 p-6">
@@ -1331,10 +1334,7 @@ const BNPLLoanDetails = () => {
                         <div className="space-y-3">
                             {rows.map((row, index) => (
                                 <div key={index} className="bg-white rounded-lg p-4 border border-green-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                                    <div>
-                                        <p className="text-sm font-medium text-gray-800">{row.label}</p>
-                                        {row.sublabel && <p className="text-xs text-gray-500 mt-0.5">{row.sublabel}</p>}
-                                    </div>
+                                    <p className="text-sm font-medium text-gray-800">{row.label}</p>
                                     <p className={`text-xl font-bold text-gray-800 ${index === 5 ? 'text-[#273e8e]' : ''}`}>
                                         {formatCurrency(row.value)}
                                     </p>
