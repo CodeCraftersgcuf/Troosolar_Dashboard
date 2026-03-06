@@ -317,9 +317,9 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange, onFilter
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Choose Solar Bundle"
+          placeholder="Search products or bundles"
           className="w-full px-2 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none"
-          aria-label="Search solar bundles"
+          aria-label="Search products and bundles"
         />
         {(query || selectedValue !== "all" || selectedSize !== "all") && (
           <button

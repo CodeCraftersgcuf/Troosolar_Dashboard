@@ -30,6 +30,7 @@ const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-
 
 // Map API product -> card props the Product component expects
 const mapApiProductToCard = (p) => {
+  const stockQty = Number(p?.stock ?? 0);
   const image =
     p?.featured_image_url ||
     p?.featured_image ||
@@ -83,7 +84,7 @@ const mapApiProductToCard = (p) => {
     ratingAvg,
     ratingCount: reviews.length,
     categoryId: p?.category_id,
-    stock: p?.stock,
+    stock: stockQty,
     isHotDeal: !!p?.top_deal,
   };
 };
@@ -169,7 +170,9 @@ const HomePage = () => {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
         });
-        const list = Array.isArray(data?.data) ? data.data : [];
+        const list = (Array.isArray(data?.data) ? data.data : []).filter(
+          (product) => Number(product?.stock ?? 0) > 0
+        );
         const mappedProducts = list.map(mapApiProductToCard);
         setApiProducts(mappedProducts);
         setRawProducts(list); // Store raw products for filtering
@@ -465,6 +468,7 @@ const HomePage = () => {
                         ratingCount={item.ratingCount}
                         categoryName={item.categoryName}
                         isHotDeal={item.isHotDeal}
+                        stock={item.stock}
                       />
                     </Link>
                   ))}
@@ -683,6 +687,7 @@ const HomePage = () => {
                         ratingCount={item.ratingCount}
                         categoryName={item.categoryName}
                         isHotDeal={item.isHotDeal}
+                        stock={item.stock}
                       />
                     </Link>
                   ))}

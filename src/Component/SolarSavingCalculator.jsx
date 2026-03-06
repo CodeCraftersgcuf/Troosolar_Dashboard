@@ -1,58 +1,25 @@
 import { ChevronDown } from "lucide-react";
 import React, { useState, useRef } from "react";
+import axios from "axios";
+import API from "../config/api.config";
 
 // Fixed per-capacity data from SOLAR/GENERATOR COST SAVINGS ANALYSIS spreadsheet.
 // Only Monthly Service Cost, Monthly PHCN Bill, and Cost of Generator are customer-editable.
-const GENERATOR_DATA = {
-  "1.2kva": {
-    label: "1.2kVA / 1.5kVA / 1.8kVA",
-    hourlyFuelL: 0.65,
-    defaultMonthlyService: 20000,
-    defaultMonthlyPHCN: 5000,
-    defaultCostOfGenerator: 130000,
-    costOfSolarSystem: 0, // spreadsheet uses maintenance-only for this column (150k over 5y)
-  },
-  "3.6kva": {
-    label: "3.6kVA / 4kVA",
-    hourlyFuelL: 1.5,
-    defaultMonthlyService: 20000,
-    defaultMonthlyPHCN: 5000,
-    defaultCostOfGenerator: 0,
-    costOfSolarSystem: 2600000,
-  },
-  "6.5kva": {
-    label: "5kVA / 6kVA / 6.5kVA",
-    hourlyFuelL: 3.0,
-    defaultMonthlyService: 20000,
-    defaultMonthlyPHCN: 5000,
-    defaultCostOfGenerator: 0,
-    costOfSolarSystem: 4500000,
-  },
-  "8.5kva": {
-    label: "7.5kVA / 8kVA / 8.5kVA",
-    hourlyFuelL: 4.75,
-    defaultMonthlyService: 20000,
-    defaultMonthlyPHCN: 5000,
-    defaultCostOfGenerator: 0,
-    costOfSolarSystem: 7500000,
-  },
-  "11kva": {
-    label: "10kVA / 11kVA",
-    hourlyFuelL: 6.25,
-    defaultMonthlyService: 20000,
-    defaultMonthlyPHCN: 5000,
-    defaultCostOfGenerator: 0,
-    costOfSolarSystem: 11000000,
-  },
-  "12kva-diesel": {
-    label: "12kVA - Diesel",
-    hourlyFuelL: 2.9,
-    defaultMonthlyService: 20000,
-    defaultMonthlyPHCN: 5000,
-    defaultCostOfGenerator: 0,
-    costOfSolarSystem: 14000000,
-    fuelCostPerLitre: 1000, // Diesel default
-  },
+const DEFAULT_GENERATOR_DATA = {
+  "1.2kva": { label: "1.2kVA", hourlyFuelL: 0.65, defaultMonthlyService: 20000, defaultMonthlyPHCN: 5000, defaultCostOfGenerator: 130000, costOfSolarSystem: 0, fuelCostPerLitre: 750 },
+  "1.5kva": { label: "1.5kVA", hourlyFuelL: 0.65, defaultMonthlyService: 20000, defaultMonthlyPHCN: 5000, defaultCostOfGenerator: 130000, costOfSolarSystem: 0, fuelCostPerLitre: 750 },
+  "1.8kva": { label: "1.8kVA", hourlyFuelL: 0.65, defaultMonthlyService: 20000, defaultMonthlyPHCN: 5000, defaultCostOfGenerator: 130000, costOfSolarSystem: 0, fuelCostPerLitre: 750 },
+  "3.6kva": { label: "3.6kVA", hourlyFuelL: 1.5, defaultMonthlyService: 20000, defaultMonthlyPHCN: 5000, defaultCostOfGenerator: 0, costOfSolarSystem: 2600000, fuelCostPerLitre: 750 },
+  "4kva": { label: "4kVA", hourlyFuelL: 1.5, defaultMonthlyService: 20000, defaultMonthlyPHCN: 5000, defaultCostOfGenerator: 0, costOfSolarSystem: 2600000, fuelCostPerLitre: 750 },
+  "5kva": { label: "5kVA", hourlyFuelL: 3.0, defaultMonthlyService: 20000, defaultMonthlyPHCN: 5000, defaultCostOfGenerator: 0, costOfSolarSystem: 4500000, fuelCostPerLitre: 750 },
+  "6kva": { label: "6kVA", hourlyFuelL: 3.0, defaultMonthlyService: 20000, defaultMonthlyPHCN: 5000, defaultCostOfGenerator: 0, costOfSolarSystem: 4500000, fuelCostPerLitre: 750 },
+  "6.5kva": { label: "6.5kVA", hourlyFuelL: 3.0, defaultMonthlyService: 20000, defaultMonthlyPHCN: 5000, defaultCostOfGenerator: 0, costOfSolarSystem: 4500000, fuelCostPerLitre: 750 },
+  "7.5kva": { label: "7.5kVA", hourlyFuelL: 4.75, defaultMonthlyService: 20000, defaultMonthlyPHCN: 5000, defaultCostOfGenerator: 0, costOfSolarSystem: 7500000, fuelCostPerLitre: 750 },
+  "8kva": { label: "8kVA", hourlyFuelL: 4.75, defaultMonthlyService: 20000, defaultMonthlyPHCN: 5000, defaultCostOfGenerator: 0, costOfSolarSystem: 7500000, fuelCostPerLitre: 750 },
+  "8.5kva": { label: "8.5kVA", hourlyFuelL: 4.75, defaultMonthlyService: 20000, defaultMonthlyPHCN: 5000, defaultCostOfGenerator: 0, costOfSolarSystem: 7500000, fuelCostPerLitre: 750 },
+  "10kva": { label: "10kVA", hourlyFuelL: 6.25, defaultMonthlyService: 20000, defaultMonthlyPHCN: 5000, defaultCostOfGenerator: 0, costOfSolarSystem: 11000000, fuelCostPerLitre: 750 },
+  "11kva": { label: "11kVA", hourlyFuelL: 6.25, defaultMonthlyService: 20000, defaultMonthlyPHCN: 5000, defaultCostOfGenerator: 0, costOfSolarSystem: 11000000, fuelCostPerLitre: 750 },
+  "12kva-diesel": { label: "12kVA - Diesel", hourlyFuelL: 2.9, defaultMonthlyService: 20000, defaultMonthlyPHCN: 5000, defaultCostOfGenerator: 0, costOfSolarSystem: 14000000, fuelCostPerLitre: 1000 },
 };
 
 // Solar maintenance (Naira) from spreadsheet – fixed, not customer-editable
@@ -60,6 +27,8 @@ const SOLAR_MAINTENANCE_5_YEARS = 150000;
 
 const SolarSavingCalculator = () => {
   const [generatorSize, setGeneratorSize] = useState("");
+  const [generatorData, setGeneratorData] = useState(DEFAULT_GENERATOR_DATA);
+  const [solarMaintenance5Years, setSolarMaintenance5Years] = useState(SOLAR_MAINTENANCE_5_YEARS);
   // Only these three values are customer-editable (per spreadsheet)
   const [monthlyServiceCost, setMonthlyServiceCost] = useState("20000");
   const [monthlyPHCNBill, setMonthlyPHCNBill] = useState("5000");
@@ -75,10 +44,62 @@ const SolarSavingCalculator = () => {
   const [isCalculating, setIsCalculating] = useState(false);
   const resultRef = useRef(null);
 
-  const generatorSizes = Object.entries(GENERATOR_DATA).map(([value, d]) => ({
+  const parseCurrencyInput = (value) =>
+    Number(String(value || "").replace(/,/g, "").replace(/[^\d]/g, "")) || 0;
+  const formatNumberInput = (value) => {
+    const num = parseCurrencyInput(value);
+    return num > 0 ? num.toLocaleString("en-NG") : "";
+  };
+  const onAmountInputChange = (setter) => (e) => {
+    const raw = e.target.value || "";
+    const digitsOnly = raw.replace(/[^\d]/g, "");
+    setter(digitsOnly);
+  };
+
+  const generatorSizes = Object.entries(generatorData).map(([value, d]) => ({
     value,
     label: d.label,
   }));
+
+  React.useEffect(() => {
+    const loadCalculatorSettings = async () => {
+      try {
+        const { data } = await axios.get(API.CONFIG_CALCULATOR_SETTINGS, {
+          headers: { Accept: "application/json" },
+        });
+        const payload = data?.data ?? data ?? {};
+        const profiles = Array.isArray(payload?.solar_savings_profiles)
+          ? payload.solar_savings_profiles
+          : [];
+        if (profiles.length > 0) {
+          const mapped = {};
+          profiles.forEach((p) => {
+            const key = String(p?.key || "").trim();
+            if (!key) return;
+            mapped[key] = {
+              label: String(p?.label || key),
+              hourlyFuelL: Number(p?.hourly_fuel_l) || 0,
+              defaultMonthlyService: Number(p?.default_monthly_service) || 0,
+              defaultMonthlyPHCN: Number(p?.default_monthly_phcn) || 0,
+              defaultCostOfGenerator: Number(p?.default_cost_of_generator) || 0,
+              costOfSolarSystem: Number(p?.cost_of_solar_system) || 0,
+              fuelCostPerLitre: Number(p?.fuel_cost_per_litre) || 750,
+            };
+          });
+          if (Object.keys(mapped).length > 0) {
+            setGeneratorData(mapped);
+          }
+        }
+        const maintenance = Number(payload?.solar_maintenance_5_years);
+        if (maintenance > 0) {
+          setSolarMaintenance5Years(maintenance);
+        }
+      } catch (e) {
+        // Keep defaults when API is unavailable.
+      }
+    };
+    loadCalculatorSettings();
+  }, []);
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat("en-NG", {
@@ -97,7 +118,7 @@ const SolarSavingCalculator = () => {
 
     // Small delay so user sees "Calculating..." and result area scrolls into view
     setTimeout(() => {
-      const genData = GENERATOR_DATA[generatorSize];
+      const genData = generatorData[generatorSize];
       if (!genData) {
         setIsCalculating(false);
         return;
@@ -106,9 +127,9 @@ const SolarSavingCalculator = () => {
       const fuelPerLitre =
         genData.fuelCostPerLitre ?? 750; // Default Petrol 750; Diesel 1000
       const hoursPerDay = 4; // Fixed default from spreadsheet
-      const service = parseFloat(monthlyServiceCost) || 0;
-      const phcn = parseFloat(monthlyPHCNBill) || 0;
-      const genCapEx = parseFloat(costOfGenerator) || 0;
+      const service = parseCurrencyInput(monthlyServiceCost);
+      const phcn = parseCurrencyInput(monthlyPHCNBill);
+      const genCapEx = parseCurrencyInput(costOfGenerator);
 
       // Total Daily Cost of Fuel = Hourly Fuel Consumption * Daily Hours * Cost Per Litre
       const totalDailyFuelCost =
@@ -126,7 +147,7 @@ const SolarSavingCalculator = () => {
 
       // Total Cost of Solar System & Maintenance for 5 Years = Cost of Solar System + 150,000
       const totalSolarSpend5Years =
-        (genData.costOfSolarSystem || 0) + SOLAR_MAINTENANCE_5_YEARS;
+        (genData.costOfSolarSystem || 0) + solarMaintenance5Years;
 
       // Cost Savings after 5 years = Gen 5yr total - Solar 5yr total
       const totalSavings = totalGenSpend5Years - totalSolarSpend5Years;
@@ -144,7 +165,7 @@ const SolarSavingCalculator = () => {
 
   const handleGeneratorSizeChange = (value) => {
     setGeneratorSize(value);
-    const genData = GENERATOR_DATA[value];
+    const genData = generatorData[value];
     if (genData) {
       setMonthlyServiceCost(String(genData.defaultMonthlyService));
       setMonthlyPHCNBill(String(genData.defaultMonthlyPHCN));
@@ -205,12 +226,12 @@ const SolarSavingCalculator = () => {
                     Monthly Service Cost (Naira)
                   </label>
                   <input
-                    type="number"
-                    min="0"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="e.g. 20,000"
                     className="w-full border border-gray-300 rounded-lg px-4 py-4 bg-white outline-none focus:ring-2 focus:ring-[#273e8e] focus:border-[#273e8e]"
-                    value={monthlyServiceCost}
-                    onChange={(e) => setMonthlyServiceCost(e.target.value)}
+                    value={formatNumberInput(monthlyServiceCost)}
+                    onChange={onAmountInputChange(setMonthlyServiceCost)}
                   />
                 </div>
 
@@ -219,12 +240,12 @@ const SolarSavingCalculator = () => {
                     Monthly PHCN Bill (Naira)
                   </label>
                   <input
-                    type="number"
-                    min="0"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="e.g. 5,000"
                     className="w-full border border-gray-300 rounded-lg px-4 py-4 bg-white outline-none focus:ring-2 focus:ring-[#273e8e] focus:border-[#273e8e]"
-                    value={monthlyPHCNBill}
-                    onChange={(e) => setMonthlyPHCNBill(e.target.value)}
+                    value={formatNumberInput(monthlyPHCNBill)}
+                    onChange={onAmountInputChange(setMonthlyPHCNBill)}
                   />
                 </div>
 
@@ -233,12 +254,12 @@ const SolarSavingCalculator = () => {
                     Cost of Generator (Naira)
                   </label>
                   <input
-                    type="number"
-                    min="0"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="e.g. 130,000"
                     className="w-full border border-gray-300 rounded-lg px-4 py-4 bg-white outline-none focus:ring-2 focus:ring-[#273e8e] focus:border-[#273e8e]"
-                    value={costOfGenerator}
-                    onChange={(e) => setCostOfGenerator(e.target.value)}
+                    value={formatNumberInput(costOfGenerator)}
+                    onChange={onAmountInputChange(setCostOfGenerator)}
                   />
                 </div>
               </div>
@@ -354,12 +375,12 @@ const SolarSavingCalculator = () => {
                   Monthly Service Cost (Naira)
                 </label>
                 <input
-                  type="number"
-                  min="0"
+                  type="text"
+                  inputMode="numeric"
                   placeholder="e.g. 20,000"
                   className="w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
-                  value={monthlyServiceCost}
-                  onChange={(e) => setMonthlyServiceCost(e.target.value)}
+                  value={formatNumberInput(monthlyServiceCost)}
+                  onChange={onAmountInputChange(setMonthlyServiceCost)}
                 />
               </div>
 
@@ -368,12 +389,12 @@ const SolarSavingCalculator = () => {
                   Monthly PHCN Bill (Naira)
                 </label>
                 <input
-                  type="number"
-                  min="0"
+                  type="text"
+                  inputMode="numeric"
                   placeholder="e.g. 5,000"
                   className="w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
-                  value={monthlyPHCNBill}
-                  onChange={(e) => setMonthlyPHCNBill(e.target.value)}
+                  value={formatNumberInput(monthlyPHCNBill)}
+                  onChange={onAmountInputChange(setMonthlyPHCNBill)}
                 />
               </div>
 
@@ -382,12 +403,12 @@ const SolarSavingCalculator = () => {
                   Cost of Generator (Naira)
                 </label>
                 <input
-                  type="number"
-                  min="0"
+                  type="text"
+                  inputMode="numeric"
                   placeholder="e.g. 130,000"
                   className="w-full bg-white border border-gray-300 rounded-lg px-3 py-3 text-sm outline-none"
-                  value={costOfGenerator}
-                  onChange={(e) => setCostOfGenerator(e.target.value)}
+                  value={formatNumberInput(costOfGenerator)}
+                  onChange={onAmountInputChange(setCostOfGenerator)}
                 />
               </div>
             </div>

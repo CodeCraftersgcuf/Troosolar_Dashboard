@@ -53,6 +53,20 @@ const formatBackupTime = (text) => {
 // robustly read bundle from API: { data: bundle } or { data: { data: bundle } } or plain bundle
 const extractObject = (payload) => payload?.data?.data ?? payload?.data ?? payload ?? null;
 
+const parseSpecifications = (value) => {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+};
+
 // Map API bundle -> props
 const mapBundleDetail = (b) => {
   if (!b) return null;
@@ -135,9 +149,25 @@ const mapBundleDetail = (b) => {
     : [];
 
   const totalLoad = b.total_load ?? "";
-  const inverterRating = b.inver_rating ?? "";
-  const specs = b.specifications && typeof b.specifications === "object" ? b.specifications : {};
-  const batteryCapacity = specs.battery_capacity_kwh ?? b.battery_capacity_kwh ?? b.battery_capacity ?? "";
+  const specs = parseSpecifications(b.specifications);
+  const inverterRating =
+    b.inver_rating ??
+    specs.inverter_capacity_kva ??
+    specs.inverter_rating ??
+    "";
+  const batteryCapacity =
+    specs.battery_capacity_kwh ??
+    specs.battery_capacity ??
+    specs.battery_capacity_ah ??
+    specs.battery_capacity_wh ??
+    specs.battery ??
+    specs.battery_kwh ??
+    b.battery_capacity_kwh ??
+    b.battery_capacity ??
+    b.battery_capacity_ah ??
+    b.battery_capacity_wh ??
+    b.battery ??
+    "";
   const solarPanelCapacity = specs.solar_panels_wattage ?? specs.solar_panel_capacity_kw ?? b.solar_panels_wattage ?? b.solar_panel_capacity_kw ?? b.solar_panel_capacity ?? "";
 
   // API: detailed_description, description, desc – prefer detailed_description for display
@@ -164,7 +194,7 @@ const mapBundleDetail = (b) => {
     : { installation_fee: 0, delivery_fee: 0, inspection_fee: 0 };
 
   // API specifications (inverter/solar/battery specs – not the materials list)
-  const specifications = b.specifications && typeof b.specifications === "object" ? b.specifications : null;
+  const specifications = Object.keys(specs).length > 0 ? specs : null;
 
   return {
     id,
@@ -238,6 +268,12 @@ const defaultAppliances = [
   { name: "Desktop", power: 70 },
 ];
 
+const SOLAR_BUNDLE_DISCLAIMER_ITEMS = [
+  "This Solar Power System is Hybrid and will require Solar Panels and Grid for the purpose of charging the batteries and powering the electrical loads.",
+  "This Solar Power System is with the assumption of 60% of the system power coming from the Solar Panels, while the remaining 40% comes from the Gen-set or PHCN. If the customer wants to depend on Solar Power 100%, a different panel configuration will be required.",
+  "Before every solar installation, there is a need for a site survey. This is to avail the technician the opportunity to evaluate roof condition, cable requirements, and installation position.",
+];
+
 const ProductBundle = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -250,6 +286,12 @@ const ProductBundle = () => {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [bundleDetailTab, setBundleDetailTab] = useState("description"); // 'description' | 'specs'
+  const recommendedLoadQ = searchParams.get("q");
+  const hasRecommendedSolarContext = Boolean(recommendedLoadQ);
+  const isSolarBundleByType = /solar/i.test(
+    `${productData?.label ?? ""} ${productData?.bundleTitle ?? ""}`
+  );
+  const showSolarDisclaimer = hasRecommendedSolarContext || isSolarBundleByType;
 
   // Try to get appliances from localStorage or URL params (if coming from load calculator)
   const getAppliancesFromStorage = (bundleId) => {
@@ -456,6 +498,16 @@ const ProductBundle = () => {
           <div className="bg-[#F6F8FF] min-h-screen rounded-lg p-3 sm:p-6">
             {/* Desktop Title + Back */}
             <div className="hidden sm:block">
+              {showSolarDisclaimer && (
+                <div className="mb-4 rounded-xl border border-[#F59E0B] bg-[#FFF7ED] p-4">
+                  <h2 className="text-sm font-semibold text-[#9A3412] mb-2">Disclaimer</h2>
+                  <ol className="list-decimal list-inside space-y-2 text-sm text-[#7C2D12]">
+                    {SOLAR_BUNDLE_DISCLAIMER_ITEMS.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
               <h1 className="text-2xl font-semibold mb-2">
                 Recommended Bundle
               </h1>
@@ -509,11 +561,6 @@ const ProductBundle = () => {
                     {productData.label && (
                       <p className="text-sm text-gray-500 pt-1">
                         {productData.label}
-                      </p>
-                    )}
-                    {productData.backupInfo && (
-                      <p className="text-sm text-gray-500 pt-1">
-                        {productData.backupInfo}
                       </p>
                     )}
 
@@ -643,33 +690,24 @@ const ProductBundle = () => {
                 </div>
               </div>
 
-              {/* Right column (stats) - 4 boxes: Total Load, Inverter Rating, Battery Capacity, Solar Panel Capacity */}
+              {/* Right column (stats) - use same card style as load calculator */}
               <div className="w-[380px] flex-shrink-0">
                 <div className="flex flex-col gap-3 rounded-2xl">
-                  <div className="grid grid-cols-2 gap-2 rounded-2xl overflow-hidden">
-                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
-                      <div className="text-xs text-left font-medium">Total Load</div>
-                      <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
-                        <span className="text-sm text-center break-words leading-tight">{productData.totalLoad || "—"}</span>
-                      </div>
+                  <div className="bg-[#273e8e] text-white rounded-2xl px-5 py-5 flex flex-col gap-4 shadow-lg">
+                    <h3 className="text-base font-semibold border-b border-white/30 pb-2">
+                      Bundle Capacity
+                    </h3>
+                    <div>
+                      <p className="text-white/80 text-xs">Inverter Rating</p>
+                      <p className="text-lg font-bold">{productData.inverterRating || "—"}</p>
                     </div>
-                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
-                      <div className="text-xs text-left font-medium">Inverter Rating</div>
-                      <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
-                        <span className="text-sm text-center break-words leading-tight">{productData.inverterRating || "—"}</span>
-                      </div>
+                    <div>
+                      <p className="text-white/80 text-xs">Battery Capacity</p>
+                      <p className="text-lg font-bold">{productData.batteryCapacity || "—"}</p>
                     </div>
-                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
-                      <div className="text-xs text-left font-medium">Battery Capacity</div>
-                      <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
-                        <span className="text-sm text-center break-words leading-tight">{productData.batteryCapacity || "—"}</span>
-                      </div>
-                    </div>
-                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
-                      <div className="text-xs text-left font-medium">Solar Panel Capacity</div>
-                      <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
-                        <span className="text-sm text-center break-words leading-tight">{productData.solarPanelCapacity || "—"}</span>
-                      </div>
+                    <div>
+                      <p className="text-white/80 text-xs">Solar Panel Capacity</p>
+                      <p className="text-lg font-bold">{productData.solarPanelCapacity || "—"}</p>
                     </div>
                   </div>
 
@@ -726,6 +764,16 @@ const ProductBundle = () => {
 
             {/* MOBILE */}
             <div className="sm:hidden">
+              {showSolarDisclaimer && (
+                <div className="mx-3 mb-3 rounded-xl border border-[#F59E0B] bg-[#FFF7ED] p-3">
+                  <h2 className="text-[12px] font-semibold text-[#9A3412] mb-2">Disclaimer</h2>
+                  <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-[#7C2D12]">
+                    {SOLAR_BUNDLE_DISCLAIMER_ITEMS.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
               {/* Top bar — less vertical space */}
               <div className="px-3 pt-2 pb-2 flex items-center justify-between">
                 {/* <button
@@ -785,11 +833,6 @@ const ProductBundle = () => {
                   </h2>
                   {productData.label && (
                     <p className="text-[12px] text-gray-500 mt-[2px]">{productData.label}</p>
-                  )}
-                  {productData.backupInfo && (
-                    <p className="text-[12px] text-gray-500 mt-[2px]">
-                      {productData.backupInfo}
-                    </p>
                   )}
 
                   <div className="mt-3 flex flex-col gap-0.5">

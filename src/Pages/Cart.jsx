@@ -413,6 +413,9 @@ const Cart = () => {
       // Refresh global cart count
       fetchCartCount();
     } catch {
+      alert(
+        "Unable to update quantity. Requested quantity is higher than available stock."
+      );
       await loadCart();
     }
   };

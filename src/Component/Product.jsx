@@ -68,6 +68,7 @@ const Product = ({
   categoryName, // e.g., "Inverter"
   isHotDeal,
   id,
+  stock,
 }) => {
   const { addToCart, fetchCartCount, showCartNotificationModal } =
     useContext(ContextApi);
@@ -93,12 +94,17 @@ const Product = ({
     // Otherwise, prepend base URL
     return starting_base_url + Image_url;
   }, [Image_url]);
+  const isOutOfStock = Number(stock ?? 0) <= 0;
 
   const handleAddToCart = async (e) => {
     e?.preventDefault?.();
     e?.stopPropagation?.();
 
     if (!id) return;
+    if (isOutOfStock) {
+      setErr("This product is out of stock.");
+      return;
+    }
 
     const token = localStorage.getItem("access_token");
     if (!token) {
@@ -249,10 +255,10 @@ const Product = ({
         <button
           onClick={handleAddToCart}
           className="h-10 text-[10px] sm:text-[12px] rounded-full bg-[#273e8e] max-sm:text-[8px] max-sm:rounded-2xl  max-sm:h-7 text-white disabled:opacity-60"
-          disabled={!id || adding}
+          disabled={!id || adding || isOutOfStock}
           title={err || ""}
         >
-          {adding ? "Adding…" : "Add to cart"}
+          {isOutOfStock ? "Out of stock" : adding ? "Adding…" : "Add to cart"}
         </button>
       </div>
     </div>

@@ -31,6 +31,7 @@ const formatNGN = (n) => {
 
 const mapApiProductToCard = (p) => {
   if (!p) return null;
+  const stockQty = Number(p?.stock ?? 0);
 
   const image =
     p.featured_image ||
@@ -65,6 +66,7 @@ const mapApiProductToCard = (p) => {
     rating: assets?.rating || assets?.fiveStars || "",
     _price_numeric: priceNum,
     _category_id: p.category_id,
+    stock: stockQty,
   };
 };
 
@@ -163,7 +165,11 @@ const SpecificProduct = () => {
         }
 
         // 3) Always restrict to this category (so only e.g. Solar Panels show on /product/7, not inverters/batteries)
-        rawList = rawList.filter((p) => String(p?.category_id) === String(id));
+        rawList = rawList.filter(
+          (p) =>
+            String(p?.category_id) === String(id) &&
+            Number(p?.stock ?? 0) > 0
+        );
 
         // Keep original raw in Context for cart (if your cart uses it)
         registerProducts(rawList);
@@ -205,7 +211,9 @@ const SpecificProduct = () => {
       return;
     }
     const sameCat = (Array.isArray(result) ? result : []).filter(
-      (p) => String(p?.category_id) === String(id)
+      (p) =>
+        String(p?.category_id) === String(id) &&
+        Number(p?.stock ?? 0) > 0
     );
     const mapped = sameCat.map(mapApiProductToCard).filter(Boolean);
     setSpecificProduct(mapped);
@@ -271,6 +279,7 @@ const SpecificProduct = () => {
                     oldPrice={item.oldPrice}
                     discount={item.discount}
                     rating={item.rating}
+                    stock={item.stock}
                   />
                 </Link>
               ))}
@@ -342,6 +351,7 @@ const SpecificProduct = () => {
                     oldPrice={item.oldPrice}
                     discount={item.discount}
                     rating={item.rating}
+                    stock={item.stock}
                   />
                 </Link>
               ))}

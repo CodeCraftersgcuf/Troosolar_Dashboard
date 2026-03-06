@@ -93,6 +93,60 @@ const SPEC_LABELS = {
 const BUNDLE_SPEC_ORDER = ['company_oem', 'solar_panel_type', 'inverter_capacity_kva', 'voltage', 'battery_type', 'solar_panels_warranty', 'inverter_warranty', 'battery_warranty', 'solar_panels_wattage', 'battery_capacity_kwh', 'backup_time_range'];
 const SPEC_KEYS_HIDDEN = ['solar_panel_capacity_kw', 'solar_panel_capacity_w'];
 
+const parseBundleSpecifications = (bundle) => {
+    const raw = bundle?.specifications;
+    if (!raw) return {};
+    if (typeof raw === 'object') return raw;
+    if (typeof raw === 'string') {
+        try {
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+    return {};
+};
+
+const getBundleBatteryCapacity = (bundle) => {
+    const specs = parseBundleSpecifications(bundle);
+    return (
+        specs.battery_capacity_kwh ??
+        specs.battery_capacity ??
+        specs.battery_capacity_ah ??
+        specs.battery_capacity_wh ??
+        specs.battery ??
+        specs.battery_kwh ??
+        bundle?.battery_capacity_kwh ??
+        bundle?.battery_capacity ??
+        bundle?.battery_capacity_ah ??
+        bundle?.battery_capacity_wh ??
+        bundle?.battery ??
+        '—'
+    );
+};
+
+const getBundleInverterRating = (bundle) => {
+    const specs = parseBundleSpecifications(bundle);
+    return (
+        bundle?.inver_rating ??
+        specs.inverter_capacity_kva ??
+        specs.inverter_rating ??
+        '—'
+    );
+};
+
+const getBundleSolarPanelCapacity = (bundle) => {
+    const specs = parseBundleSpecifications(bundle);
+    return (
+        specs.solar_panels_wattage ??
+        specs.solar_panel_capacity_kw ??
+        bundle?.solar_panels_wattage ??
+        bundle?.solar_panel_capacity_kw ??
+        '—'
+    );
+};
+
 const BuyNowFlow = () => {
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
@@ -116,6 +170,10 @@ const BuyNowFlow = () => {
     const [auditRequests, setAuditRequests] = useState([]);
     const [auditRequestStatus, setAuditRequestStatus] = useState(null);
     
+    // Enriched bundle details (full API data with custom_services / bundle_items)
+    const [enrichedBundles, setEnrichedBundles] = useState({});
+    const [enrichingBundles, setEnrichingBundles] = useState(false);
+
     // Custom order flow (from admin-created cart)
     const [searchParams] = useSearchParams();
     const [cartToken, setCartToken] = useState(null);
@@ -161,6 +219,13 @@ const BuyNowFlow = () => {
     const [selectedSystemSize, setSelectedSystemSize] = useState("all"); // System size filter
     const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false);
     const sizeDropdownRef = useRef(null);
+
+    // Defensive guard: never remain on step 3.6 without details data.
+    useEffect(() => {
+        if (step === 3.6 && !selectedBundleDetails) {
+            setStep(3.5);
+        }
+    }, [step, selectedBundleDetails]);
 
     // Categories and products for individual components
     const [categories, setCategories] = useState([]);
@@ -346,6 +411,8 @@ const BuyNowFlow = () => {
                             optionType: prev.optionType || 'choose-system',
                             productCategory: prev.productCategory || 'full-kit',
                         }));
+                        // Cache the full bundle detail so extractBundleLineItems gets custom_services
+                        setEnrichedBundles({ [bundleData.id]: bundleData });
                         setStep(7);
                     }
                 } catch (error) {
@@ -416,6 +483,12 @@ const BuyNowFlow = () => {
             'panels-only': [], // Solar panels only
         };
 
+        const isBatteryCategory = (name) =>
+            name.includes('battery') ||
+            name.includes('batteries') ||
+            name.includes('lithium') ||
+            name.includes('battries');
+
         // Find matching categories from API
         categories.forEach(cat => {
             const name = (cat.title || cat.name || '').toLowerCase();
@@ -423,19 +496,19 @@ const BuyNowFlow = () => {
             // Full kit: Solar, Inverters, Batteries
             if (groupType === 'full-kit') {
                 if (name.includes('solar') || name.includes('panel') || 
-                    name.includes('inverter') || name.includes('battery') || name.includes('battries')) {
+                    name.includes('inverter') || isBatteryCategory(name)) {
                     categoryIds['full-kit'].push(cat.id);
                 }
             }
             // Inverter & Battery: Inverters, Batteries
             else if (groupType === 'inverter-battery') {
-                if (name.includes('inverter') || name.includes('battery') || name.includes('battries')) {
+                if (name.includes('inverter') || isBatteryCategory(name)) {
                     categoryIds['inverter-battery'].push(cat.id);
                 }
             }
             // Battery only
             else if (groupType === 'battery-only') {
-                if (name.includes('battery') || name.includes('battries')) {
+                if (isBatteryCategory(name)) {
                     categoryIds['battery-only'].push(cat.id);
                 }
             }
@@ -453,7 +526,7 @@ const BuyNowFlow = () => {
             }
         });
 
-        return categoryIds[groupType] || [];
+        return Array.from(new Set(categoryIds[groupType] || []));
     };
 
     // Map product category string to category name/id (OLD - COMMENTED OUT BUT KEPT FOR REFERENCE)
@@ -1011,7 +1084,7 @@ const BuyNowFlow = () => {
                     // Single bundle object - wrap in array
                     arr = [root];
                 }
-                setBundles(arr);
+                setBundles(filterBundlesByCategory(arr, formData.productCategory || 'full-kit'));
             } catch (error) {
                 console.error("Failed to fetch bundles:", error);
                 // Fallback to general bundles endpoint if type-specific fails
@@ -1034,7 +1107,7 @@ const BuyNowFlow = () => {
                         // Single bundle object - wrap in array
                         arr = [root];
                     }
-                    setBundles(arr);
+                    setBundles(filterBundlesByCategory(arr, formData.productCategory || 'full-kit'));
                 } catch (fallbackError) {
                     console.error("Fallback bundle fetch also failed:", fallbackError);
                     alert("Failed to load bundles. Please try again.");
@@ -1086,10 +1159,16 @@ const BuyNowFlow = () => {
             ...prev,
             selectedBundleId: bundle.id,
             selectedBundle: bundle,
-            selectedProductPrice: price, // Store unit price
-            singleItemQuantity: 1 // Reset quantity to 1 when selecting new bundle
+            selectedBundles: [{
+                id: bundle.id,
+                bundle: bundle,
+                price: price,
+                quantity: 1,
+            }],
+            selectedProductPrice: price,
+            singleItemQuantity: 1,
         }));
-        setStep(4); // Go directly to Checkout Options (as per flow documentation)
+        setStep(4);
     };
 
     const handleProductSelect = (product) => {
@@ -1332,7 +1411,7 @@ const BuyNowFlow = () => {
             if (response.data.status === 'success') {
                 setInvoiceDetails(response.data.data);
                 setOrderId(response.data.data.order_id);
-                setStep(8); // Go to Order Summary with details (NEW STEP)
+                setStep(5);
             }
         } catch (error) {
             console.error("Checkout Error:", error);
@@ -1502,6 +1581,15 @@ const BuyNowFlow = () => {
         }
     }, [step]);
 
+    // Enrich bundle details (custom_services / bundle_items) when entering Order Summary (step 7)
+    // Always re-fetch to get latest admin-configured order list items
+    useEffect(() => {
+        if (step === 7 && formData.selectedBundles.length > 0) {
+            enrichBundlesForOrderSummary();
+        }
+    }, [step]);
+
+
     // Fetch bundles when step 3.5 is reached (only once)
     // Fetch audit requests when on step 6 (commercial audit notification)
     useEffect(() => {
@@ -1515,11 +1603,61 @@ const BuyNowFlow = () => {
         }
     }, [step, auditRequestId, formData.optionType, formData.auditType]);
 
-    const categoryToBundleType = {
-        'full-kit': 'Solar+Inverter+Battery',
-        'inverter-battery': 'Inverter + Battery',
-        'battery-only': 'Battery only',
+    const normalizeBundleType = (value) =>
+        String(value || '')
+            .toLowerCase()
+            .replace(/[+]/g, ' plus ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+
+    const bundleTypeAliasesByCategory = React.useMemo(() => ({
+        'full-kit': [
+            'solar inverter battery',
+            'solar plus inverter plus battery',
+            'solar-inverter-battery',
+            'full kit',
+        ],
+        'inverter-battery': [
+            'inverter battery',
+            'inverter and battery',
+            'inverter plus battery',
+        ],
+        'battery-only': ['battery only', 'battery'],
+        'inverter-only': ['inverter only', 'inverter'],
+        'panels-only': ['solar panel only', 'panels only', 'solar panels only', 'panel only'],
+    }), []);
+
+    const getBundleCategoryLabel = (bundle) => {
+        const raw = bundle?.bundle_type || bundle?.category || bundle?.product_category || bundle?.category_type;
+        const normalized = normalizeBundleType(raw);
+        for (const [categoryKey, aliases] of Object.entries(bundleTypeAliasesByCategory)) {
+            if (aliases.some((alias) => normalized.includes(normalizeBundleType(alias)))) {
+                if (categoryKey === 'full-kit') return 'Solar + Inverter + Battery';
+                if (categoryKey === 'inverter-battery') return 'Inverter + Battery';
+                if (categoryKey === 'battery-only') return 'Battery only';
+                if (categoryKey === 'inverter-only') return 'Inverter only';
+                if (categoryKey === 'panels-only') return 'Panels only';
+            }
+        }
+        return raw || 'Uncategorized';
     };
+
+    const filterBundlesByCategory = React.useCallback((arr, categoryKey) => {
+        if (!Array.isArray(arr)) return [];
+        const aliases = bundleTypeAliasesByCategory[categoryKey];
+        if (!aliases?.length) return arr;
+        return arr.filter((bundle) => {
+            const normalized = normalizeBundleType(
+                bundle?.bundle_type || bundle?.category || bundle?.product_category || bundle?.category_type
+            );
+            return aliases.some((alias) => normalized.includes(normalizeBundleType(alias)));
+        });
+    }, [bundleTypeAliasesByCategory]);
+
+    const activeSolutionCategory = formData.productCategory || searchParams.get('category') || 'full-kit';
+    const isInverterFlow = activeSolutionCategory === 'inverter-battery';
+    const solutionLabel = isInverterFlow ? 'Choose My Inverter Solution' : 'Choose My Solar Bundle';
+    const solutionListLabel = isInverterFlow ? 'inverter solutions' : 'solar bundles';
 
     useEffect(() => {
         const qParam = searchParams.get('q');
@@ -1528,7 +1666,7 @@ const BuyNowFlow = () => {
             bundlesFetchedRef.current = true;
             setBundles([]);
             const userLoadW = Number(qParam);
-            const loadW = Math.round(userLoadW * 1.3);
+            const loadW = Math.max(0, Math.round(userLoadW));
             const fetchBundles = async () => {
                 setBundlesLoading(true);
                 try {
@@ -1550,10 +1688,7 @@ const BuyNowFlow = () => {
                         arr = [root];
                     }
                     const productCategory = searchParams.get('category') || 'full-kit';
-                    const expectedType = categoryToBundleType[productCategory];
-                    if (expectedType) {
-                        arr = arr.filter((b) => (b.bundle_type || '').trim() === expectedType);
-                    }
+                    arr = filterBundlesByCategory(arr, productCategory);
                     setBundles(arr);
                 } catch (error) {
                     console.error("Failed to fetch bundles:", error);
@@ -1568,7 +1703,7 @@ const BuyNowFlow = () => {
             bundlesFetchedRef.current = false;
             setBundles([]);
         }
-    }, [step, bundlesLoading, searchParams]);
+    }, [step, bundlesLoading, searchParams, filterBundlesByCategory]);
 
     // --- Render Steps ---
 
@@ -1582,7 +1717,7 @@ const BuyNowFlow = () => {
                 </span>
             </div>
             <h2 className="text-3xl font-bold text-center mb-10 text-[#273e8e]">
-                Who are you purchasing for?
+            What are you purchasing for?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
                 <button onClick={() => handleCustomerTypeSelect('residential')} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
@@ -2319,9 +2454,9 @@ const BuyNowFlow = () => {
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <Zap size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose My Solar Bundle</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">{solutionLabel}</h3>
                 </button>
-                <button onClick={() => navigate(`/tools?inverter=true&returnTo=buy-now&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`)} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                <button onClick={() => navigate(`/tools?inverter=true&returnTo=buy-now&source=flow&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`)} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <Wrench size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
@@ -2379,19 +2514,23 @@ const BuyNowFlow = () => {
                 <button onClick={() => {
                     bundlesFetchedRef.current = false;
                     setBundles([]);
+                    if (searchParams.get('fromCalculator') === 'true') {
+                        navigate(`/tools?inverter=true&returnTo=buy-now&source=flow&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`);
+                        return;
+                    }
                     setStep(3);
                 }} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
                 <h2 className="text-3xl font-bold text-center mb-4 text-[#273e8e]">
-                Choose My Solar Bundle
+                {solutionLabel}
                 </h2>
                 <p className="text-center text-gray-600 mb-2">
-                    {searchParams.get('q') ? `Bundles matching your load (${searchParams.get('q')} W)` : 'Select from our pre-configured solar bundles'}
+                    {searchParams.get('q') ? `${isInverterFlow ? 'Solutions' : 'Bundles'} matching your load (${searchParams.get('q')} W)` : `Select from our pre-configured ${solutionListLabel}`}
                 </p>
                 {searchParams.get('q') && (
                     <p className="text-center mb-8">
-                        <a href={`/tools?inverter=true&returnTo=buy-now&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`} className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
+                        <a href={`/tools?inverter=true&returnTo=buy-now&source=flow&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`} className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
                     </p>
                 )}
                 {!searchParams.get('q') && <div className="mb-8" />}
@@ -2519,9 +2658,7 @@ const BuyNowFlow = () => {
                                     <h3 className="text-xl font-bold mb-2 text-gray-800">
                                         {bundle.title || `Bundle #${bundle.id}`}
                                     </h3>
-                                    {bundle.bundle_type && (
-                                        <p className="text-sm text-gray-500 mb-3">{bundle.bundle_type}</p>
-                                    )}
+                                    <p className="text-sm text-gray-500 mb-3">{getBundleCategoryLabel(bundle)}</p>
                                     <div className="flex items-baseline gap-2 mb-4">
                                         <span className="text-2xl font-bold text-[#273e8e]">
                                             {formatPrice(price)}
@@ -2597,8 +2734,7 @@ const BuyNowFlow = () => {
         if (!selectedBundleDetails) {
             return (
                 <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center">
-                    <Loader className="animate-spin mx-auto text-[#273e8e]" size={40} />
-                    <p className="text-gray-600 mt-4">Loading bundle details...</p>
+                    <p className="text-gray-600">Returning to bundle list...</p>
                 </div>
             );
         }
@@ -2614,6 +2750,7 @@ const BuyNowFlow = () => {
 
         // Get items included
         const itemsIncluded = bundle.materials || bundle.bundleItems || bundle.bundle_items || [];
+        const bundleSpecs = parseBundleSpecifications(bundle);
         // Description: API may send detailed_description, description, or desc
         const descriptionText = (bundle.detailed_description && String(bundle.detailed_description).trim()) || (bundle.description && String(bundle.description).trim()) || (bundle.desc && String(bundle.desc).trim()) || '';
 
@@ -2654,25 +2791,8 @@ const BuyNowFlow = () => {
                                         {bundle.title || `Bundle #${bundle.id}`}
                                     </h2>
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-1">
-                                        {bundle.bundle_type && (
-                                            <p className="text-sm text-gray-500">
-                                                {bundle.bundle_type}
-                                            </p>
-                                        )}
-                                        {(bundle.category || bundle.product_category || bundle.category_type) && (
-                                            <span className="text-sm text-gray-400">·</span>
-                                        )}
-                                        {(bundle.category || bundle.product_category || bundle.category_type) && (
-                                            <p className="text-sm text-gray-500">
-                                                {bundle.category || bundle.product_category || bundle.category_type}
-                                            </p>
-                                        )}
+                                        <p className="text-sm text-gray-500">{getBundleCategoryLabel(bundle)}</p>
                                     </div>
-                                    {(bundle.backup_time_description || bundle.backup_info) && (
-                                        <p className="text-sm text-gray-500 pt-1 whitespace-pre-line">
-                                            {formatBackupTime(bundle.backup_time_description || bundle.backup_info)}
-                                        </p>
-                                    )}
 
                                     <hr className="my-3 text-gray-300" />
 
@@ -2750,21 +2870,20 @@ const BuyNowFlow = () => {
 
                                     {bundleDetailTab === 'specs' && (
                                         <div className="min-h-[80px]">
-                                            {bundle.specifications && typeof bundle.specifications === 'object' && Object.keys(bundle.specifications).length > 0 ? (
+                                            {Object.keys(bundleSpecs).filter(k => !SPEC_KEYS_HIDDEN.includes(k) && bundleSpecs[k] != null && bundleSpecs[k] !== '').length > 0 ? (
                                                 <dl className="space-y-2 text-sm">
-                                                    {BUNDLE_SPEC_ORDER.filter((key) => {
-                                                        const value = bundle.specifications[key];
-                                                        return value != null && value !== '' && !SPEC_KEYS_HIDDEN.includes(key);
-                                                    }).map((key) => {
-                                                        const value = bundle.specifications[key];
-                                                        const label = SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                                                        return (
-                                                            <div key={key} className="flex justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
-                                                                <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
-                                                                <dd className="text-gray-900 text-right">{String(value)}</dd>
-                                                            </div>
-                                                        );
-                                                    })}
+                                                    {Object.keys(bundleSpecs)
+                                                        .filter((key) => !SPEC_KEYS_HIDDEN.includes(key) && bundleSpecs[key] != null && bundleSpecs[key] !== '')
+                                                        .map((key) => {
+                                                            const value = bundleSpecs[key];
+                                                            const label = SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                                            return (
+                                                                <div key={key} className="flex justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
+                                                                    <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
+                                                                    <dd className="text-gray-900 text-right">{String(value)}</dd>
+                                                                </div>
+                                                            );
+                                                        })}
                                                 </dl>
                                             ) : (
                                                 <p className="text-sm text-gray-500 py-4">No specifications available.</p>
@@ -2789,33 +2908,22 @@ const BuyNowFlow = () => {
                             </div>
                         </div>
 
-                        {/* Right Column - Stats: 4 boxes (Total Load, Inverter Rating, Battery Capacity, Solar Panel Capacity) */}
+                        {/* Right Column - use load-calculator style summary card */}
                         <div className="w-[380px] flex-shrink-0">
                             <div className="flex flex-col gap-3 rounded-2xl">
-                                <div className="grid grid-cols-2 gap-2 rounded-2xl overflow-hidden">
-                                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
-                                        <div className="text-xs text-left font-medium">Total Load</div>
-                                        <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
-                                            <span className="text-sm text-center break-words leading-tight">{bundle.total_load || "—"}</span>
-                                        </div>
+                                <div className="bg-[#273e8e] text-white rounded-2xl px-5 py-5 flex flex-col gap-4 shadow-lg">
+                                    <h3 className="text-base font-semibold border-b border-white/30 pb-2">Bundle Capacity</h3>
+                                    <div>
+                                        <p className="text-white/80 text-xs">Inverter Rating</p>
+                                        <p className="text-lg font-bold">{getBundleInverterRating(bundle)}</p>
                                     </div>
-                                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
-                                        <div className="text-xs text-left font-medium">Inverter Rating</div>
-                                        <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
-                                            <span className="text-sm text-center break-words leading-tight">{bundle.inver_rating || "—"}</span>
-                                        </div>
+                                    <div>
+                                        <p className="text-white/80 text-xs">Battery Capacity</p>
+                                        <p className="text-lg font-bold">{getBundleBatteryCapacity(bundle)}</p>
                                     </div>
-                                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
-                                        <div className="text-xs text-left font-medium">Battery Capacity</div>
-                                        <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
-                                            <span className="text-sm text-center break-words leading-tight">{(bundle.specifications && bundle.specifications.battery_capacity_kwh) ?? bundle.battery_capacity_kwh ?? bundle.battery_capacity ?? "—"}</span>
-                                        </div>
-                                    </div>
-                                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
-                                        <div className="text-xs text-left font-medium">Solar Panel Capacity</div>
-                                        <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
-                                            <span className="text-sm text-center break-words leading-tight">{(bundle.specifications && (bundle.specifications.solar_panels_wattage || bundle.specifications.solar_panel_capacity_kw)) ?? bundle.solar_panels_wattage ?? bundle.solar_panel_capacity_kw ?? "—"}</span>
-                                        </div>
+                                    <div>
+                                        <p className="text-white/80 text-xs">Solar Panel Capacity</p>
+                                        <p className="text-lg font-bold">{getBundleSolarPanelCapacity(bundle)}</p>
                                     </div>
                                 </div>
 
@@ -2894,19 +3002,8 @@ const BuyNowFlow = () => {
                                     {bundle.title || `Bundle #${bundle.id}`}
                                 </h2>
                                 <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 mt-[2px]">
-                                    {bundle.bundle_type && (
-                                        <p className="text-[12px] text-gray-500">{bundle.bundle_type}</p>
-                                    )}
-                                    {(bundle.category || bundle.product_category || bundle.category_type) && (
-                                        <>
-                                            <span className="text-[12px] text-gray-400">·</span>
-                                            <p className="text-[12px] text-gray-500">{bundle.category || bundle.product_category || bundle.category_type}</p>
-                                        </>
-                                    )}
+                                    <p className="text-[12px] text-gray-500">{getBundleCategoryLabel(bundle)}</p>
                                 </div>
-                                    {(bundle.backup_time_description || bundle.backup_info) && (
-                                        <p className="text-[12px] text-gray-500 mt-[2px] whitespace-pre-line">{formatBackupTime(bundle.backup_time_description || bundle.backup_info)}</p>
-                                    )}
 
                                 <div className="mt-3 flex flex-col gap-0.5">
                                     <span className="text-[10px] text-gray-500 uppercase tracking-wide">Bundle Price</span>
@@ -2979,21 +3076,20 @@ const BuyNowFlow = () => {
 
                                 {bundleDetailTab === 'specs' && (
                                     <div className="min-h-[60px]">
-                                        {bundle.specifications && typeof bundle.specifications === 'object' && Object.keys(bundle.specifications).length > 0 ? (
+                                        {Object.keys(bundleSpecs).filter(k => !SPEC_KEYS_HIDDEN.includes(k) && bundleSpecs[k] != null && bundleSpecs[k] !== '').length > 0 ? (
                                             <dl className="space-y-1.5 text-[11px] lg:text-[12px]">
-                                                {BUNDLE_SPEC_ORDER.filter((key) => {
-                                                    const value = bundle.specifications[key];
-                                                    return value != null && value !== '' && !SPEC_KEYS_HIDDEN.includes(key);
-                                                }).map((key) => {
-                                                    const value = bundle.specifications[key];
-                                                    const label = SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                                                    return (
-                                                        <div key={key} className="flex justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
-                                                            <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
-                                                            <dd className="text-gray-900 text-right">{String(value)}</dd>
-                                                        </div>
-                                                    );
-                                                })}
+                                                {Object.keys(bundleSpecs)
+                                                    .filter((key) => !SPEC_KEYS_HIDDEN.includes(key) && bundleSpecs[key] != null && bundleSpecs[key] !== '')
+                                                    .map((key) => {
+                                                        const value = bundleSpecs[key];
+                                                        const label = SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                                        return (
+                                                            <div key={key} className="flex justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
+                                                                <dt className="text-gray-600 font-medium shrink-0">{label}</dt>
+                                                                <dd className="text-gray-900 text-right">{String(value)}</dd>
+                                                            </div>
+                                                        );
+                                                    })}
                                             </dl>
                                         ) : (
                                             <p className="text-[11px] text-gray-500 py-3">No specifications available.</p>
@@ -3227,21 +3323,14 @@ const BuyNowFlow = () => {
             )}
 
             <button
-                onClick={handleCheckoutSubmit}
-                disabled={!formData.installerChoice || loading}
-                className={`w-full py-4 rounded-xl font-bold transition-colors ${formData.installerChoice && !loading
+                onClick={() => setStep(7)}
+                disabled={!formData.installerChoice}
+                className={`w-full py-4 rounded-xl font-bold transition-colors ${formData.installerChoice
                     ? 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                     }`}
             >
-                {loading ? (
-                    <span className="flex items-center justify-center">
-                        <Loader className="animate-spin mr-2" size={20} />
-                        Processing...
-                    </span>
-                ) : (
-                    'Proceed to Invoice'
-                )}
+                View Order Summary
             </button>
             {!formData.installerChoice && (
                 <p className="text-sm text-red-600 mt-2 text-center">
@@ -3250,6 +3339,170 @@ const BuyNowFlow = () => {
             )}
         </div>
         );
+    };
+
+    // ── Extract order-list and invoice line items from a bundle object ──
+    // Mirrors the identical function in BNPLFlow so both flows show the same data.
+    const extractBundleLineItems = (bundle) => {
+        const toNumber = (v) => typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.]/g, '')) || 0;
+        const parseQuantityApplies = (value) => {
+            if (value === undefined || value === null || value === '') return true;
+            if (typeof value === 'boolean') return value;
+            const normalized = String(value).trim().toLowerCase();
+            return !['false', '0', 'no', 'nil', 'n/a', 'na', 'not_applicable', 'not applicable'].includes(normalized);
+        };
+        const resolveQtyAndUnit = (sources = [], fallbackQty = 1, fallbackUnit = 'Nos') => {
+            const firstValue = (...vals) => vals.find((v) => v !== undefined && v !== null && v !== '');
+            let qty;
+            let unit;
+            let quantityApplies;
+            sources.forEach((src) => {
+                if (!src || typeof src !== 'object') return;
+                qty = qty ?? firstValue(src.quantity, src.qty);
+                unit = unit ?? firstValue(src.unit, src.unit_name, src.measurement_unit, src.qty_unit);
+                quantityApplies = quantityApplies ?? firstValue(
+                    src.quantity_applies,
+                    src.quantity_applicable,
+                    src.is_quantity_applicable,
+                    src.qty_applicable,
+                    src.apply_quantity
+                );
+            });
+            return {
+                quantity: Number(qty) > 0 ? Number(qty) : fallbackQty,
+                unit: String(unit || fallbackUnit),
+                quantityApplies: parseQuantityApplies(quantityApplies),
+            };
+        };
+        const isProductName = (name) => {
+            if (!name) return false;
+            const n = name.toLowerCase();
+            return n.includes('inverter') || n.includes('battery') || n.includes('solar panel');
+        };
+        const isFeeName = (name) => {
+            if (!name) return false;
+            const n = name.toLowerCase();
+            return n.includes('installation fee') || n.includes('delivery fee') || n.includes('inspection fee');
+        };
+
+        const productRows = [];
+        const relItems = bundle?.bundleItems ?? bundle?.bundle_items ?? [];
+        relItems.forEach((bi) => {
+            const p = bi?.product || bi;
+            const name = p?.title || p?.name || bi?.title || bi?.name || null;
+            if (!name) return;
+            const qtyMeta = resolveQtyAndUnit([bi, p], 1, 'Nos');
+            productRows.push({
+                description: name,
+                quantity: qtyMeta.quantity,
+                unit: qtyMeta.unit,
+                quantityApplies: qtyMeta.quantityApplies,
+                rate: toNumber(bi?.rate_override ?? (p?.price || p?.selling_price || p?.total_price || bi?.price || 0)),
+            });
+        });
+
+        if (productRows.length === 0 && bundle?.product_model) {
+            bundle.product_model.split('/').map(s => s.trim()).filter(Boolean).forEach((part) => {
+                productRows.push({ description: part, quantity: 1, unit: 'Nos', quantityApplies: true, rate: 0 });
+            });
+        }
+
+        const relMaterials = bundle?.bundle_materials ?? [];
+        const materialsList = relMaterials.length > 0 ? relMaterials : (bundle?.materials ?? []);
+        const pureInstallMaterials = [];
+        const fallbackServiceRows = [];
+        materialsList.forEach((m) => {
+            const mat = m?.material || m;
+            if (mat?.product) return;
+            const name = mat?.name || mat?.title || '';
+            const qtyMeta = resolveQtyAndUnit([m, mat], 1, /inspection/i.test(name) ? 'Lots' : 'Nos');
+            const qty = qtyMeta.quantity;
+            const rate = toNumber(m?.rate_override ?? (mat?.selling_rate || mat?.rate || mat?.price || 0));
+            if (productRows.length === 0 && isProductName(name)) {
+                productRows.push({ description: name, quantity: qty, unit: qtyMeta.unit, quantityApplies: qtyMeta.quantityApplies, rate });
+            } else if (isFeeName(name)) {
+                fallbackServiceRows.push({ description: name, quantity: qty, unit: qtyMeta.unit, quantityApplies: qtyMeta.quantityApplies, rate });
+            } else {
+                pureInstallMaterials.push({ name, qty, rate });
+            }
+        });
+
+        let materialsTotalCost = 0;
+        pureInstallMaterials.forEach((m) => { materialsTotalCost += m.rate * m.qty; });
+        const materialNames = pureInstallMaterials
+            .map((m) => String(m.name || '').trim())
+            .filter(Boolean);
+        const materialLineLabel = materialNames.length > 0
+            ? `Installation Materials Cost (${materialNames.join(', ')})`
+            : 'Installation Materials Cost';
+
+        const materialLine = pureInstallMaterials.length > 0 ? {
+            description: materialLineLabel,
+            quantity: 1,
+            unit: 'Lots',
+            quantityApplies: true,
+            rate: materialsTotalCost,
+        } : null;
+
+        const OL_PREFIX = '[OL]';
+        const serviceRows = [];
+        const customOrderItems = [];
+        const relServices = bundle?.customServices ?? bundle?.custom_services ?? [];
+        relServices.forEach((s) => {
+            const rawTitle = s?.title || 'Custom Service';
+            if (rawTitle.startsWith(OL_PREFIX)) {
+                const cleanTitle = rawTitle.slice(OL_PREFIX.length);
+                const qtyMeta = resolveQtyAndUnit([s], 1, 'Nos');
+                customOrderItems.push({ description: cleanTitle, quantity: qtyMeta.quantity, unit: qtyMeta.unit, quantityApplies: qtyMeta.quantityApplies, rate: toNumber(s?.service_amount) });
+            } else {
+                const qtyMeta = resolveQtyAndUnit([s], 1, /inspection/i.test(rawTitle) ? 'Lots' : 'Nos');
+                serviceRows.push({ description: rawTitle, quantity: qtyMeta.quantity, unit: qtyMeta.unit, quantityApplies: qtyMeta.quantityApplies, rate: toNumber(s?.service_amount) });
+            }
+        });
+        if (serviceRows.length === 0 && fallbackServiceRows.length > 0) serviceRows.push(...fallbackServiceRows);
+
+        const orderListItems = customOrderItems.length > 0 ? [...customOrderItems] : [...productRows];
+        if (materialLine) orderListItems.push(materialLine);
+        const invoiceItems = [...orderListItems, ...serviceRows];
+        const orderListTotal = orderListItems.reduce((s, i) => s + (i.rate * i.quantity), 0);
+        return { orderListItems, invoiceItems, serviceRows, productRows, materialLine, itemsTotal: orderListTotal };
+    };
+
+    // Fetch full bundle details (with custom_services) before showing Order Summary
+    const enrichBundlesForOrderSummary = async () => {
+        const token = localStorage.getItem('access_token');
+        const toEnrich = formData.selectedBundles;
+        if (toEnrich.length === 0) return;
+        setEnrichingBundles(true);
+        try {
+            const results = await Promise.all(
+                toEnrich.map(async (sb) => {
+                    try {
+                        const res = await axios.get(API.BUNDLE_DETAILS(sb.id), {
+                            headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                        });
+                        const detail = res.data?.data ?? res.data;
+                        return { id: sb.id, detail };
+                    } catch {
+                        return { id: sb.id, detail: null };
+                    }
+                })
+            );
+            const updated = { ...enrichedBundles };
+            results.forEach(r => { if (r.detail) updated[r.id] = r.detail; });
+            setEnrichedBundles(updated);
+            // Also merge full detail into formData.selectedBundles[*].bundle so extractBundleLineItems works
+            setFormData(prev => ({
+                ...prev,
+                selectedBundles: prev.selectedBundles.map(sb => {
+                    const full = updated[sb.id];
+                    if (full) return { ...sb, bundle: { ...sb.bundle, ...full } };
+                    return sb;
+                }),
+            }));
+        } finally {
+            setEnrichingBundles(false);
+        }
     };
 
     const renderStep7 = () => {
@@ -3354,153 +3607,387 @@ const BuyNowFlow = () => {
             );
         }
 
-        // Otherwise, show combined Order Summary & Invoice
+        // ── STEP 7: ORDER SUMMARY ONLY (mirrors BNPL renderStep6_5 exactly) ──
         const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
         const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
         const itemsSubtotal = bundlesTotal + productsTotal;
-        const singleItemBasePrice = formData.selectedProductPrice * (formData.singleItemQuantity || 1);
-        const basePrice = itemsSubtotal > 0 ? itemsSubtotal : singleItemBasePrice;
+        const basePrice = itemsSubtotal > 0 ? itemsSubtotal : formData.selectedProductPrice;
 
-        // ── ORDER LIST: each bundle/product as ONE row ──
-        const orderRows = [];
-        formData.selectedBundles.forEach((sb) => {
-            const qty = sb.quantity || 1;
-            const unitPrice = sb.price || 0;
-            const obj = sb.bundle;
-            orderRows.push({ id: `b-${sb.id}`, name: obj?.title || obj?.name || `Bundle #${sb.id}`, subtitle: obj?.description || 'Solar System Bundle', quantity: qty, unitPrice, total: unitPrice * qty });
+        const bundleSections = formData.selectedBundles.map((sb) => {
+            const bundleQty = sb.quantity || 1;
+            const bundleObj = sb.bundle;
+            const bundleName = bundleObj?.title || bundleObj?.name || `Bundle #${sb.id}`;
+            const bundleTotalPrice = (sb.price || 0) * bundleQty;
+            const { orderListItems } = extractBundleLineItems(bundleObj);
+
+            let rows;
+            if (orderListItems.length > 0) {
+                rows = orderListItems.map((item, idx) => ({
+                    id: `b-${sb.id}-${idx}`,
+                    description: item.description,
+                    quantity: item.quantityApplies === false
+                        ? 'NIL'
+                        : (item.unit === 'Lots' ? 1 : item.quantity * bundleQty),
+                    unit: item.unit,
+                    rate: item.rate,
+                    totalCost: item.rate * (item.quantityApplies === false
+                        ? 1
+                        : (item.unit === 'Lots' ? 1 : item.quantity * bundleQty)),
+                }));
+            } else {
+                rows = [{
+                    id: `b-${sb.id}`,
+                    description: bundleName,
+                    quantity: bundleQty,
+                    unit: 'Nos',
+                    rate: sb.price || 0,
+                    totalCost: bundleTotalPrice,
+                }];
+            }
+            return { bundleName, rows, subTotal: bundleTotalPrice };
         });
-        formData.selectedProducts.forEach((sp) => {
+
+        const productRows = formData.selectedProducts.map((sp) => {
             const qty = sp.quantity || 1;
             const unitPrice = sp.price || 0;
-            orderRows.push({ id: `p-${sp.id}`, name: sp.product?.title || sp.product?.name || `Product #${sp.id}`, subtitle: 'Individual Component', quantity: qty, unitPrice, total: unitPrice * qty });
+            return {
+                id: `p-${sp.id}`,
+                description: sp.product?.title || sp.product?.name || `Product #${sp.id}`,
+                quantity: qty,
+                unit: 'Nos',
+                rate: unitPrice,
+                totalCost: unitPrice * qty,
+            };
         });
-        if (orderRows.length === 0) {
-            const productName = formData.selectedBundle?.title || formData.selectedBundle?.name
-                || (formData.productCategory === 'full-kit' ? 'Solar Panels, Inverter & Battery'
-                : formData.productCategory === 'inverter-battery' ? 'Inverter & Battery Solution'
-                : formData.productCategory === 'battery-only' ? 'Battery Only'
-                : formData.productCategory === 'inverter-only' ? 'Inverter Only' : 'Solar Panels Only');
-            orderRows.push({ id: 'single', name: productName, subtitle: '', quantity: formData.singleItemQuantity || 1, unitPrice: formData.selectedProductPrice || 0, total: (formData.selectedProductPrice || 0) * (formData.singleItemQuantity || 1) });
+
+        if (bundleSections.length === 0 && productRows.length === 0 && (formData.selectedBundle || formData.selectedProduct)) {
+            const label = formData.selectedBundle?.title || formData.selectedProduct?.title || formData.selectedProduct?.name || 'Item';
+            productRows.push({ id: 'single', description: label, quantity: 1, unit: 'Nos', rate: basePrice, totalCost: basePrice });
         }
-        const subTotal = orderRows.reduce((s, r) => s + r.total, 0);
 
-        // ── INVOICE: estimated fees (confirmed values come from API after checkout) ──
-        const estInstallation = 50000;
-        const estDelivery = 25000;
-        const estInspection = 10000;
-        const vatPercent = 7.5;
-
-        const invoiceRows = [];
-        orderRows.forEach((r) => {
-            invoiceRows.push({ id: `inv-${r.id}`, description: r.name, quantity: r.quantity, unit: 'Nos', rate: r.unitPrice, totalCost: r.total });
-        });
-        const feeRows = [
-            { id: 'fee-install', description: 'Installation Fees (est.)', quantity: 1, unit: 'Nos', rate: estInstallation, totalCost: estInstallation },
-            { id: 'fee-delivery', description: 'Delivery/Logistics Fees (est.)', quantity: 1, unit: 'Nos', rate: estDelivery, totalCost: estDelivery },
-            { id: 'fee-inspection', description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: estInspection, totalCost: estInspection },
-        ];
-        const allInvoiceRows = [...invoiceRows, ...feeRows];
-        const netTotal = allInvoiceRows.reduce((s, r) => s + r.totalCost, 0);
-        const vatAmount = (netTotal * vatPercent) / 100;
-        const grandTotal = netTotal + vatAmount;
+        const overallSubTotal = bundleSections.reduce((s, sec) => s + sec.subTotal, 0) + productRows.reduce((s, r) => s + r.totalCost, 0);
 
         return (
             <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-                <button onClick={() => {
-                    if (formData.optionType === 'build-system') setStep(3.75);
-                    else if (formData.selectedBundleId) setStep(3.5);
-                    else if (formData.optionType) setStep(3);
-                    else setStep(2);
-                }} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                <button onClick={() => setStep(4)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
-                <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary & Invoice</h2>
+                <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary</h2>
 
-                {/* ── PART 1: ORDER LIST ── */}
-                <h3 className="text-lg font-semibold text-gray-800 mb-3">Order List</h3>
-                <div className="mb-6 overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-sm">
-                        <thead>
-                            <tr className="border-b-2 border-gray-300 bg-gray-50">
-                                <th className="py-3 px-3 font-semibold text-gray-700">Item</th>
-                                <th className="py-3 px-3 font-semibold text-gray-700 text-center w-16">Qty</th>
-                                <th className="py-3 px-3 font-semibold text-gray-700 text-right w-32">Unit Price</th>
-                                <th className="py-3 px-3 font-semibold text-gray-700 text-right w-32">Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {orderRows.map((row) => (
-                                <tr key={row.id} className="border-b border-gray-100">
-                                    <td className="py-4 px-3">
-                                        <p className="font-semibold text-gray-900">{row.name}</p>
-                                        {row.subtitle && <p className="text-xs text-gray-500 mt-0.5">{row.subtitle}</p>}
-                                    </td>
-                                    <td className="py-4 px-3 text-center">{row.quantity}</td>
-                                    <td className="py-4 px-3 text-right">₦{Number(row.unitPrice).toLocaleString()}</td>
-                                    <td className="py-4 px-3 text-right font-semibold">₦{Number(row.total).toLocaleString()}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                        <tfoot>
-                            <tr className="border-t-2 border-gray-300">
-                                <td colSpan={3} className="py-3 px-3 font-bold text-gray-800">Items Subtotal:</td>
-                                <td className="py-3 px-3 text-right font-bold text-lg">₦{Number(subTotal || basePrice || 0).toLocaleString()}</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
+                {enrichingBundles && (
+                    <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+                        <Loader className="animate-spin" size={16} /> Loading item details...
+                    </div>
+                )}
 
-                {/* ── PART 2: INVOICE BREAKDOWN ── */}
-                <h3 className="text-lg font-semibold text-gray-800 mb-3">Invoice Breakdown</h3>
-                <div className="mb-4 overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-sm">
-                        <thead>
-                            <tr className="border-b-2 border-gray-300 bg-gray-50">
-                                <th className="py-3 px-2 font-semibold text-gray-700">ITEM DESCRIPTION</th>
-                                <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">QTY</th>
-                                <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">UNIT</th>
-                                <th className="py-3 px-2 font-semibold text-gray-700 text-right w-28">RATE</th>
-                                <th className="py-3 px-2 font-semibold text-gray-700 text-right w-32">TOTAL COST</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {allInvoiceRows.map((row) => (
-                                <tr key={row.id} className="border-b border-gray-100">
-                                    <td className="py-3 px-2 text-gray-800">{row.description}</td>
-                                    <td className="py-3 px-2 text-center">{row.quantity}</td>
-                                    <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
-                                    <td className="py-3 px-2 text-right">₦{Number(row.rate).toLocaleString()}</td>
-                                    <td className="py-3 px-2 text-right font-semibold">₦{Number(row.totalCost).toLocaleString()}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                        <tfoot>
-                            <tr className="border-t-2 border-gray-300">
-                                <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Net-Total</td>
-                                <td className="py-3 px-2 text-right font-bold">₦{Number(netTotal).toLocaleString()}</td>
-                            </tr>
-                            <tr className="border-b border-gray-200">
-                                <td colSpan={3} className="py-2 px-2 text-gray-700">VAT</td>
-                                <td className="py-2 px-2 text-right text-gray-600">{vatPercent}%</td>
-                                <td className="py-2 px-2 text-right font-semibold">₦{Number(vatAmount).toLocaleString()}</td>
-                            </tr>
-                            <tr className="bg-[#273e8e]/5">
-                                <td colSpan={4} className="py-3 px-2 font-bold text-lg text-[#273e8e]">Grand-Total</td>
-                                <td className="py-3 px-2 text-right font-bold text-lg text-[#273e8e]">₦{Number(grandTotal).toLocaleString()}</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
+                {bundleSections.map((section, sIdx) => (
+                    <div key={`section-${sIdx}`} className="mb-6">
+                        <h3 className="text-base font-semibold text-[#273e8e] mb-2 uppercase tracking-wide">
+                            Order List — {section.bundleName}
+                        </h3>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse text-sm">
+                                <thead>
+                                    <tr className="border-b-2 border-gray-300 bg-gray-50">
+                                        <th className="py-3 px-2 font-semibold text-gray-700">ITEM DESCRIPTION</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">QTY</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">UNIT</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-28">RATE</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-32">TOTAL COST</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {section.rows.map((row) => (
+                                        <tr key={row.id} className="border-b border-gray-100">
+                                            <td className="py-3 px-2 text-gray-800">{row.description}</td>
+                                            <td className="py-3 px-2 text-center">{row.quantity}</td>
+                                            <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
+                                            <td className="py-3 px-2 text-right text-gray-600">{row.rate > 0 ? `₦${Number(row.rate).toLocaleString()}` : <span className="italic text-gray-400">Included</span>}</td>
+                                            <td className="py-3 px-2 text-right font-semibold">{row.totalCost > 0 ? `₦${Number(row.totalCost).toLocaleString()}` : <span className="italic text-gray-400">Included</span>}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr className="border-t-2 border-gray-300">
+                                        <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Sub-Total</td>
+                                        <td className="py-3 px-2 text-right font-bold text-lg">₦{Number(section.subTotal).toLocaleString()}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                ))}
 
-                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-sm text-blue-700 mb-6">
-                    <strong>Note:</strong> Fees shown are estimates. Final amounts will be confirmed after checkout.
+                {productRows.length > 0 && (
+                    <div className="mb-6">
+                        {bundleSections.length > 0 && (
+                            <h3 className="text-base font-semibold text-[#273e8e] mb-2 uppercase tracking-wide">
+                                Individual Products
+                            </h3>
+                        )}
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse text-sm">
+                                <thead>
+                                    <tr className="border-b-2 border-gray-300 bg-gray-50">
+                                        <th className="py-3 px-2 font-semibold text-gray-700">ITEM DESCRIPTION</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">QTY</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">UNIT</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-28">RATE</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-32">TOTAL COST</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {productRows.map((row) => (
+                                        <tr key={row.id} className="border-b border-gray-100">
+                                            <td className="py-3 px-2 text-gray-800">{row.description}</td>
+                                            <td className="py-3 px-2 text-center">{row.quantity}</td>
+                                            <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
+                                            <td className="py-3 px-2 text-right">₦{Number(row.rate).toLocaleString()}</td>
+                                            <td className="py-3 px-2 text-right font-semibold">₦{Number(row.totalCost).toLocaleString()}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr className="border-t-2 border-gray-300">
+                                        <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Sub-Total</td>
+                                        <td className="py-3 px-2 text-right font-bold text-lg">₦{Number(productRows.reduce((s, r) => s + r.totalCost, 0)).toLocaleString()}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {(bundleSections.length + (productRows.length > 0 ? 1 : 0)) > 1 && (
+                    <div className="border-t-2 border-[#273e8e] pt-3 mb-6 flex justify-between items-center">
+                        <span className="font-bold text-lg text-gray-800">Overall Sub-Total</span>
+                        <span className="font-bold text-xl text-[#273e8e]">₦{Number(overallSubTotal || basePrice || 0).toLocaleString()}</span>
+                    </div>
+                )}
+
+                <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6">
+                    <p className="text-sm text-blue-700">
+                        <strong>Note:</strong> This is your order list. The full invoice with fees, VAT, and grand total will be shown on the next step.
+                    </p>
                 </div>
 
                 <button
-                    onClick={() => setStep(4)}
+                    onClick={() => setStep(7.5)}
                     className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
                 >
-                    Proceed to Checkout Options
+                    Proceed to Invoice
+                </button>
+            </div>
+        );
+    };
+
+    const renderStep7_5 = () => {
+        // Invoice step (mirrors BNPL renderStep6_75 exactly)
+        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
+        const itemsSubtotal = bundlesTotal + productsTotal;
+        const basePrice = itemsSubtotal > 0 ? itemsSubtotal : formData.selectedProductPrice;
+
+        const insuranceAddOn = addOns.find(a => a.is_compulsory_buy_now);
+        const insuranceFee = formData.includeInsurance
+            ? (insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
+                ? (basePrice * insuranceAddOn.calculation_value) / 100
+                : (insuranceAddOn?.price ?? (basePrice * 3) / 100))
+            : 0;
+
+        const installationFee = 50000;
+        const deliveryFee = 25000;
+        const inspectionFee = 10000;
+        const vatPercent = 7.5;
+
+        const bundleInvoiceSections = formData.selectedBundles.map((sb) => {
+            const bundleQty = sb.quantity || 1;
+            const bundleObj = sb.bundle;
+            const bundleName = bundleObj?.title || bundleObj?.name || `Bundle #${sb.id}`;
+            const bundleTotalPrice = (sb.price || 0) * bundleQty;
+            const { invoiceItems, serviceRows } = extractBundleLineItems(bundleObj);
+
+            let allRows;
+            if (invoiceItems.length > 0) {
+                allRows = invoiceItems.map((item, idx) => ({
+                    id: `inv-${sb.id}-${idx}`,
+                    description: item.description,
+                    quantity: item.quantityApplies === false
+                        ? 'NIL'
+                        : (item.unit === 'Lots' ? 1 : item.quantity * bundleQty),
+                    unit: item.unit,
+                    rate: item.rate,
+                    totalCost: item.rate * (item.quantityApplies === false
+                        ? 1
+                        : (item.unit === 'Lots' ? 1 : item.quantity * bundleQty)),
+                }));
+            } else {
+                allRows = [{
+                    id: `inv-${sb.id}-main`,
+                    description: bundleName,
+                    quantity: bundleQty,
+                    unit: 'Nos',
+                    rate: sb.price || 0,
+                    totalCost: bundleTotalPrice,
+                    isBold: true,
+                }];
+            }
+
+            if (serviceRows.length === 0) {
+                allRows.push(
+                    { id: `inv-${sb.id}-install`, description: `Installation Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: installationFee, totalCost: installationFee },
+                    { id: `inv-${sb.id}-delivery`, description: `Delivery Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: deliveryFee, totalCost: deliveryFee },
+                    { id: `inv-${sb.id}-inspection`, description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: inspectionFee, totalCost: inspectionFee },
+                );
+            }
+
+            const feesTotal = serviceRows.length > 0
+                ? serviceRows.reduce((s, r) => s + (r.rate * (r.quantityApplies === false ? 1 : r.quantity)), 0)
+                : (installationFee + deliveryFee + inspectionFee);
+            const sectionNetTotal = bundleTotalPrice + feesTotal;
+
+            return { bundleName, allRows, netTotal: sectionNetTotal };
+        });
+
+        const productInvoiceRows = formData.selectedProducts.map((p) => {
+            const qty = p.quantity || 1;
+            const unitPrice = p.price || 0;
+            return {
+                id: `inv-p-${p.id}`,
+                description: p.product?.title || p.product?.name || `Product #${p.id}`,
+                quantity: qty,
+                unit: 'Nos',
+                rate: unitPrice,
+                totalCost: unitPrice * qty,
+            };
+        });
+
+        if (bundleInvoiceSections.length === 0 && productInvoiceRows.length === 0 && (formData.selectedBundle || formData.selectedProduct)) {
+            const label = formData.selectedBundle?.title || formData.selectedProduct?.title || formData.selectedProduct?.name || 'Item';
+            productInvoiceRows.push({ id: 'inv-single', description: label, quantity: 1, unit: 'Nos', rate: basePrice, totalCost: basePrice });
+        }
+
+        const allItemsTotal = bundleInvoiceSections.reduce((s, sec) => s + sec.netTotal, 0) + productInvoiceRows.reduce((s, r) => s + r.totalCost, 0);
+        const overallNetTotal = allItemsTotal + insuranceFee;
+        const overallVat = (overallNetTotal * vatPercent) / 100;
+        const overallGrandTotal = overallNetTotal + overallVat;
+
+        return (
+            <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                <button onClick={() => setStep(7)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                    <ArrowLeft size={16} className="mr-2" /> Back
+                </button>
+                <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Invoice</h2>
+
+                {bundleInvoiceSections.map((section, sIdx) => (
+                    <div key={`inv-section-${sIdx}`} className="mb-8">
+                        <h3 className="text-base font-semibold text-[#273e8e] mb-2 uppercase tracking-wide">
+                            Invoice — {section.bundleName}
+                        </h3>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse text-sm">
+                                <thead>
+                                    <tr className="border-b-2 border-gray-300 bg-gray-50">
+                                        <th className="py-3 px-2 font-semibold text-gray-700">ITEM DESCRIPTION</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">QTY</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">UNIT</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-28">RATE</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-32">TOTAL COST</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {section.allRows.map((row) => (
+                                        <tr key={row.id} className={`border-b border-gray-100 ${row.isDetail ? 'bg-gray-50/50' : ''}`}>
+                                            <td className={`py-3 px-2 ${row.isBold ? 'font-semibold text-gray-900' : row.isDetail ? 'text-gray-500 text-xs' : 'text-gray-800'}`}>{row.description}</td>
+                                            <td className="py-3 px-2 text-center">{row.quantity}</td>
+                                            <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
+                                            <td className="py-3 px-2 text-right">{row.isDetail ? <span className="text-gray-400 text-xs">Included</span> : (row.rate > 0 ? `₦${Number(row.rate).toLocaleString()}` : '—')}</td>
+                                            <td className="py-3 px-2 text-right font-semibold">{row.isDetail ? '' : (row.totalCost > 0 ? `₦${Number(row.totalCost).toLocaleString()}` : '—')}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr className="border-t-2 border-gray-300">
+                                        <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Net-Total</td>
+                                        <td className="py-3 px-2 text-right font-bold">₦{Number(section.netTotal).toLocaleString()}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                ))}
+
+                {productInvoiceRows.length > 0 && (
+                    <div className="mb-8">
+                        {bundleInvoiceSections.length > 0 && (
+                            <h3 className="text-base font-semibold text-[#273e8e] mb-2 uppercase tracking-wide">
+                                Individual Products
+                            </h3>
+                        )}
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse text-sm">
+                                <thead>
+                                    <tr className="border-b-2 border-gray-300 bg-gray-50">
+                                        <th className="py-3 px-2 font-semibold text-gray-700">ITEM DESCRIPTION</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">QTY</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">UNIT</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-28">RATE</th>
+                                        <th className="py-3 px-2 font-semibold text-gray-700 text-right w-32">TOTAL COST</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {productInvoiceRows.map((row) => (
+                                        <tr key={row.id} className="border-b border-gray-100">
+                                            <td className="py-3 px-2 text-gray-800">{row.description}</td>
+                                            <td className="py-3 px-2 text-center">{row.quantity}</td>
+                                            <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
+                                            <td className="py-3 px-2 text-right">₦{Number(row.rate).toLocaleString()}</td>
+                                            <td className="py-3 px-2 text-right font-semibold">₦{Number(row.totalCost).toLocaleString()}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {insuranceFee > 0 && (
+                    <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg text-sm text-yellow-800 mb-4">
+                        Insurance Fee (3%): ₦{Number(insuranceFee).toLocaleString()} (included in overall total)
+                    </div>
+                )}
+
+                <div className="bg-[#273e8e]/5 border border-[#273e8e]/20 rounded-lg p-4 mb-6">
+                    <div className="flex justify-between items-center text-sm text-gray-700 mb-1">
+                        <span>Overall Net-Total</span>
+                        <span className="font-semibold">₦{Number(overallNetTotal).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm text-gray-700 mb-2">
+                        <span>VAT ({vatPercent}%)</span>
+                        <span className="font-semibold">₦{Number(overallVat).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center border-t border-[#273e8e]/20 pt-2">
+                        <span className="font-bold text-lg text-[#273e8e]">Overall Grand-Total</span>
+                        <span className="font-bold text-xl text-[#273e8e]">₦{Number(overallGrandTotal).toLocaleString()}</span>
+                    </div>
+                </div>
+
+                <button
+                    onClick={handleCheckoutSubmit}
+                    disabled={loading}
+                    className={`w-full py-4 rounded-xl font-bold transition-colors ${loading
+                        ? 'bg-gray-400 text-white cursor-not-allowed'
+                        : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
+                    }`}
+                >
+                    {loading ? (
+                        <span className="flex items-center justify-center">
+                            <Loader className="animate-spin mr-2" size={20} />
+                            Processing...
+                        </span>
+                    ) : (
+                        'Confirm & Proceed to Payment'
+                    )}
                 </button>
             </div>
         );
@@ -3567,68 +4054,15 @@ const BuyNowFlow = () => {
             );
         }
 
-        // Otherwise, show regular product order summary
-        // Get product details - prioritize bundle name from API if available
-        const productName = invoiceDetails?.bundle_title || formData.selectedBundle?.title || formData.selectedBundle?.name
-            ? (invoiceDetails?.bundle_title || formData.selectedBundle?.title || formData.selectedBundle?.name || 'Solar System Bundle')
-            : formData.productCategory === 'full-kit' 
-                ? 'Solar Panels, Inverter & Battery'
-                : formData.productCategory === 'inverter-battery'
-                    ? 'Inverter & Battery Solution'
-                    : formData.productCategory === 'battery-only'
-                        ? 'Battery Only'
-                        : formData.productCategory === 'inverter-only'
-                            ? 'Inverter Only'
-                            : 'Solar Panels Only';
-
+        // Non-audit: order confirmed — skip to payment (step 5).
+        // The user already reviewed Order Summary (step 7) and Invoice (step 7.5),
+        // so we don't show them again here.
         return (
-            <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-                <button onClick={() => setStep(4)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
-                    <ArrowLeft size={16} className="mr-2" /> Back
-                </button>
-                <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary</h2>
-                
-                <div className="space-y-4 mb-6">
-                    <div className="flex justify-between items-center">
-                        <div className="flex items-center">
-                            <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                <Sun size={24} className="text-gray-600" />
-                            </div>
-                            <div>
-                                <p className="font-bold text-gray-800">{productName}</p>
-                                <p className="text-sm text-gray-500">
-                                    {formData.productCategory === 'full-kit' 
-                                        ? 'Complete solar system solution'
-                                        : formData.productCategory === 'inverter-battery'
-                                            ? 'Inverter and battery backup'
-                                            : 'Individual component'}
-                                </p>
-                            </div>
-                        </div>
-                        <span className="font-bold">₦{Number(invoiceDetails?.product_price || formData.selectedProductPrice || 0).toLocaleString()}</span>
-                    </div>
-
-                    {formData.selectedBundles.length === 0 && formData.selectedProducts.length === 0 && (formData.productCategory === 'full-kit' || formData.productCategory === 'inverter-battery') && (
-                        <div className="text-sm text-gray-600 pl-14 space-y-1">
-                            <p><strong>Appliances:</strong> Standard household appliances</p>
-                            <p><strong>Backup Time:</strong> 8-12 hours (depending on usage)</p>
-                            <p><strong>Quantity:</strong> {formData.singleItemQuantity || 1} system{(formData.singleItemQuantity || 1) > 1 ? 's' : ''}</p>
-                        </div>
-                    )}
-                </div>
-
+            <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center">
                 <div className="bg-green-50 border border-green-200 p-4 rounded-lg mb-6">
-                    <p className="text-sm text-green-700">
-                        <strong>✓ Order confirmed!</strong> Please review the detailed invoice below and proceed to payment.
-                    </p>
+                    <p className="text-sm text-green-700"><strong>✓ Order confirmed!</strong> Redirecting to payment…</p>
                 </div>
-
-                <button
-                    onClick={() => setStep(5)}
-                    className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
-                >
-                    View Detailed Invoice
-                </button>
+                <Loader className="animate-spin mx-auto text-[#273e8e]" size={40} />
             </div>
         );
     };
@@ -3842,152 +4276,152 @@ const BuyNowFlow = () => {
             );
         }
 
-        // Otherwise, show invoice
-        // Use product_price from API response if available, otherwise calculate from selected items
-        let basePrice = 0;
-        if (invoiceDetails?.product_price) {
-            // Use product price from API response (most accurate)
-            basePrice = Number(invoiceDetails.product_price);
-        } else {
-            // Calculate totals from selected items (accounting for quantity) - fallback
-            const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
-            const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
-            const itemsSubtotal = bundlesTotal + productsTotal;
-            // For single items, multiply unit price by quantity (selectedProductPrice is the unit price)
-            const singleItemBasePrice = formData.selectedProductPrice * (formData.singleItemQuantity || 1);
-            basePrice = itemsSubtotal > 0 ? itemsSubtotal : singleItemBasePrice;
-        }
-        
-        // Get fees from invoiceDetails (from API) or use defaults
-        const installationFee = invoiceDetails?.installation_fee || (formData.installerChoice === 'troosolar' ? 50000 : 0);
-        const materialCost = invoiceDetails?.material_cost || 0;
-        const deliveryFee = invoiceDetails?.delivery_fee || 0;
-        // Inspection fee should always be included (default ₦10,000 if not in API response)
-        const inspectionFee = invoiceDetails?.inspection_fee || 10000;
-        const insuranceFee = invoiceDetails?.insurance_fee || 0;
-        const addOnsTotal = invoiceDetails?.add_ons_total || 0;
-        
-        const apiTotal = invoiceDetails?.total != null ? Number(invoiceDetails.total) : null;
-        
-        // Build invoice rows using INVOICE TEMPLATE (detailed breakdown)
-        const invoiceRows = [];
-
-        // Product/bundle rows
-        formData.selectedBundles.forEach((selectedBundle) => {
-            const qty = selectedBundle.quantity || 1;
-            const bundleObj = selectedBundle.bundle;
-            invoiceRows.push({
-                id: `b-${selectedBundle.id}`,
-                description: bundleObj?.title || bundleObj?.name || `Bundle #${selectedBundle.id}`,
-                quantity: qty,
-                unit: 'Nos',
-                rate: selectedBundle.price || 0,
-                totalCost: (selectedBundle.price || 0) * qty,
-            });
-        });
-        formData.selectedProducts.forEach((p) => {
-            const qty = p.quantity || 1;
-            const unitPrice = p.price || 0;
-            invoiceRows.push({
-                id: `p-${p.id}`,
-                description: p.product?.title || p.product?.name || `Product #${p.id}`,
-                quantity: qty,
-                unit: 'Nos',
-                rate: unitPrice,
-                totalCost: unitPrice * qty,
-            });
-        });
-        if (invoiceRows.length === 0 && formData.optionType !== 'audit') {
-            const label = formData.selectedBundle?.title || formData.selectedBundle?.name
-                || (formData.productCategory === 'full-kit' ? 'Solar Panels, Inverter & Battery'
-                : formData.productCategory === 'inverter-battery' ? 'Inverter & Battery Solution'
-                : formData.productCategory === 'battery-only' ? 'Battery Only'
-                : formData.productCategory === 'inverter-only' ? 'Inverter Only' : 'Solar Panels Only');
-            invoiceRows.push({
-                id: 'single',
-                description: label,
-                quantity: formData.singleItemQuantity || 1,
-                unit: 'Nos',
-                rate: formData.selectedProductPrice || basePrice || 0,
-                totalCost: basePrice || 0,
-            });
-        }
-        if (formData.optionType === 'audit') {
-            invoiceRows.push({
-                id: 'audit',
-                description: `Professional Energy Audit (${formData.auditType === 'home-office' ? 'Home / Office' : 'Commercial / Industrial'})`,
-                quantity: 1,
-                unit: 'Nos',
-                rate: invoiceDetails?.audit_fee || invoiceDetails?.product_price || 0,
-                totalCost: invoiceDetails?.audit_fee || invoiceDetails?.product_price || 0,
-            });
-        }
-
-        // Fee rows
-        const feeRows = [];
-        if (materialCost > 0) feeRows.push({ id: 'fee-material', description: 'Material Cost (Cables, Breakers, Surge Protectors, Trunking, and Pipes)', quantity: 1, unit: 'Lots', rate: materialCost, totalCost: materialCost });
-        if (installationFee > 0) feeRows.push({ id: 'fee-install', description: 'Installation Fees', quantity: 1, unit: 'Nos', rate: installationFee, totalCost: installationFee });
-        if (deliveryFee > 0) feeRows.push({ id: 'fee-delivery', description: 'Delivery/Logistics Fees', quantity: 1, unit: 'Nos', rate: deliveryFee, totalCost: deliveryFee });
-        feeRows.push({ id: 'fee-inspection', description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: inspectionFee, totalCost: inspectionFee });
-        if (insuranceFee > 0) feeRows.push({ id: 'fee-insurance', description: 'Insurance Fee', quantity: 1, unit: 'Nos', rate: insuranceFee, totalCost: insuranceFee });
-        if (addOnsTotal > 0) feeRows.push({ id: 'fee-addons', description: 'Additional Services', quantity: 1, unit: 'Nos', rate: addOnsTotal, totalCost: addOnsTotal });
-
-        const allInvoiceRows = [...invoiceRows, ...feeRows];
-        const netTotal = allInvoiceRows.reduce((s, r) => s + r.totalCost, 0);
+        // Non-audit: show confirmed invoice using extractBundleLineItems + real API fees, then calendar + payment
         const vatPercent = 7.5;
-        const vatAmount = (netTotal * vatPercent) / 100;
-        const grandTotal = netTotal + vatAmount;
+        const apiInstall = invoiceDetails?.installation_fee ? Number(invoiceDetails.installation_fee) : 50000;
+        const apiDelivery = invoiceDetails?.delivery_fee ? Number(invoiceDetails.delivery_fee) : 25000;
+        const apiInspect = invoiceDetails?.inspection_fee ? Number(invoiceDetails.inspection_fee) : 10000;
+        const apiInsurance = invoiceDetails?.insurance_fee ? Number(invoiceDetails.insurance_fee) : 0;
+        const outrightDiscount = Number(invoiceDetails?.outright_discount_amount || 0);
+        const outrightDiscountPct = Number(invoiceDetails?.outright_discount_percentage || 0);
 
-        // Use grandTotal for payment; if API total is higher (includes things we don't know about), use that
+        const bundleInvoiceSections5 = formData.selectedBundles.map((sb) => {
+            const bundleQty = sb.quantity || 1;
+            const bundleObj = sb.bundle;
+            const bundleName = bundleObj?.title || bundleObj?.name || `Bundle #${sb.id}`;
+            const bundleTotalPrice = (sb.price || 0) * bundleQty;
+            const { invoiceItems, serviceRows } = extractBundleLineItems(bundleObj);
+
+            let allRows;
+            if (invoiceItems.length > 0) {
+                allRows = invoiceItems.map((item, idx) => ({
+                    id: `inv5-${sb.id}-${idx}`,
+                    description: item.description,
+                    quantity: item.quantityApplies === false
+                        ? 'NIL'
+                        : (item.unit === 'Lots' ? 1 : item.quantity * bundleQty),
+                    unit: item.unit,
+                    rate: item.rate,
+                    totalCost: item.rate * (item.quantityApplies === false
+                        ? 1
+                        : (item.unit === 'Lots' ? 1 : item.quantity * bundleQty)),
+                }));
+            } else {
+                allRows = [{
+                    id: `inv5-${sb.id}-main`,
+                    description: bundleName,
+                    quantity: bundleQty,
+                    unit: 'Nos',
+                    rate: sb.price || 0,
+                    totalCost: bundleTotalPrice,
+                }];
+            }
+
+            if (serviceRows.length === 0) {
+                allRows.push(
+                    { id: `inv5-${sb.id}-install`, description: 'Installation Fees', quantity: 1, unit: 'Nos', rate: apiInstall, totalCost: apiInstall },
+                    { id: `inv5-${sb.id}-delivery`, description: 'Delivery/Logistics Fees', quantity: 1, unit: 'Nos', rate: apiDelivery, totalCost: apiDelivery },
+                    { id: `inv5-${sb.id}-inspect`, description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: apiInspect, totalCost: apiInspect },
+                );
+            }
+
+            const feesTotal = serviceRows.length > 0
+                ? serviceRows.reduce((s, r) => s + (r.rate * (r.quantityApplies === false ? 1 : r.quantity)), 0)
+                : (apiInstall + apiDelivery + apiInspect);
+            const sectionNetTotal = bundleTotalPrice + feesTotal;
+            return { bundleName, allRows, netTotal: sectionNetTotal };
+        });
+
+        if (bundleInvoiceSections5.length === 0) {
+            const label = invoiceDetails?.bundle_title || formData.selectedBundle?.title || formData.selectedBundle?.name || 'Solar System';
+            const price = Number(invoiceDetails?.product_price || formData.selectedProductPrice || 0);
+            const netTotal = price + apiInstall + apiDelivery + apiInspect;
+            bundleInvoiceSections5.push({
+                bundleName: label,
+                allRows: [
+                    { id: 'inv5-main', description: label, quantity: 1, unit: 'Nos', rate: price, totalCost: price },
+                    { id: 'inv5-install', description: 'Installation Fees', quantity: 1, unit: 'Nos', rate: apiInstall, totalCost: apiInstall },
+                    { id: 'inv5-delivery', description: 'Delivery/Logistics Fees', quantity: 1, unit: 'Nos', rate: apiDelivery, totalCost: apiDelivery },
+                    { id: 'inv5-inspect', description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: apiInspect, totalCost: apiInspect },
+                ],
+                netTotal,
+            });
+        }
+
+        const allItemsNetTotal = bundleInvoiceSections5.reduce((s, sec) => s + sec.netTotal, 0) + (apiInsurance > 0 ? apiInsurance : 0);
+        const vatAmount = (allItemsNetTotal * vatPercent) / 100;
+        const grandTotal = allItemsNetTotal + vatAmount;
+        const apiTotal = invoiceDetails?.total != null ? Number(invoiceDetails.total) : null;
         const finalTotal = (apiTotal != null && apiTotal > grandTotal) ? apiTotal : grandTotal;
 
         return (
         <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-            <button onClick={() => setStep(8)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+            <button onClick={() => setStep(7.5)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Invoice #{orderId || 'Pending'}</h2>
 
-            {/* INVOICE TEMPLATE */}
-            <div className="mb-8">
-                <div className="overflow-x-auto mb-4">
-                    <table className="w-full text-left border-collapse text-sm">
-                        <thead>
-                            <tr className="border-b-2 border-gray-300 bg-gray-50">
-                                <th className="py-3 px-2 font-semibold text-gray-700">ITEM DESCRIPTION</th>
-                                <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">QTY</th>
-                                <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">UNIT</th>
-                                <th className="py-3 px-2 font-semibold text-gray-700 text-right w-28">RATE</th>
-                                <th className="py-3 px-2 font-semibold text-gray-700 text-right w-32">TOTAL COST</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {allInvoiceRows.map((row) => (
-                                <tr key={row.id} className="border-b border-gray-100">
-                                    <td className="py-3 px-2 text-gray-800">{row.description}</td>
-                                    <td className="py-3 px-2 text-center">{row.quantity}</td>
-                                    <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
-                                    <td className="py-3 px-2 text-right">₦{Number(row.rate).toLocaleString()}</td>
-                                    <td className="py-3 px-2 text-right font-semibold">₦{Number(row.totalCost).toLocaleString()}</td>
+            {bundleInvoiceSections5.map((section, sIdx) => (
+                <div key={`inv5-section-${sIdx}`} className="mb-6">
+                    <h3 className="text-base font-semibold text-[#273e8e] mb-2 uppercase tracking-wide">
+                        Invoice — {section.bundleName}
+                    </h3>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-sm">
+                            <thead>
+                                <tr className="border-b-2 border-gray-300 bg-gray-50">
+                                    <th className="py-3 px-2 font-semibold text-gray-700">ITEM DESCRIPTION</th>
+                                    <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">QTY</th>
+                                    <th className="py-3 px-2 font-semibold text-gray-700 text-center w-16">UNIT</th>
+                                    <th className="py-3 px-2 font-semibold text-gray-700 text-right w-28">RATE</th>
+                                    <th className="py-3 px-2 font-semibold text-gray-700 text-right w-32">TOTAL COST</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                        <tfoot>
-                            <tr className="border-t-2 border-gray-300">
-                                <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Net-Total</td>
-                                <td className="py-3 px-2 text-right font-bold">₦{Number(netTotal).toLocaleString()}</td>
-                            </tr>
-                            <tr className="border-b border-gray-200">
-                                <td colSpan={3} className="py-2 px-2 text-gray-700">VAT</td>
-                                <td className="py-2 px-2 text-right text-gray-600">{vatPercent}%</td>
-                                <td className="py-2 px-2 text-right font-semibold">₦{Number(vatAmount).toLocaleString()}</td>
-                            </tr>
-                            <tr className="bg-[#273e8e]/5">
-                                <td colSpan={4} className="py-3 px-2 font-bold text-lg text-[#273e8e]">Grand-Total</td>
-                                <td className="py-3 px-2 text-right font-bold text-lg text-[#273e8e]">₦{Number(finalTotal).toLocaleString()}</td>
-                            </tr>
-                        </tfoot>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {section.allRows.map((row) => (
+                                    <tr key={row.id} className="border-b border-gray-100">
+                                        <td className="py-3 px-2 text-gray-800">{row.description}</td>
+                                        <td className="py-3 px-2 text-center">{row.quantity}</td>
+                                        <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
+                                        <td className="py-3 px-2 text-right">{row.rate > 0 ? `₦${Number(row.rate).toLocaleString()}` : '—'}</td>
+                                        <td className="py-3 px-2 text-right font-semibold">{row.totalCost > 0 ? `₦${Number(row.totalCost).toLocaleString()}` : '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                            <tfoot>
+                                <tr className="border-t-2 border-gray-300">
+                                    <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Net-Total</td>
+                                    <td className="py-3 px-2 text-right font-bold">₦{Number(section.netTotal).toLocaleString()}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            ))}
+
+            {apiInsurance > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg text-sm text-yellow-800 mb-4">
+                    Insurance Fee: ₦{Number(apiInsurance).toLocaleString()} (included in total)
+                </div>
+            )}
+            {outrightDiscount > 0 && (
+                <div className="bg-green-50 border border-green-200 p-3 rounded-lg text-sm text-green-800 mb-4">
+                    Outright purchase discount applied: {outrightDiscountPct}% (−₦{Number(outrightDiscount).toLocaleString()})
+                </div>
+            )}
+
+            <div className="bg-[#273e8e]/5 border border-[#273e8e]/20 rounded-lg p-4 mb-6">
+                <div className="flex justify-between items-center text-sm text-gray-700 mb-1">
+                    <span>Net-Total</span>
+                    <span className="font-semibold">₦{Number(allItemsNetTotal).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm text-gray-700 mb-2">
+                    <span>VAT ({vatPercent}%)</span>
+                    <span className="font-semibold">₦{Number(vatAmount).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center border-t border-[#273e8e]/20 pt-2">
+                    <span className="font-bold text-lg text-[#273e8e]">Grand-Total</span>
+                    <span className="font-bold text-xl text-[#273e8e]">₦{Number(finalTotal).toLocaleString()}</span>
                 </div>
             </div>
             
@@ -4274,6 +4708,7 @@ const BuyNowFlow = () => {
                     {step === 3.75 && renderStep3_75()}
                     {step === 4 && renderStep4()}
                     {step === 7 && renderStep7()}
+                    {step === 7.5 && renderStep7_5()}
                     {step === 8 && renderStep8()}
                     {step === 5 && renderStep5()}
                     {step === 6 && renderStep6()}

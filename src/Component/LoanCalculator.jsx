@@ -120,7 +120,7 @@ const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: l
           />
           {showMinError && (
             <p className="mt-2 text-sm text-red-600">
-              Minimum is {formatCurrency(minAmount)} (based on admin settings).
+              Minimum is {formatCurrency(minAmount)}
             </p>
           )}
           {!showMinError && totalAmount > 0 && totalAmount < minAmount && touched && (

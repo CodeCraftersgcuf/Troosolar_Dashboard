@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
+import toast from "react-hot-toast";
 import { assets } from "../assets/data";
 import SideBar from "../Component/SideBar";
 import TopNavbar from "../Component/TopNavbar";
@@ -181,6 +182,7 @@ const mapApiProductToDetails = (p) => {
       .map((i) => i?.image)
       .filter(Boolean),
     stockText: `${current}/${total}`,
+    stockQty: current,
     stockPct,
     topDeal: !!p?.top_deal,
   };
@@ -327,6 +329,9 @@ export default function ProductDetails() {
 
   const handleAddToCart = async () => {
     if (!product?.id || addingToCart) return;
+    if (Number(product?.stockQty ?? 0) <= 0) {
+      return toast.error("This product is out of stock.");
+    }
     const tok = localStorage.getItem("access_token");
     if (!tok) return toast.error("Please log in to add items to cart.");
 
@@ -517,13 +522,13 @@ export default function ProductDetails() {
                   <div className="grid grid-cols-2 gap-4">
                     <button
                       onClick={handleAddToCart}
-                      disabled={addingToCart}
+                      disabled={addingToCart || Number(product?.stockQty ?? 0) <= 0}
                       className="py-4 border text-[#273E8E] border-[#273e8e] rounded-full hover:bg-[#273e8e]/10 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {addingToCart && (
                         <div className="w-4 h-4 border-2 border-[#273e8e] border-t-transparent rounded-full animate-spin"></div>
                       )}
-                      {addingToCart ? "Adding..." : "Add To Cart"}
+                      {Number(product?.stockQty ?? 0) <= 0 ? "Out of Stock" : addingToCart ? "Adding..." : "Add To Cart"}
                     </button>
                     <Link
                       to="/cart"
@@ -920,7 +925,7 @@ export default function ProductDetails() {
                 {qtyInCart}
                 <button
                   onClick={handleAddToCart}
-                  disabled={addingToCart}
+                  disabled={addingToCart || Number(product?.stockQty ?? 0) <= 0}
                   className="h-10 flex justify-center items-center w-10 bg-[#273e8e] rounded-md text-white disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {addingToCart ? (
@@ -937,13 +942,13 @@ export default function ProductDetails() {
               <div className="grid grid-cols-2 gap-4">
                 <button
                   onClick={handleAddToCart}
-                  disabled={addingToCart}
+                  disabled={addingToCart || Number(product?.stockQty ?? 0) <= 0}
                   className="py-3 border border-[#273e8e] rounded-full hover:bg-[#273e8e]/10 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {addingToCart && (
                     <div className="w-4 h-4 border-2 border-[#273e8e] border-t-transparent rounded-full animate-spin"></div>
                   )}
-                  {addingToCart ? "Adding..." : "Add To Cart"}
+                  {Number(product?.stockQty ?? 0) <= 0 ? "Out of Stock" : addingToCart ? "Adding..." : "Add To Cart"}
                 </button>
                 <Link
                   to="/cart"

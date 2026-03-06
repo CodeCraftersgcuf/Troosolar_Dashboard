@@ -1,13 +1,32 @@
 import React, { useState, useEffect } from "react";
 import { Minus, Plus, Search, X } from "lucide-react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import axios from "axios";
+import API from "../config/api.config";
+
+const DEFAULT_INVERTER_SELECTION_RANGES = [
+  { minKw: 0, maxKw: 0.96, targetKva: 1.2, label: "1.2kVA/12V" },
+  { minKw: 0.96, maxKw: 1.13, targetKva: 1.5, label: "1.5kVA/12V" },
+  { minKw: 1.13, maxKw: 1.35, targetKva: 1.8, label: "1.8kVA/12V" },
+  { minKw: 1.35, maxKw: 2.88, targetKva: 3.6, label: "3.6kVA/24V or 4kVA/24V" },
+  { minKw: 2.88, maxKw: 4.0, targetKva: 5, label: "5kVA/48V" },
+  { minKw: 4.0, maxKw: 4.5, targetKva: 6, label: "6kVA/48V or 6.5kVA/48V" },
+  { minKw: 4.5, maxKw: 6.0, targetKva: 8, label: "8kVA/48V" },
+  { minKw: 6.0, maxKw: 7.5, targetKva: 10, label: "10kVA - 2 units of 5kVA/48V" },
+  { minKw: 7.5, maxKw: 9.0, targetKva: 12, label: "12kVA/48V" },
+  { minKw: 9.0, maxKw: 11.5, targetKva: 15, label: "15kVA - 3 units of 5kVA/48V" },
+  { minKw: 11.5, maxKw: 13.5, targetKva: 18, label: "18kVA - 3 units of 6kVA/48V" },
+  { minKw: 13.5, maxKw: 15.0, targetKva: 20, label: "20kVA - 4 units of 5kVA/48V" },
+];
 
 const InverterLoadCalculator = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
   const returnTo = searchParams.get("returnTo"); // "buy-now" | "bnpl"
+  const source = searchParams.get("source"); // "flow" when opened from BNPL/BuyNow flow
   const category = searchParams.get("category") || ""; // full-kit | inverter-battery | battery-only
+  const fromBundles = searchParams.get("fromBundles") === "true";
   // Comprehensive appliance data from the Excel spreadsheet
   const applianceList = [
     // TVs
@@ -157,13 +176,85 @@ const InverterLoadCalculator = () => {
   const [newApplianceName, setNewApplianceName] = useState("");
   const [newAppliancePower, setNewAppliancePower] = useState("");
 
-  // Standard inverter ratings (W) — can be replaced by API from backend when Excel data is uploaded
-  const INVERTER_RATINGS_W = [800, 1200, 2000, 3000, 4000, 5000, 6000, 7500, 10000, 12000, 15000];
+  const [inverterSelectionRanges, setInverterSelectionRanges] = useState(
+    DEFAULT_INVERTER_SELECTION_RANGES
+  );
+
 
   // Filter appliances based on search term
   const filteredAppliances = appliances.filter((appliance) =>
     appliance.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  useEffect(() => {
+    const fetchCalculatorSettings = async () => {
+      try {
+        const { data } = await axios.get(API.CONFIG_CALCULATOR_SETTINGS, {
+          headers: { Accept: "application/json" },
+        });
+        const payload = data?.data ?? data ?? {};
+        const ranges = Array.isArray(payload?.inverter_ranges)
+          ? payload.inverter_ranges
+          : [];
+        if (ranges.length > 0) {
+          const normalized = ranges
+            .map((r) => ({
+              minKw: Number(r?.min_kw),
+              maxKw: Number(r?.max_kw),
+              targetKva: Number(r?.target_kva),
+              label: String(r?.label || ""),
+            }))
+            .filter((r) => Number.isFinite(r.minKw) && Number.isFinite(r.maxKw) && Number.isFinite(r.targetKva) && r.label)
+            .sort((a, b) => a.minKw - b.minKw);
+          if (normalized.length > 0) {
+            setInverterSelectionRanges(normalized);
+          }
+        }
+      } catch (e) {
+        // Keep defaults when API is unavailable.
+      }
+    };
+    fetchCalculatorSettings();
+  }, []);
+
+  // When user returns from "Edit Load" on recommended bundles page, restore previous appliance entries.
+  useEffect(() => {
+    if (!fromBundles) return;
+    try {
+      const raw = localStorage.getItem("loadCalculatorAppliances");
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!Array.isArray(saved) || saved.length === 0) return;
+
+      const base = applianceList.map((appliance) => ({
+        ...appliance,
+        quantity: 0,
+        hours: 0,
+      }));
+
+      const merged = [...base];
+      saved.forEach((item) => {
+        const name = String(item?.name || "").trim();
+        if (!name) return;
+        const existingIdx = merged.findIndex((a) => a.name === name);
+        const next = {
+          name,
+          power: Number(item?.power) || 0,
+          quantity: Math.max(0, Number(item?.quantity) || 0),
+          hours: Math.max(0, Number(item?.hours) || 0),
+        };
+        if (existingIdx >= 0) {
+          merged[existingIdx] = { ...merged[existingIdx], ...next };
+        } else {
+          merged.push(next);
+        }
+      });
+
+      setAppliances(merged);
+    } catch (e) {
+      console.warn("Failed to restore calculator data:", e);
+    }
+  }, [fromBundles]);
 
   // Per row: Power (W) = Quantity * Watts; Watts Hours / Day = Power (W) * Hours/Day
   const totalLoadW = appliances.reduce(
@@ -175,14 +266,26 @@ const InverterLoadCalculator = () => {
     0
   );
   const totalEnergyKwh = totalEnergyWh / 1000;
-  // Proposed inverter: smallest rating that can handle load with ~1.25 headroom
-  const proposedInverterW = INVERTER_RATINGS_W.find((r) => r >= totalLoadW * 1.25) ?? INVERTER_RATINGS_W[INVERTER_RATINGS_W.length - 1];
-  const proposedInverterKva = (proposedInverterW / 1000).toFixed(1);
+  const totalLoadKw = totalLoadW / 1000;
+  const selectedRange =
+    totalLoadKw > 0
+      ? (inverterSelectionRanges.find((r) => {
+          return totalLoadKw >= r.minKw && totalLoadKw <= r.maxKw;
+        }) || inverterSelectionRanges[inverterSelectionRanges.length - 1])
+      : null;
+  const proposedInverterW = selectedRange ? Math.round(selectedRange.targetKva * 1000) : 0;
+  const proposedInverterKva = selectedRange ? String(selectedRange.targetKva) : "0.0";
+  const proposedInverterLabel = selectedRange ? selectedRange.label : "—";
   const peakLoadW = totalLoadW;
 
   // Handle proceed button - navigate back with load (q parameter)
   const handleProceed = () => {
-    const q = Math.max(0, Math.round(peakLoadW));
+    // Send proposed inverter capacity based on approved inverter selection range table.
+    const q = Math.max(0, Math.round(proposedInverterW));
+    if (q <= 0) {
+      alert("Please add appliance quantity/load before proceeding.");
+      return;
+    }
     
     // Save appliances to localStorage for bundle detail page
     try {
@@ -214,6 +317,19 @@ const InverterLoadCalculator = () => {
     
     // Default: go to solar bundles if no returnTo specified
     navigate(`/solar-bundles?q=${q}`);
+  };
+
+  const handleGoBack = () => {
+    const categoryParam = category ? `&category=${encodeURIComponent(category)}` : "";
+    if (source === "flow" && returnTo === "buy-now") {
+      navigate(`/buy-now?step=3.5&fromCalculator=true${categoryParam}`);
+      return;
+    }
+    if (source === "flow" && returnTo === "bnpl") {
+      navigate(`/bnpl?step=3.5&fromCalculator=true${categoryParam}`);
+      return;
+    }
+    navigate("/tools?tool=inverter");
   };
 
   // Update quantity for an appliance
@@ -281,9 +397,13 @@ const InverterLoadCalculator = () => {
         </div>
 
         {/* Main Grid */}
-        <Link to="/" className="text-[#273e8e] underline text-left">
+        <button
+          type="button"
+          onClick={handleGoBack}
+          className="text-[#273e8e] underline text-left"
+        >
           Go Back
-        </Link>
+        </button>
         <div className="grid grid-cols-12 gap-6 w-full mt-4">
           {/* LOAD CALCULATION table — columns match Excel: Appliance | Quantity | Watts | Power (W) | Hours/Day | Watts Hours / Day */}
           <div className="col-span-8 space-y-4">
@@ -448,9 +568,10 @@ const InverterLoadCalculator = () => {
                   <p className="text-sm text-white/90">{totalEnergyKwh.toFixed(3)} kWh/day</p>
                 </div>
                 <div>
-                  <p className="text-white/80 text-xs">Proposed Inverter Rating</p>
+                  <p className="text-white/80 text-xs">Proposed Inverter Rating.</p>
                   <p className="text-xl font-bold">{proposedInverterKva} kVA</p>
                   <p className="text-sm text-white/90">{proposedInverterW.toLocaleString()} W</p>
+                  <p className="text-[11px] text-white/80 mt-1">{proposedInverterLabel}</p>
                 </div>
               </div>
               <p className="text-white/80 text-xs">Click Proceed to see recommended bundles for this load.</p>
@@ -459,7 +580,7 @@ const InverterLoadCalculator = () => {
                 onClick={handleProceed}
                 className="bg-white text-[#273e8e] px-8 py-3 rounded-xl font-semibold hover:bg-gray-100 transition-colors w-full"
               >
-                Proceed
+                Proceed to recommended bundles
               </button>
             </div>
           </div>
@@ -646,7 +767,7 @@ const InverterLoadCalculator = () => {
             onClick={handleProceed}
             className="bg-white text-[#273e8e] w-full py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
           >
-            Proceed
+            Proceed to recommended bundles
           </button>
         </div>
       </div>

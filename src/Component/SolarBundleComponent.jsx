@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 const SolarBundleComponent = ({
   id,
@@ -18,6 +18,7 @@ const SolarBundleComponent = ({
   const [imageError, setImageError] = useState(false);
   const [useFallback, setUseFallback] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Fallback image URL
   const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
@@ -45,10 +46,12 @@ const SolarBundleComponent = ({
     // Only navigate if the click is not on a button or link
     if (!e.target.closest('a') && !e.target.closest('button')) {
       if (id) {
-        navigate(`/productBundle/details/${id}`);
+        navigate(`/productBundle/details/${id}${location.search || ""}`);
       }
     }
   };
+
+  const detailLink = `/productBundle/details/${id}${location.search || ""}`;
 
   return (
     <div
@@ -145,14 +148,14 @@ const SolarBundleComponent = ({
       {/* Actions: Buttons similar to Product component */}
       <div className="grid grid-cols-2 gap-3 mt-auto" onClick={(e) => e.stopPropagation()}>
         <Link
-          to={`/productBundle/details/${id}`}
+          to={detailLink}
           className="h-10 border border-[#000000] text-[12px] max-sm:text-[8px] rounded-full max-sm:rounded-2xl text-[#181919] max-sm:h-7 flex items-center justify-center hover:bg-gray-50 transition-colors"
           onClick={(e) => e.stopPropagation()}
         >
           Learn More
         </Link>
         <Link
-          to={`/productBundle/details/${id}`}
+          to={detailLink}
           className="h-10 text-[10px] sm:text-[12px] rounded-full bg-[#273e8e] max-sm:text-[8px] max-sm:rounded-2xl max-sm:h-7 text-white flex items-center justify-center hover:bg-[#1a2b6b] transition-colors"
           onClick={(e) => e.stopPropagation()}
         >

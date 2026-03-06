@@ -23,6 +23,7 @@ const formatNGN = (n) => {
 
 // Map API product -> card props
 const mapApiProductToCard = (p) => {
+    const stockQty = Number(p?.stock ?? 0);
     const image =
         p?.featured_image_url ||
         p?.featured_image ||
@@ -72,7 +73,7 @@ const mapApiProductToCard = (p) => {
         ratingAvg,
         ratingCount: reviews.length,
         categoryId: p?.category_id,
-        stock: p?.stock,
+        stock: stockQty,
         isHotDeal: !!p?.top_deal,
     };
 };
@@ -136,7 +137,9 @@ const SolarShop = () => {
                         ...(token ? { Authorization: `Bearer ${token}` } : {}),
                     },
                 });
-                const list = Array.isArray(data?.data) ? data.data : [];
+                const list = (Array.isArray(data?.data) ? data.data : []).filter(
+                    (product) => Number(product?.stock ?? 0) > 0
+                );
                 const mappedProducts = list.map(mapApiProductToCard);
                 setApiProducts(mappedProducts);
                 setFilteredResults(mappedProducts);

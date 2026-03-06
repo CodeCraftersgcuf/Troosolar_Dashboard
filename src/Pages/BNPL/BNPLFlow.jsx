@@ -76,6 +76,60 @@ const SPEC_LABELS = {
 const BUNDLE_SPEC_ORDER = ['company_oem', 'solar_panel_type', 'inverter_capacity_kva', 'voltage', 'battery_type', 'solar_panels_warranty', 'inverter_warranty', 'battery_warranty', 'solar_panels_wattage', 'battery_capacity_kwh', 'backup_time_range'];
 const SPEC_KEYS_HIDDEN = ['solar_panel_capacity_kw', 'solar_panel_capacity_w'];
 
+const parseBundleSpecifications = (bundle) => {
+    const raw = bundle?.specifications;
+    if (!raw) return {};
+    if (typeof raw === 'object') return raw;
+    if (typeof raw === 'string') {
+        try {
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+    return {};
+};
+
+const getBundleBatteryCapacity = (bundle) => {
+    const specs = parseBundleSpecifications(bundle);
+    return (
+        specs.battery_capacity_kwh ??
+        specs.battery_capacity ??
+        specs.battery_capacity_ah ??
+        specs.battery_capacity_wh ??
+        specs.battery ??
+        specs.battery_kwh ??
+        bundle?.battery_capacity_kwh ??
+        bundle?.battery_capacity ??
+        bundle?.battery_capacity_ah ??
+        bundle?.battery_capacity_wh ??
+        bundle?.battery ??
+        '—'
+    );
+};
+
+const getBundleInverterRating = (bundle) => {
+    const specs = parseBundleSpecifications(bundle);
+    return (
+        bundle?.inver_rating ??
+        specs.inverter_capacity_kva ??
+        specs.inverter_rating ??
+        '—'
+    );
+};
+
+const getBundleSolarPanelCapacity = (bundle) => {
+    const specs = parseBundleSpecifications(bundle);
+    return (
+        specs.solar_panels_wattage ??
+        specs.solar_panel_capacity_kw ??
+        bundle?.solar_panels_wattage ??
+        bundle?.solar_panel_capacity_kw ??
+        '—'
+    );
+};
+
 // Flutterwave integration
 const ensureFlutterwave = () =>
     new Promise((resolve, reject) => {
@@ -334,9 +388,18 @@ const BNPLFlow = () => {
     const [selectedSystemSize, setSelectedSystemSize] = useState("all"); // System size filter
     const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false);
     const sizeDropdownRef = useRef(null);
+    const [showBundleSelectPrompt, setShowBundleSelectPrompt] = useState(false);
+    const [lastSelectedBundleName, setLastSelectedBundleName] = useState('');
     const bundlesFetchedForLoadRef = useRef(false);
     const [enrichedBundles, setEnrichedBundles] = useState({}); // { bundleId: fullBundleData }
     const [enrichingBundles, setEnrichingBundles] = useState(false);
+
+    // Defensive guard: never remain on step 3.6 without details data.
+    useEffect(() => {
+        if (step === 3.6 && !selectedBundleDetails) {
+            setStep(3.5);
+        }
+    }, [step, selectedBundleDetails]);
 
     // Fetch full details (bundle_items, materials, services) for all selected bundles
     const enrichSelectedBundles = async () => {
@@ -386,6 +449,12 @@ const BNPLFlow = () => {
             'panels-only': [], // Solar panels only
         };
 
+        const isBatteryCategory = (name) =>
+            name.includes('battery') ||
+            name.includes('batteries') ||
+            name.includes('lithium') ||
+            name.includes('battries');
+
         // Find matching categories from API
         categories.forEach(cat => {
             const name = (cat.title || cat.name || '').toLowerCase();
@@ -393,19 +462,19 @@ const BNPLFlow = () => {
             // Full kit: Solar, Inverters, Batteries
             if (groupType === 'full-kit') {
                 if (name.includes('solar') || name.includes('panel') || 
-                    name.includes('inverter') || name.includes('battery') || name.includes('battries')) {
+                    name.includes('inverter') || isBatteryCategory(name)) {
                     categoryIds['full-kit'].push(cat.id);
                 }
             }
             // Inverter & Battery: Inverters, Batteries
             else if (groupType === 'inverter-battery') {
-                if (name.includes('inverter') || name.includes('battery') || name.includes('battries')) {
+                if (name.includes('inverter') || isBatteryCategory(name)) {
                     categoryIds['inverter-battery'].push(cat.id);
                 }
             }
             // Battery only
             else if (groupType === 'battery-only') {
-                if (name.includes('battery') || name.includes('battries')) {
+                if (isBatteryCategory(name)) {
                     categoryIds['battery-only'].push(cat.id);
                 }
             }
@@ -423,7 +492,7 @@ const BNPLFlow = () => {
             }
         });
 
-        return categoryIds[groupType] || [];
+        return Array.from(new Set(categoryIds[groupType] || []));
     };
 
     // System size options (1.2kW to 10kW)
@@ -451,16 +520,37 @@ const BNPLFlow = () => {
         return null;
     };
 
+    const parseAmount = (value) => {
+        if (value == null || value === '') return 0;
+        const cleaned = String(value).replace(/,/g, '').replace(/[^\d.-]/g, '');
+        const n = Number(cleaned);
+        return Number.isFinite(n) ? n : 0;
+    };
+
+    const bnplMinimumLoanAmount = useMemo(() => {
+        const configured = parseAmount(loanConfig?.minimum_loan_amount);
+        return configured > 0 ? configured : 0;
+    }, [loanConfig]);
+
+    const bundlesMeetingMinLoan = useMemo(() => {
+        if (bnplMinimumLoanAmount <= 0) return bundles;
+        return bundles.filter((bundle) => {
+            const bundlePrice = Number(bundle?.discount_price || bundle?.total_price || 0);
+            return bundlePrice >= bnplMinimumLoanAmount;
+        });
+    }, [bundles, bnplMinimumLoanAmount]);
+
     // Filter bundles based on selected system size
     const filteredBundles = useMemo(() => {
+        const sourceBundles = bundlesMeetingMinLoan;
         if (selectedSystemSize === "all") {
-            return bundles;
+            return sourceBundles;
         }
         
         const targetSize = parseFloat(selectedSystemSize);
-        if (isNaN(targetSize)) return bundles;
+        if (isNaN(targetSize)) return sourceBundles;
         
-        return bundles.filter((bundle) => {
+        return sourceBundles.filter((bundle) => {
             const bundleSize = extractSystemSize(bundle);
             if (bundleSize === null) return false;
             
@@ -468,7 +558,7 @@ const BNPLFlow = () => {
             const tolerance = 0.3;
             return Math.abs(bundleSize - targetSize) <= tolerance;
         });
-    }, [bundles, selectedSystemSize]);
+    }, [bundlesMeetingMinLoan, selectedSystemSize]);
 
     // Close size dropdown if clicked outside
     useEffect(() => {
@@ -795,12 +885,61 @@ const BNPLFlow = () => {
         fetchConfig();
     }, []);
 
-    // Map product category to backend bundle_type for filtering (match exactly; do not recommend wrong category)
-    const categoryToBundleType = {
-        'full-kit': 'Solar+Inverter+Battery',
-        'inverter-battery': 'Inverter + Battery',
-        'battery-only': 'Battery only',
+    const normalizeBundleType = (value) =>
+        String(value || '')
+            .toLowerCase()
+            .replace(/[+]/g, ' plus ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+
+    const bundleTypeAliasesByCategory = React.useMemo(() => ({
+        'full-kit': [
+            'solar inverter battery',
+            'solar plus inverter plus battery',
+            'solar-inverter-battery',
+            'full kit',
+        ],
+        'inverter-battery': [
+            'inverter battery',
+            'inverter and battery',
+            'inverter plus battery',
+        ],
+        'battery-only': ['battery only', 'battery'],
+        'inverter-only': ['inverter only', 'inverter'],
+        'panels-only': ['solar panel only', 'panels only', 'solar panels only', 'panel only'],
+    }), []);
+
+    const getBundleCategoryLabel = (bundle) => {
+        const raw = bundle?.bundle_type || bundle?.category || bundle?.product_category || bundle?.category_type;
+        const normalized = normalizeBundleType(raw);
+        for (const [categoryKey, aliases] of Object.entries(bundleTypeAliasesByCategory)) {
+            if (aliases.some((alias) => normalized.includes(normalizeBundleType(alias)))) {
+                if (categoryKey === 'full-kit') return 'Solar + Inverter + Battery';
+                if (categoryKey === 'inverter-battery') return 'Inverter + Battery';
+                if (categoryKey === 'battery-only') return 'Battery only';
+                if (categoryKey === 'inverter-only') return 'Inverter only';
+                if (categoryKey === 'panels-only') return 'Panels only';
+            }
+        }
+        return raw || 'Uncategorized';
     };
+
+    const filterBundlesByCategory = React.useCallback((arr, categoryKey) => {
+        if (!Array.isArray(arr)) return [];
+        const aliases = bundleTypeAliasesByCategory[categoryKey];
+        if (!aliases?.length) return arr;
+        return arr.filter((bundle) => {
+            const normalized = normalizeBundleType(
+                bundle?.bundle_type || bundle?.category || bundle?.product_category || bundle?.category_type
+            );
+            return aliases.some((alias) => normalized.includes(normalizeBundleType(alias)));
+        });
+    }, [bundleTypeAliasesByCategory]);
+
+    const activeSolutionCategory = formData.productCategory || searchParams.get('category') || 'full-kit';
+    const isInverterFlow = activeSolutionCategory === 'inverter-battery';
+    const solutionLabel = isInverterFlow ? 'Choose My Inverter Solution' : 'Choose My Solar Bundle';
+    const solutionListLabel = isInverterFlow ? 'inverter solutions' : 'solar bundles';
 
     // When landing on step 3.5 with q (from Load Calculator), fetch bundles by load then filter by category
     React.useEffect(() => {
@@ -809,7 +948,8 @@ const BNPLFlow = () => {
             bundlesFetchedForLoadRef.current = true;
             setBundles([]);
             const userLoadW = Number(qParam);
-            const loadW = Math.round(userLoadW * 1.3);
+            // Backend already applies the 30% headroom rule, so pass raw load once.
+            const loadW = Math.max(0, Math.round(userLoadW));
             const fetchBundlesByLoad = async () => {
                 setBundlesLoading(true);
                 try {
@@ -830,12 +970,8 @@ const BNPLFlow = () => {
                     } else if (root && typeof root === "object" && root.id) {
                         arr = [root];
                     }
-                    // Filter by selected category so we only recommend matching bundles (e.g. full-kit -> Solar+Inverter+Battery only)
                     const productCategory = searchParams.get('category') || 'full-kit';
-                    const expectedType = categoryToBundleType[productCategory];
-                    if (expectedType) {
-                        arr = arr.filter((b) => (b.bundle_type || '').trim() === expectedType);
-                    }
+                    arr = filterBundlesByCategory(arr, productCategory);
                     setBundles(arr);
                 } catch (error) {
                     console.error('Failed to fetch bundles by load:', error);
@@ -849,7 +985,7 @@ const BNPLFlow = () => {
         if (step !== 3.5) {
             bundlesFetchedForLoadRef.current = false;
         }
-    }, [step, searchParams]);
+    }, [step, searchParams, filterBundlesByCategory]);
 
     // Enrich selected bundles with full detail data when entering order summary
     React.useEffect(() => {
@@ -968,6 +1104,7 @@ const BNPLFlow = () => {
                     // Single bundle object - wrap in array
                     arr = [root];
                 }
+                arr = filterBundlesByCategory(arr, formData.productCategory || 'full-kit');
                 setBundles(arr);
             } catch (error) {
                 console.error("Failed to fetch bundles:", error);
@@ -1033,12 +1170,9 @@ const BNPLFlow = () => {
     };
 
     const handleAuditTypeSelect = (type) => {
+        // Both audit types now collect details first so admin can see contact/location context.
         setFormData({ ...formData, auditType: type });
-        if (type === 'commercial') {
-            setStep(6); // Commercial Notification
-        } else {
-            setStep(5); // Home/Office Details Form
-        }
+        setStep(5);
     };
 
     const handleAddressSubmit = async (e) => {
@@ -1072,6 +1206,15 @@ const BNPLFlow = () => {
                 is_gated_estate: formData.isGatedEstate,
             };
 
+            // Always send contact info when available so admin can process commercial requests faster.
+            try {
+                const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+                auditRequestPayload.contact_name = formData.fullName || userInfo?.name || userInfo?.full_name || '';
+                auditRequestPayload.contact_phone = formData.phone || userInfo?.phone || '';
+            } catch {
+                // Ignore parse errors and proceed with payload defaults.
+            }
+
             // Add estate fields if gated estate
             if (formData.isGatedEstate) {
                 auditRequestPayload.estate_name = formData.estateName;
@@ -1093,15 +1236,14 @@ const BNPLFlow = () => {
 
             if (auditRequestResponse.data.status === 'success') {
                 const auditRequestId = auditRequestResponse.data.data.id;
-                setFormData(prev => ({ ...prev, auditRequestId }));
+                setFormData(prev => ({
+                    ...prev,
+                    auditRequestId,
+                    address: fullAddress || prev.address
+                }));
                 
-                // For commercial audits, show notification and wait for admin approval
-                if (formData.auditType === 'commercial') {
-                    setStep(6); // Commercial Notification
-                } else {
-                    // For home-office audits, proceed to order summary
-        setStep(6.5); // Order Summary (for audit) before invoice
-                }
+                // Both home/office and commercial audits now follow the same no-payment approval flow.
+                setStep(6);
             } else {
                 alert("Failed to submit audit request. Please try again.");
             }
@@ -1123,6 +1265,7 @@ const BNPLFlow = () => {
 
     const handleBundleSelect = (bundle) => {
         const price = Number(bundle.discount_price || bundle.total_price || 0);
+        const isAlreadySelected = formData.selectedBundles.some(b => b.id === bundle.id);
         setFormData(prev => {
             // Check if bundle is already selected
             const isSelected = prev.selectedBundles.some(b => b.id === bundle.id);
@@ -1155,7 +1298,10 @@ const BNPLFlow = () => {
                 selectedProductPrice: totalPrice
             };
         });
-        // Don't auto-navigate - let user select multiple items
+        if (!isAlreadySelected) {
+            setLastSelectedBundleName(bundle?.title || bundle?.name || 'Selected bundle');
+            setShowBundleSelectPrompt(true);
+        }
     };
 
     // Update bundle quantity
@@ -1223,8 +1369,8 @@ const BNPLFlow = () => {
         setBnplTermsAccepted(true);
     };
 
-    // Terms page (full text) — opens in new tab so user can read before accepting
-    const financeTermsPageUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/terms`;
+    const privacyPolicyUrl = 'https://troosolar.io/privacy-policy/';
+    const termsOfServiceUrl = 'https://troosolar.io/terms-of-service/';
 
     const renderTermsGate = () => (
         <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -1238,7 +1384,7 @@ const BNPLFlow = () => {
                 <div className="w-full max-w-lg bg-white rounded-2xl shadow-lg overflow-hidden flex flex-col">
                     <div className="px-6 pt-6 pb-2 flex-shrink-0">
                         <p className="text-center text-xl font-semibold text-[#273e8e]">Terms of Use Agreement</p>
-                        <p className="text-gray-600 text-sm text-center mt-2">Accept the finance terms and privacy policy to continue</p>
+                        <p className="text-gray-600 text-sm text-center mt-2">Accept the terms of service and privacy policy to continue</p>
                     </div>
                     <div className="px-6 py-4 flex-shrink-0 space-y-4">
                         <label className="flex items-start gap-3 font-medium cursor-pointer text-sm">
@@ -1249,25 +1395,24 @@ const BNPLFlow = () => {
                                 className="h-4 w-4 mt-0.5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded flex-shrink-0"
                             />
                             <span>
-                                I accept the{' '}
+                                I accept the{" "}
                                 <a
-                                    href={financeTermsPageUrl}
+                                    href={termsOfServiceUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-[#273e8e] underline hover:text-[#1d2f6b]"
                                 >
-                                    Finance Terms and Conditions
+                                    Terms Of Service
                                 </a>
-                                {' '}and the{' '}
+                                {" "} & {" "}
                                 <a
-                                    href={financeTermsPageUrl}
+                                    href={privacyPolicyUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-[#273e8e] underline hover:text-[#1d2f6b]"
                                 >
                                     Privacy Policy
                                 </a>
-                               
                             </span>
                         </label>
                         <button
@@ -1288,7 +1433,7 @@ const BNPLFlow = () => {
     const renderStep1 = () => (
         <div className="animate-fade-in">
             <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
-                Who are you purchasing for?
+                What are you purchasing for?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
                 {(customerTypes.length > 0 ? customerTypes : [
@@ -1747,9 +1892,9 @@ const BNPLFlow = () => {
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <Zap size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Choose My Solar Bundle</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">{solutionLabel}</h3>
                 </button>
-                <button onClick={() => navigate(`/tools?inverter=true&returnTo=bnpl&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`)} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
+                <button onClick={() => navigate(`/tools?inverter=true&returnTo=bnpl&source=flow&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`)} className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <Wrench size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
@@ -1788,14 +1933,14 @@ const BNPLFlow = () => {
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
                 <h2 className="text-3xl font-bold text-center mb-4 text-[#273e8e]">
-                Choose My Solar Bundle
+                {solutionLabel}
                 </h2>
                 <p className="text-center text-gray-600 mb-2">
-                    {searchParams.get('q') ? `Bundles matching your load (${searchParams.get('q')} W)` : 'Select from our pre-configured solar bundles'}
+                    {searchParams.get('q') ? `${isInverterFlow ? 'Solutions' : 'Bundles'} matching your load (${searchParams.get('q')} W)` : `Select from our pre-configured ${solutionListLabel}`}
                 </p>
                 {searchParams.get('q') && (
                     <p className="text-center mb-8">
-                        <a href={`/tools?inverter=true&returnTo=bnpl&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`} className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
+                        <a href={`/tools?inverter=true&returnTo=bnpl&source=flow&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`} className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
                     </p>
                 )}
                 {!searchParams.get('q') && <div className="mb-8" />}
@@ -1841,6 +1986,11 @@ const BNPLFlow = () => {
                         </div>
                     </div>
                 )}
+                {!bundlesLoading && bnplMinimumLoanAmount > 0 && (
+                    <p className="text-center text-sm text-gray-500 mb-5">
+                        BNPL eligible bundles only: minimum amount is ₦{bnplMinimumLoanAmount.toLocaleString()}.
+                    </p>
+                )}
 
                 {bundlesLoading ? (
                     <div className="text-center py-16">
@@ -1857,6 +2007,8 @@ const BNPLFlow = () => {
                                 ? "No bundle available for your load and selected category. Your load may be higher than what we have, or there are no bundles in this category. Try editing your load or choosing a different category."
                                 : selectedSystemSize !== "all"
                                 ? `No bundles found for ${selectedSizeLabel}.`
+                                : bnplMinimumLoanAmount > 0
+                                ? `No BNPL-eligible bundles available at the moment (minimum ₦${bnplMinimumLoanAmount.toLocaleString()}).`
                                 : "No bundles available at the moment."}
                         </p>
                         {selectedSystemSize !== "all" && (
@@ -1920,9 +2072,7 @@ const BNPLFlow = () => {
                                         <h3 className="font-bold text-lg mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">
                                             {bundle.title || bundle.name || `Bundle #${bundle.id}`}
                                         </h3>
-                                        {bundle.bundle_type && (
-                                            <p className="text-sm text-gray-500 mb-2">{bundle.bundle_type}</p>
-                                        )}
+                                        <p className="text-sm text-gray-500 mb-2">{getBundleCategoryLabel(bundle)}</p>
                                         <div className="flex items-center justify-between mb-3">
                                             <div>
                                                 <p className="font-bold text-[#273e8e] text-lg">
@@ -2019,8 +2169,7 @@ const BNPLFlow = () => {
         if (!selectedBundleDetails) {
             return (
                 <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center">
-                    <Loader className="animate-spin mx-auto text-[#273e8e]" size={40} />
-                    <p className="text-gray-600 mt-4">Loading bundle details...</p>
+                    <p className="text-gray-600">Returning to bundle list...</p>
                 </div>
             );
         }
@@ -2036,6 +2185,7 @@ const BNPLFlow = () => {
 
         // Get items included
         const itemsIncluded = bundle.materials || bundle.bundleItems || bundle.bundle_items || [];
+        const bundleSpecs = parseBundleSpecifications(bundle);
         // Description: API may send detailed_description, description, or desc
         const descriptionText = (bundle.detailed_description && String(bundle.detailed_description).trim()) || (bundle.description && String(bundle.description).trim()) || (bundle.desc && String(bundle.desc).trim()) || '';
 
@@ -2079,25 +2229,8 @@ const BNPLFlow = () => {
                                         {bundle.title || bundle.name || `Bundle #${bundle.id}`}
                                     </h2>
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-1">
-                                        {bundle.bundle_type && (
-                                            <p className="text-sm text-gray-500">
-                                                {bundle.bundle_type}
-                                            </p>
-                                        )}
-                                        {(bundle.category || bundle.product_category || bundle.category_type) && (
-                                            <span className="text-sm text-gray-400">·</span>
-                                        )}
-                                        {(bundle.category || bundle.product_category || bundle.category_type) && (
-                                            <p className="text-sm text-gray-500">
-                                                {bundle.category || bundle.product_category || bundle.category_type}
-                                            </p>
-                                        )}
+                                        <p className="text-sm text-gray-500">{getBundleCategoryLabel(bundle)}</p>
                                     </div>
-                                    {(bundle.backup_time_description || bundle.backup_info) && (
-                                        <p className="text-sm text-gray-500 pt-1 whitespace-pre-line">
-                                            {formatBackupTime(bundle.backup_time_description || bundle.backup_info)}
-                                        </p>
-                                    )}
 
                                     <hr className="my-3 text-gray-300" />
 
@@ -2175,12 +2308,12 @@ const BNPLFlow = () => {
 
                                     {bundleDetailTab === 'specs' && (
                                         <div className="min-h-[80px]">
-                                            {bundle.specifications && typeof bundle.specifications === 'object' && Object.keys(bundle.specifications).filter(k => !SPEC_KEYS_HIDDEN.includes(k) && bundle.specifications[k] != null && bundle.specifications[k] !== '').length > 0 ? (
+                                            {Object.keys(bundleSpecs).filter(k => !SPEC_KEYS_HIDDEN.includes(k) && bundleSpecs[k] != null && bundleSpecs[k] !== '').length > 0 ? (
                                                 <dl className="space-y-2 text-sm">
-                                                    {Object.keys(bundle.specifications)
-                                                        .filter((key) => !SPEC_KEYS_HIDDEN.includes(key) && bundle.specifications[key] != null && bundle.specifications[key] !== '')
+                                                    {Object.keys(bundleSpecs)
+                                                        .filter((key) => !SPEC_KEYS_HIDDEN.includes(key) && bundleSpecs[key] != null && bundleSpecs[key] !== '')
                                                         .map((key) => {
-                                                            const value = bundle.specifications[key];
+                                                            const value = bundleSpecs[key];
                                                             const label = SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
                                                             return (
                                                                 <div key={key} className="flex justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
@@ -2213,33 +2346,22 @@ const BNPLFlow = () => {
                             </div>
                         </div>
 
-                        {/* Right Column - Stats: 4 boxes (Total Load, Inverter Rating, Battery Capacity, Solar Panel Capacity) */}
+                        {/* Right Column - use load-calculator style summary card */}
                         <div className="w-[380px] flex-shrink-0">
                             <div className="flex flex-col gap-3 rounded-2xl">
-                                <div className="grid grid-cols-2 gap-2 rounded-2xl overflow-hidden">
-                                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
-                                        <div className="text-xs text-left font-medium">Total Load</div>
-                                        <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
-                                            <span className="text-sm text-center break-words leading-tight">{bundle.total_load || "—"}</span>
-                                        </div>
+                                <div className="bg-[#273e8e] text-white rounded-2xl px-5 py-5 flex flex-col gap-4 shadow-lg">
+                                    <h3 className="text-base font-semibold border-b border-white/30 pb-2">Bundle Capacity</h3>
+                                    <div>
+                                        <p className="text-white/80 text-xs">Inverter Rating</p>
+                                        <p className="text-lg font-bold">{getBundleInverterRating(bundle)}</p>
                                     </div>
-                                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
-                                        <div className="text-xs text-left font-medium">Inverter Rating</div>
-                                        <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
-                                            <span className="text-sm text-center break-words leading-tight">{bundle.inver_rating || "—"}</span>
-                                        </div>
+                                    <div>
+                                        <p className="text-white/80 text-xs">Battery Capacity</p>
+                                        <p className="text-lg font-bold">{getBundleBatteryCapacity(bundle)}</p>
                                     </div>
-                                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
-                                        <div className="text-xs text-left font-medium">Battery Capacity</div>
-                                        <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
-                                            <span className="text-sm text-center break-words leading-tight">{(bundle.specifications && bundle.specifications.battery_capacity_kwh) ?? bundle.battery_capacity_kwh ?? bundle.battery_capacity ?? "—"}</span>
-                                        </div>
-                                    </div>
-                                    <div className="bg-[#273E8E] text-white px-3 py-2.5 flex flex-col justify-between rounded-xl min-h-0">
-                                        <div className="text-xs text-left font-medium">Solar Panel Capacity</div>
-                                        <div className="bg-white text-[#273E8E] font-semibold rounded-lg flex justify-center items-center min-h-[52px] mt-1 px-1 py-1">
-                                            <span className="text-sm text-center break-words leading-tight">{(bundle.specifications && (bundle.specifications.solar_panels_wattage || bundle.specifications.solar_panel_capacity_kw)) ?? bundle.solar_panels_wattage ?? bundle.solar_panel_capacity_kw ?? "—"}</span>
-                                        </div>
+                                    <div>
+                                        <p className="text-white/80 text-xs">Solar Panel Capacity</p>
+                                        <p className="text-lg font-bold">{getBundleSolarPanelCapacity(bundle)}</p>
                                     </div>
                                 </div>
 
@@ -2318,15 +2440,7 @@ const BNPLFlow = () => {
                                     {bundle.title || bundle.name || `Bundle #${bundle.id}`}
                                 </h2>
                                 <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 mt-[2px]">
-                                    {bundle.bundle_type && (
-                                        <p className="text-[12px] text-gray-500">{bundle.bundle_type}</p>
-                                    )}
-                                    {(bundle.category || bundle.product_category || bundle.category_type) && (
-                                        <>
-                                            <span className="text-[12px] text-gray-400">·</span>
-                                            <p className="text-[12px] text-gray-500">{bundle.category || bundle.product_category || bundle.category_type}</p>
-                                        </>
-                                    )}
+                                    <p className="text-[12px] text-gray-500">{getBundleCategoryLabel(bundle)}</p>
                                 </div>
                                 {bundle.backup_info && (
                                     <p className="text-[12px] text-gray-500 mt-[2px]">{bundle.backup_info}</p>
@@ -2403,12 +2517,12 @@ const BNPLFlow = () => {
 
                                 {bundleDetailTab === 'specs' && (
                                     <div className="min-h-[60px]">
-                                        {bundle.specifications && typeof bundle.specifications === 'object' && Object.keys(bundle.specifications).filter(k => !SPEC_KEYS_HIDDEN.includes(k) && bundle.specifications[k] != null && bundle.specifications[k] !== '').length > 0 ? (
+                                        {Object.keys(bundleSpecs).filter(k => !SPEC_KEYS_HIDDEN.includes(k) && bundleSpecs[k] != null && bundleSpecs[k] !== '').length > 0 ? (
                                             <dl className="space-y-1.5 text-[11px] lg:text-[12px]">
-                                                {Object.keys(bundle.specifications)
-                                                    .filter((key) => !SPEC_KEYS_HIDDEN.includes(key) && bundle.specifications[key] != null && bundle.specifications[key] !== '')
+                                                {Object.keys(bundleSpecs)
+                                                    .filter((key) => !SPEC_KEYS_HIDDEN.includes(key) && bundleSpecs[key] != null && bundleSpecs[key] !== '')
                                                     .map((key) => {
-                                                        const value = bundle.specifications[key];
+                                                        const value = bundleSpecs[key];
                                                         const label = SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
                                                         return (
                                                             <div key={key} className="flex justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
@@ -2444,7 +2558,16 @@ const BNPLFlow = () => {
         );
     };
 
-    const renderStep4 = () => (
+    const renderStep4 = () => {
+        const auditTypeOptions = ['home-office'].map((id) => {
+            const fromApi = (auditTypes || []).find((t) => String(t?.id) === id);
+            return fromApi || {
+                id,
+                label: id === 'commercial' ? 'Commercial / Industrial' : 'Home / Office'
+            };
+        });
+
+        return (
         <div className="animate-fade-in">
             <button onClick={() => setStep(3)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                 <ArrowLeft size={16} className="mr-2" /> Back
@@ -2453,10 +2576,7 @@ const BNPLFlow = () => {
                 Select Audit Type
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-                {(auditTypes.length > 0 ? auditTypes : [
-                    { id: 'home-office', label: 'Home / Office' },
-                    { id: 'commercial', label: 'Commercial / Industrial' }
-                ]).map((type) => (
+                {auditTypeOptions.map((type) => (
                     <button
                         key={type.id}
                         onClick={() => handleAuditTypeSelect(type.id)}
@@ -2471,6 +2591,7 @@ const BNPLFlow = () => {
             </div>
         </div>
     );
+    };
 
     const renderStep5 = () => (
         <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
@@ -2690,9 +2811,9 @@ const BNPLFlow = () => {
         <div className="animate-fade-in max-w-3xl mx-auto text-center">
             <div className="bg-yellow-50 border border-yellow-200 p-8 rounded-2xl">
                 <AlertCircle size={64} className="text-yellow-600 mx-auto mb-6" />
-                <h2 className="text-2xl font-bold mb-4 text-gray-800">Commercial Audit Request Submitted</h2>
+                <h2 className="text-2xl font-bold mb-4 text-gray-800">Audit Request Submitted</h2>
                 <p className="text-gray-600 mb-4">
-                    Your commercial audit request has been submitted successfully (Request ID: #{formData.auditRequestId}).
+                    Your {formData.auditType === 'commercial' ? 'commercial' : 'home/office'} audit request has been submitted successfully (Request ID: #{formData.auditRequestId}).
                 </p>
                 <p className="text-gray-600 mb-6">
                     Our team will contact you within 24 - 72 hours to discuss your energy audit.
@@ -2730,7 +2851,7 @@ const BNPLFlow = () => {
                         }}
                         className="w-full border-2 border-gray-300 text-gray-700 px-8 py-3 rounded-xl font-bold hover:bg-gray-50 transition-colors"
                     >
-                        Commmercial Audit Request
+                        Check Audit Request Status
                     </button>
                 </div>
             </div>
@@ -2739,6 +2860,35 @@ const BNPLFlow = () => {
 
     const extractBundleLineItems = (bundle) => {
         const toNumber = (v) => typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.]/g, '')) || 0;
+        const parseQuantityApplies = (value) => {
+            if (value === undefined || value === null || value === '') return true;
+            if (typeof value === 'boolean') return value;
+            const normalized = String(value).trim().toLowerCase();
+            return !['false', '0', 'no', 'nil', 'n/a', 'na', 'not_applicable', 'not applicable'].includes(normalized);
+        };
+        const resolveQtyAndUnit = (sources = [], fallbackQty = 1, fallbackUnit = 'Nos') => {
+            const firstValue = (...vals) => vals.find((v) => v !== undefined && v !== null && v !== '');
+            let qty;
+            let unit;
+            let quantityApplies;
+            sources.forEach((src) => {
+                if (!src || typeof src !== 'object') return;
+                qty = qty ?? firstValue(src.quantity, src.qty);
+                unit = unit ?? firstValue(src.unit, src.unit_name, src.measurement_unit, src.qty_unit);
+                quantityApplies = quantityApplies ?? firstValue(
+                    src.quantity_applies,
+                    src.quantity_applicable,
+                    src.is_quantity_applicable,
+                    src.qty_applicable,
+                    src.apply_quantity
+                );
+            });
+            return {
+                quantity: Number(qty) > 0 ? Number(qty) : fallbackQty,
+                unit: String(unit || fallbackUnit),
+                quantityApplies: parseQuantityApplies(quantityApplies),
+            };
+        };
 
         const isProductName = (name) => {
             if (!name) return false;
@@ -2758,10 +2908,12 @@ const BNPLFlow = () => {
             const p = bi?.product || bi;
             const name = p?.title || p?.name || bi?.title || bi?.name || null;
             if (!name) return;
+            const qtyMeta = resolveQtyAndUnit([bi, p], 1, 'Nos');
             productRows.push({
                 description: name,
-                quantity: bi?.quantity ?? p?.quantity ?? 1,
-                unit: 'Nos',
+                quantity: qtyMeta.quantity,
+                unit: qtyMeta.unit,
+                quantityApplies: qtyMeta.quantityApplies,
                 rate: toNumber(bi?.rate_override ?? (p?.price || p?.selling_price || p?.total_price || bi?.price || 0)),
             });
         });
@@ -2770,7 +2922,7 @@ const BNPLFlow = () => {
         if (productRows.length === 0 && bundle?.product_model) {
             const modelParts = bundle.product_model.split('/').map(s => s.trim()).filter(Boolean);
             modelParts.forEach((part) => {
-                productRows.push({ description: part, quantity: 1, unit: 'Nos', rate: 0 });
+                productRows.push({ description: part, quantity: 1, unit: 'Nos', quantityApplies: true, rate: 0 });
             });
         }
 
@@ -2786,16 +2938,18 @@ const BNPLFlow = () => {
             const mat = m?.material || m;
             if (mat?.product) return;
             const name = mat?.name || mat?.title || '';
-            const qty = m?.quantity ?? mat?.quantity ?? 1;
+            const qtyMeta = resolveQtyAndUnit([m, mat], 1, /inspection/i.test(name) ? 'Lots' : 'Nos');
+            const qty = qtyMeta.quantity;
             const rate = toNumber(m?.rate_override ?? (mat?.selling_rate || mat?.rate || mat?.price || 0));
 
             if (productRows.length === 0 && isProductName(name)) {
-                productRows.push({ description: name, quantity: qty, unit: 'Nos', rate });
+                productRows.push({ description: name, quantity: qty, unit: qtyMeta.unit, quantityApplies: qtyMeta.quantityApplies, rate });
             } else if (isFeeName(name)) {
                 fallbackServiceRows.push({
                     description: name,
                     quantity: qty,
-                    unit: /inspection/i.test(name) ? 'Lots' : 'Nos',
+                    unit: qtyMeta.unit,
+                    quantityApplies: qtyMeta.quantityApplies,
                     rate,
                 });
             } else {
@@ -2806,10 +2960,18 @@ const BNPLFlow = () => {
         let materialsTotalCost = 0;
         pureInstallMaterials.forEach((m) => { materialsTotalCost += m.rate * m.qty; });
 
+        const materialNames = pureInstallMaterials
+            .map((m) => String(m.name || '').trim())
+            .filter(Boolean);
+        const materialLineLabel = materialNames.length > 0
+            ? `Installation Materials Cost (${materialNames.join(', ')})`
+            : 'Installation Materials Cost';
+
         const materialLine = pureInstallMaterials.length > 0 ? {
-            description: 'Installation Materials Cost (Cables, Breakers, Mounting Rails, Protectors, Trunking, Bypass Switch, Smart Metering)',
+            description: materialLineLabel,
             quantity: 1,
             unit: 'Lots',
+            quantityApplies: true,
             rate: materialsTotalCost,
         } : null;
 
@@ -2822,17 +2984,21 @@ const BNPLFlow = () => {
             const rawTitle = s?.title || 'Custom Service';
             if (rawTitle.startsWith(OL_PREFIX)) {
                 const cleanTitle = rawTitle.slice(OL_PREFIX.length);
+                const qtyMeta = resolveQtyAndUnit([s], 1, 'Nos');
                 customOrderItems.push({
                     description: cleanTitle,
-                    quantity: 1,
-                    unit: 'Nos',
+                    quantity: qtyMeta.quantity,
+                    unit: qtyMeta.unit,
+                    quantityApplies: qtyMeta.quantityApplies,
                     rate: toNumber(s?.service_amount),
                 });
             } else {
+                const qtyMeta = resolveQtyAndUnit([s], 1, /inspection/i.test(rawTitle) ? 'Lots' : 'Nos');
                 serviceRows.push({
                     description: rawTitle,
-                    quantity: s?.quantity ?? 1,
-                    unit: /inspection/i.test(rawTitle) ? 'Lots' : 'Nos',
+                    quantity: qtyMeta.quantity,
+                    unit: qtyMeta.unit,
+                    quantityApplies: qtyMeta.quantityApplies,
                     rate: toNumber(s?.service_amount),
                 });
             }
@@ -2858,6 +3024,104 @@ const BNPLFlow = () => {
         return { items: orderListItems, itemsTotal: orderListTotal, orderListItems, invoiceItems, serviceRows, productRows, materialLine };
     };
 
+    // Keep BNPL pricing consistent across Invoice and Loan Calculator steps.
+    const getBnplPricingSnapshot = () => {
+        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
+        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
+        const itemsSubtotal = bundlesTotal + productsTotal;
+        const basePrice = itemsSubtotal > 0 ? itemsSubtotal : formData.selectedProductPrice;
+
+        const installationFee = 50000;
+        const deliveryFee = 25000;
+        const inspectionFee = 10000;
+        const vatPercent = 7.5;
+
+        const bundleInvoiceSections = formData.selectedBundles.map((sb) => {
+            const bundleQty = sb.quantity || 1;
+            const bundleObj = sb.bundle;
+            const bundleName = bundleObj?.title || bundleObj?.name || `Bundle #${sb.id}`;
+            const bundleTotalPrice = (sb.price || 0) * bundleQty;
+            const { invoiceItems, serviceRows } = extractBundleLineItems(bundleObj);
+
+            const feesTotal = serviceRows.length > 0
+                ? serviceRows.reduce((s, r) => s + (r.rate * (r.quantityApplies === false ? 1 : r.quantity)), 0)
+                : (installationFee + deliveryFee + inspectionFee);
+
+            let allRows = [];
+            if (invoiceItems.length > 0) {
+                allRows = invoiceItems.map((item, idx) => ({
+                    id: `inv-${sb.id}-${idx}`,
+                    description: item.description,
+                    quantity: item.quantityApplies === false
+                        ? 'NIL'
+                        : (item.unit === 'Lots' ? 1 : item.quantity * bundleQty),
+                    unit: item.unit,
+                    rate: item.rate,
+                    totalCost: item.rate * (item.quantityApplies === false
+                        ? 1
+                        : (item.unit === 'Lots' ? 1 : item.quantity * bundleQty)),
+                }));
+            } else {
+                allRows = [{
+                    id: `inv-${sb.id}-main`,
+                    description: bundleName,
+                    quantity: bundleQty,
+                    unit: 'Nos',
+                    rate: sb.price || 0,
+                    totalCost: bundleTotalPrice,
+                    isBold: true,
+                }];
+            }
+
+            if (serviceRows.length === 0) {
+                allRows.push(
+                    { id: `inv-${sb.id}-install`, description: `Installation Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: installationFee, totalCost: installationFee },
+                    { id: `inv-${sb.id}-delivery`, description: `Delivery Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: deliveryFee, totalCost: deliveryFee },
+                    { id: `inv-${sb.id}-inspection`, description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: inspectionFee, totalCost: inspectionFee },
+                );
+            }
+
+            const sectionNetTotal = bundleTotalPrice + feesTotal;
+            const sectionVat = (sectionNetTotal * vatPercent) / 100;
+            const sectionGrandTotal = sectionNetTotal + sectionVat;
+
+            return { bundleName, allRows, netTotal: sectionNetTotal, vatAmount: sectionVat, grandTotal: sectionGrandTotal };
+        });
+
+        const productInvoiceRows = formData.selectedProducts.map((p) => {
+            const qty = p.quantity || 1;
+            const unitPrice = p.price || 0;
+            return {
+                id: `inv-p-${p.id}`,
+                description: p.product?.title || p.product?.name || `Product #${p.id}`,
+                quantity: qty,
+                unit: 'Nos',
+                rate: unitPrice,
+                totalCost: unitPrice * qty,
+            };
+        });
+
+        if (bundleInvoiceSections.length === 0 && productInvoiceRows.length === 0 && (formData.selectedBundle || formData.selectedProduct)) {
+            const label = formData.selectedBundle?.title || formData.selectedProduct?.title || formData.selectedProduct?.name || 'Item';
+            productInvoiceRows.push({ id: 'inv-single', description: label, quantity: 1, unit: 'Nos', rate: basePrice, totalCost: basePrice });
+        }
+
+        const allItemsTotal = bundleInvoiceSections.reduce((s, sec) => s + sec.netTotal, 0) + productInvoiceRows.reduce((s, r) => s + r.totalCost, 0);
+        const overallNetTotal = allItemsTotal;
+        const overallVat = (overallNetTotal * vatPercent) / 100;
+        const overallGrandTotal = overallNetTotal + overallVat;
+
+        return {
+            basePrice,
+            vatPercent,
+            bundleInvoiceSections,
+            productInvoiceRows,
+            overallNetTotal,
+            overallVat,
+            overallGrandTotal,
+        };
+    };
+
     const renderStep6_5 = () => {
         // Calculate totals
         const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
@@ -2880,10 +3144,14 @@ const BNPLFlow = () => {
                 rows = orderListItems.map((item, idx) => ({
                     id: `b-${sb.id}-${idx}`,
                     description: item.description,
-                    quantity: item.unit === 'Lots' ? 1 : item.quantity * bundleQty,
+                    quantity: item.quantityApplies === false
+                        ? 'NIL'
+                        : (item.unit === 'Lots' ? 1 : item.quantity * bundleQty),
                     unit: item.unit,
                     rate: item.rate,
-                    totalCost: item.rate * (item.unit === 'Lots' ? 1 : item.quantity * bundleQty),
+                    totalCost: item.rate * (item.quantityApplies === false
+                        ? 1
+                        : (item.unit === 'Lots' ? 1 : item.quantity * bundleQty)),
                 }));
             } else {
                 rows = [{
@@ -3023,21 +3291,23 @@ const BNPLFlow = () => {
 
                 <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6">
                     <p className="text-sm text-blue-700">
-                        <strong>Note:</strong> This is your order list. The full invoice with fees, VAT, and grand total will be shown on the next step.
+                        <strong>Note:</strong> {formData.optionType === 'audit'
+                            ? 'This is your order list. You can proceed directly to the loan calculator (no audit payment is required here).'
+                            : 'This is your order list. The full invoice with fees, VAT, and grand total will be shown on the next step.'}
                     </p>
                 </div>
 
                 <button
                     onClick={() => {
                         if (formData.optionType === 'audit') {
-                            setStep(7);
-                        } else {
-                            setStep(6.75); // Go to Invoice
+                            setStep(8);
+                            return;
                         }
+                        setStep(6.75); // Go to Invoice
                     }}
                     className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
                 >
-                    {formData.optionType === 'audit' ? 'Proceed to Audit Invoice' : 'Proceed to Invoice'}
+                    {formData.optionType === 'audit' ? 'Proceed to Loan Calculator' : 'Proceed to Invoice'}
                 </button>
             </div>
         );
@@ -3301,96 +3571,14 @@ const BNPLFlow = () => {
     };
 
     const renderStep6_75 = () => {
-        // Invoice: totals from selected bundles and products
-        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
-        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
-        const itemsSubtotal = bundlesTotal + productsTotal;
-        const basePrice = itemsSubtotal > 0 ? itemsSubtotal : formData.selectedProductPrice;
-
-        const insuranceAddOn = addOns.find(a => a.is_compulsory_bnpl);
-        const insuranceFee = insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
-            ? (basePrice * insuranceAddOn.calculation_value) / 100
-            : (insuranceAddOn?.price ?? (basePrice * DEFAULT_INSURANCE_PERCENT) / 100);
-
-        const installationFee = 50000;
-        const deliveryFee = 25000;
-        const inspectionFee = 10000;
-        const vatPercent = 7.5;
-
-        // Build per-bundle invoice sections matching the spreadsheet "FOR INVOICE" format
-        const bundleInvoiceSections = formData.selectedBundles.map((sb) => {
-            const bundleQty = sb.quantity || 1;
-            const bundleObj = sb.bundle;
-            const bundleName = bundleObj?.title || bundleObj?.name || `Bundle #${sb.id}`;
-            const bundleTotalPrice = (sb.price || 0) * bundleQty;
-            const { invoiceItems, serviceRows } = extractBundleLineItems(bundleObj);
-
-            let allRows;
-            if (invoiceItems.length > 0) {
-                allRows = invoiceItems.map((item, idx) => ({
-                    id: `inv-${sb.id}-${idx}`,
-                    description: item.description,
-                    quantity: item.unit === 'Lots' ? 1 : item.quantity * bundleQty,
-                    unit: item.unit,
-                    rate: item.rate,
-                    totalCost: item.rate * (item.unit === 'Lots' ? 1 : item.quantity * bundleQty),
-                }));
-            } else {
-                allRows = [{
-                    id: `inv-${sb.id}-main`,
-                    description: bundleName,
-                    quantity: bundleQty,
-                    unit: 'Nos',
-                    rate: sb.price || 0,
-                    totalCost: bundleTotalPrice,
-                    isBold: true,
-                }];
-            }
-
-            // If no custom_services came from the API, fall back to hardcoded fees
-            if (serviceRows.length === 0) {
-                allRows.push(
-                    { id: `inv-${sb.id}-install`, description: `Installation Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: installationFee, totalCost: installationFee },
-                    { id: `inv-${sb.id}-delivery`, description: `Delivery Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: deliveryFee, totalCost: deliveryFee },
-                    { id: `inv-${sb.id}-inspection`, description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: inspectionFee, totalCost: inspectionFee },
-                );
-            }
-
-            const feesTotal = serviceRows.length > 0
-                ? serviceRows.reduce((s, r) => s + (r.rate * r.quantity), 0)
-                : (installationFee + deliveryFee + inspectionFee);
-            const sectionNetTotal = bundleTotalPrice + feesTotal;
-            const sectionVat = (sectionNetTotal * vatPercent) / 100;
-            const sectionGrandTotal = sectionNetTotal + sectionVat;
-
-            return { bundleName, allRows, netTotal: sectionNetTotal, vatAmount: sectionVat, grandTotal: sectionGrandTotal };
-        });
-
-        // Individual products invoice rows (if any)
-        const productInvoiceRows = formData.selectedProducts.map((p) => {
-            const qty = p.quantity || 1;
-            const unitPrice = p.price || 0;
-            return {
-                id: `inv-p-${p.id}`,
-                description: p.product?.title || p.product?.name || `Product #${p.id}`,
-                quantity: qty,
-                unit: 'Nos',
-                rate: unitPrice,
-                totalCost: unitPrice * qty,
-            };
-        });
-
-        // Fallback single item
-        if (bundleInvoiceSections.length === 0 && productInvoiceRows.length === 0 && (formData.selectedBundle || formData.selectedProduct)) {
-            const label = formData.selectedBundle?.title || formData.selectedProduct?.title || formData.selectedProduct?.name || 'Item';
-            productInvoiceRows.push({ id: 'inv-single', description: label, quantity: 1, unit: 'Nos', rate: basePrice, totalCost: basePrice });
-        }
-
-        // Overall totals across all bundles and products
-        const allItemsTotal = bundleInvoiceSections.reduce((s, sec) => s + sec.netTotal, 0) + productInvoiceRows.reduce((s, r) => s + r.totalCost, 0);
-        const overallNetTotal = allItemsTotal + insuranceFee;
-        const overallVat = (overallNetTotal * vatPercent) / 100;
-        const overallGrandTotal = overallNetTotal + overallVat;
+        const {
+            vatPercent,
+            bundleInvoiceSections,
+            productInvoiceRows,
+            overallNetTotal,
+            overallVat,
+            overallGrandTotal,
+        } = getBnplPricingSnapshot();
 
         return (
             <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
@@ -3472,11 +3660,6 @@ const BNPLFlow = () => {
                         </div>
                     </div>
                 )}
-
-                {/* Insurance Fee note */}
-                <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg text-sm text-yellow-800 mb-4">
-                    Insurance Fee ({DEFAULT_INSURANCE_PERCENT}%): ₦{Number(insuranceFee).toLocaleString()} (included in overall total)
-                </div>
 
                 {/* Overall Grand Total (across all bundles) */}
                 <div className="bg-[#273e8e]/5 border border-[#273e8e]/20 rounded-lg p-4 mb-6">
@@ -3670,29 +3853,8 @@ const BNPLFlow = () => {
     );
 
     const renderStep8 = () => {
-        // Calculate total amount including compulsory add-ons (Insurance for BNPL)
-        // NEW: Calculate from all selected bundles and products (accounting for quantity)
-        const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
-        const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
-        const itemsSubtotal = bundlesTotal + productsTotal;
-        
-        // Use itemsSubtotal if available, otherwise fallback to selectedProductPrice (for backward compatibility)
-        const basePrice = itemsSubtotal > 0 ? itemsSubtotal : formData.selectedProductPrice;
-        
-        const insuranceAddOn = addOns.find(a => a.is_compulsory_bnpl);
-        const insuranceFee = insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
-            ? (basePrice * insuranceAddOn.calculation_value) / 100
-            : (insuranceAddOn?.price ?? (basePrice * DEFAULT_INSURANCE_PERCENT) / 100);
-        
-        // Use API data if available, otherwise use defaults
-        // Material cost, installation fee, delivery fee, inspection fee should come from API
-        // For now, using defaults but structure allows for API integration
-        const materialCost = 50000; // Should come from API/state selection
-        const installationFee = 50000; // Should come from API/state selection
-        const deliveryFee = 25000; // Should come from API/state/delivery location selection
-        const inspectionFee = 10000; // Should come from API
-        
-        const totalAmount = basePrice + insuranceFee + materialCost + installationFee + deliveryFee + inspectionFee;
+        const { overallGrandTotal } = getBnplPricingSnapshot();
+        const totalAmount = overallGrandTotal;
 
         const handleStartOver = () => {
             // Clear all selections and reset to Step 2
@@ -3713,7 +3875,10 @@ const BNPLFlow = () => {
 
         return (
             <div className="animate-fade-in max-w-4xl mx-auto">
-                <button onClick={() => setStep(formData.optionType ? 3 : 2)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                <button
+                    onClick={() => setStep(formData.optionType === 'audit' ? 6.5 : 6.75)}
+                    className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]"
+                >
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
                 <LoanCalculator 
@@ -3734,6 +3899,56 @@ const BNPLFlow = () => {
         );
     };
 
+    const buildLoanReviewSnapshot = () => {
+        const ld = formData.loanDetails;
+        if (!ld) return null;
+
+        const bundlePrice = Number(ld.totalAmount || 0);
+        const depositPercent = Number(ld.depositPercent || 0);
+        const depositAmount = Number(ld.depositAmount || 0);
+        const tenor = Number(ld.tenor || 0);
+        const interestRate = Number(ld.interestRate || 0);
+
+        const insurancePct = Number(loanConfig?.insurance_fee_percentage ?? DEFAULT_INSURANCE_PERCENT);
+        const managementPct = Number(loanConfig?.management_fee_percentage ?? 1);
+        const legalPct = Number(loanConfig?.residual_fee_percentage ?? 1);
+
+        const baseLoanAmount = Math.max(bundlePrice - depositAmount, 0);
+        const insuranceFee = bundlePrice * (insurancePct / 100);
+        // Loan-amount based fees are computed on the actual loan amount before fees.
+        const loanBaseForLoanAmountFees = Math.max(baseLoanAmount, 0);
+        const managementFee = loanBaseForLoanAmountFees * (managementPct / 100);
+        const legalFee = loanBaseForLoanAmountFees * (legalPct / 100);
+        const feesTotal = insuranceFee + managementFee + legalFee;
+
+        const totalLoanAmount = baseLoanAmount + feesTotal;
+        const totalAmount = bundlePrice + feesTotal;
+        const totalInterestAmount = totalLoanAmount * (interestRate / 100) * tenor;
+        const totalRepaymentAmount = totalLoanAmount + totalInterestAmount;
+        const monthlyRepaymentAmount = tenor > 0 ? (totalRepaymentAmount / tenor) : 0;
+
+        return {
+            bundlePrice,
+            totalAmount,
+            depositPercent,
+            depositAmount,
+            baseLoanAmount,
+            insurancePct,
+            insuranceFee,
+            managementPct,
+            managementFee,
+            legalPct,
+            legalFee,
+            feesTotal,
+            totalLoanAmount,
+            totalInterestAmount,
+            totalRepaymentAmount,
+            monthlyRepaymentAmount,
+            tenor,
+            interestRate,
+        };
+    };
+
     const renderStep9 = () => (
         <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
             <button onClick={() => setStep(8)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
@@ -3741,46 +3956,65 @@ const BNPLFlow = () => {
             </button>
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Review Your Loan Plan</h2>
             {formData.loanDetails && (() => {
-                const ld = formData.loanDetails;
-                const totalAmount = Number(ld.totalAmount || 0);
-                const initialDeposit = Number(ld.depositAmount || 0);
-                const totalLoanAmount = Number(ld.totalLoanAmount ?? ld.principal ?? 0);
-                const totalInterestAmount = Number(ld.totalInterestAmount ?? ld.totalInterest ?? 0);
-                const totalRepaymentAmount = Number(ld.totalRepaymentAmount ?? ld.totalRepayment ?? 0);
-                const monthlyRepaymentAmount = Number(ld.monthlyRepaymentAmount ?? ld.monthlyRepayment ?? 0);
-                const tenor = ld.tenor;
-                const interestRate = ld.interestRate;
+                const snapshot = buildLoanReviewSnapshot();
+                if (!snapshot) return null;
                 return (
                 <div className="bg-blue-50 border border-blue-200 p-6 rounded-lg mb-6">
                     <h3 className="font-bold text-gray-800 mb-4">Loan Summary</h3>
                     <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                             <span>1. Total Amount</span>
-                            <span className="font-bold">₦{totalAmount.toLocaleString()}</span>
+                            <span className="font-bold">₦{snapshot.totalAmount.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span>2. Initial Deposit{ld.depositPercent != null ? ` (${ld.depositPercent}%)` : ''}</span>
-                            <span className="font-bold">₦{initialDeposit.toLocaleString()}</span>
+                            <span>2. Initial Deposit{snapshot.depositPercent ? ` (${snapshot.depositPercent}%)` : ''}</span>
+                            <span className="font-bold">₦{snapshot.depositAmount.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
                             <span>3. Total Loan Amount</span>
-                            <span className="font-bold">₦{totalLoanAmount.toLocaleString()}</span>
+                            <span className="font-bold">₦{snapshot.totalLoanAmount.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span>4. Total Interest Amount{interestRate != null && tenor ? ` (${interestRate}% × ${tenor} mo)` : interestRate != null ? ` (${interestRate}% of loan)` : ''}</span>
-                            <span className="font-bold">₦{totalInterestAmount.toLocaleString()}</span>
+                            <span>4. Total Interest Amount{snapshot.interestRate != null && snapshot.tenor ? ` (${snapshot.interestRate}% × ${snapshot.tenor} mo)` : snapshot.interestRate != null ? ` (${snapshot.interestRate}% of loan)` : ''}</span>
+                            <span className="font-bold">₦{snapshot.totalInterestAmount.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
                             <span>5. Total Repayment Amount</span>
-                            <span className="font-bold">₦{totalRepaymentAmount.toLocaleString()}</span>
+                            <span className="font-bold">₦{snapshot.totalRepaymentAmount.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
                             <span>6. Monthly Repayment Amount</span>
-                            <span className="font-bold">₦{monthlyRepaymentAmount.toLocaleString()}</span>
+                            <span className="font-bold">₦{snapshot.monthlyRepaymentAmount.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between border-t pt-2 mt-2">
                             <span>7. Loan Tenor</span>
-                            <span className="font-bold text-[#273e8e]">{tenor} months</span>
+                            <span className="font-bold text-[#273e8e]">{snapshot.tenor} months</span>
+                        </div>
+                    </div>
+
+                    <div className="mt-5 pt-4 border-t border-blue-200">
+                        <h4 className="font-semibold text-gray-800 mb-2">Admin Fee Breakdown (from settings)</h4>
+                        <div className="space-y-1 text-sm">
+                            <div className="flex justify-between">
+                                <span>Bundle Price (base)</span>
+                                <span className="font-medium">₦{snapshot.bundlePrice.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>Insurance Fee ({snapshot.insurancePct}% of bundle price)</span>
+                                <span className="font-medium">₦{snapshot.insuranceFee.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>Management Fee ({snapshot.managementPct}% of loan amount base)</span>
+                                <span className="font-medium">₦{snapshot.managementFee.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>Legal Fee ({snapshot.legalPct}% of loan amount base)</span>
+                                <span className="font-medium">₦{snapshot.legalFee.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between font-semibold border-t border-blue-200 pt-1 mt-1">
+                                <span>Total Admin Fees Added Here</span>
+                                <span>₦{snapshot.feesTotal.toLocaleString()}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -3791,7 +4025,39 @@ const BNPLFlow = () => {
             </p>
             <div className="flex gap-4">
                 <button
-                    onClick={() => setStep(11)}
+                    onClick={() => {
+                        const snapshot = buildLoanReviewSnapshot();
+                        if (!snapshot) {
+                            alert('Loan plan is incomplete. Please adjust and try again.');
+                            return;
+                        }
+                        setFormData(prev => ({
+                            ...prev,
+                            loanDetails: {
+                                ...prev.loanDetails,
+                                totalAmount: snapshot.totalAmount,
+                                depositAmount: snapshot.depositAmount,
+                                principal: snapshot.totalLoanAmount,
+                                totalLoanAmount: snapshot.totalLoanAmount,
+                                totalInterestAmount: snapshot.totalInterestAmount,
+                                totalInterest: snapshot.totalInterestAmount,
+                                totalRepaymentAmount: snapshot.totalRepaymentAmount,
+                                totalRepayment: snapshot.totalRepaymentAmount,
+                                monthlyRepaymentAmount: snapshot.monthlyRepaymentAmount,
+                                monthlyRepayment: snapshot.monthlyRepaymentAmount,
+                                insuranceFee: snapshot.insuranceFee,
+                                managementFee: snapshot.managementFee,
+                                legalFee: snapshot.legalFee,
+                                adminFeesTotal: snapshot.feesTotal,
+                                feePercentages: {
+                                    insurance: snapshot.insurancePct,
+                                    management: snapshot.managementPct,
+                                    legal: snapshot.legalPct,
+                                },
+                            }
+                        }));
+                        setStep(11);
+                    }}
                     className="flex-1 bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
                 >
                     Yes, Proceed
@@ -5586,55 +5852,91 @@ const BNPLFlow = () => {
                 </div>
             </div >
 
+            {step === 9 && (
+                <div className="w-full max-w-6xl mx-auto px-6 pt-6">
+                    {renderStep9()}
+                </div>
+            )}
+
             {/* Main Content */}
             < div className="flex-grow flex items-center justify-center p-6" >
                 <div className="w-full max-w-6xl">
-                    {/* Progress Bar */}
-                    <div className="mb-12 max-w-xl mx-auto">
-                        <div className="flex justify-between text-sm font-medium text-gray-400 mb-2">
-                            <span className={step >= 1 ? "text-[#273e8e]" : ""}>Type</span>
-                            <span className={step >= 2 ? "text-[#273e8e]" : ""}>Product</span>
-                            <span className={step >= 11 ? "text-[#273e8e]" : ""}>Apply</span>
-                            <span className={step >= 12 ? "text-[#273e8e]" : ""}>Approval</span>
-                            <span className={step >= 21 ? "text-[#273e8e]" : ""}>Finish</span>
-                        </div>
-                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-[#273e8e] transition-all duration-500 ease-out"
-                                style={{ width: `${(step / 21) * 100}%` }}
-                            />
-                        </div>
-                    </div>
+                    {step !== 9 && (
+                        <>
+                            {/* Progress Bar */}
+                            <div className="mb-12 max-w-xl mx-auto">
+                                <div className="flex justify-between text-sm font-medium text-gray-400 mb-2">
+                                    <span className={step >= 1 ? "text-[#273e8e]" : ""}>Type</span>
+                                    <span className={step >= 2 ? "text-[#273e8e]" : ""}>Product</span>
+                                    <span className={step >= 11 ? "text-[#273e8e]" : ""}>Apply</span>
+                                    <span className={step >= 12 ? "text-[#273e8e]" : ""}>Approval</span>
+                                    <span className={step >= 21 ? "text-[#273e8e]" : ""}>Finish</span>
+                                </div>
+                                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-[#273e8e] transition-all duration-500 ease-out"
+                                        style={{ width: `${(step / 21) * 100}%` }}
+                                    />
+                                </div>
+                            </div>
 
-                    {step === 1 && renderStep1()}
-                    {step === 2 && renderStep2()}
-                    {step === 2.5 && renderStep2_5()}
-                    {step === 3 && renderStep3()}
-                    {step === 3.5 && renderStep3_5()}
-                    {step === 3.6 && renderStep3_6()}
-                    {step === 3.75 && renderStep3_75()}
-                    {step === 4 && renderStep4()}
-                    {step === 5 && renderStep5()}
-                    {step === 6 && renderStep6()}
-                    {step === 6.5 && renderStep6_5()}
-                    {step === 6.75 && renderStep6_75()}
-                    {step === 7 && renderStep7()}
-                    {step === 7.5 && renderStep7_5()}
-                    {step === 8 && renderStep8()}
-                    {step === 9 && renderStep9()}
-                    {step === 10 && renderStep10()}
-                    {step === 11 && renderStep11()}
-                    {step === 12 && renderStep12()}
-                    {step === 13 && renderStep13()}
-                    {step === 14 && renderStep14()}
-                    {step === 15 && renderStep15()}
-                    {step === 16 && renderStep16()}
-                    {step === 17 && renderStep17()}
-                    {step === 19 && renderStep19()}
-                    {step === 20 && renderStep20()}
-                    {step === 21 && renderStep21()}
+                            {step === 1 && renderStep1()}
+                            {step === 2 && renderStep2()}
+                            {step === 2.5 && renderStep2_5()}
+                            {step === 3 && renderStep3()}
+                            {step === 3.5 && renderStep3_5()}
+                            {step === 3.6 && renderStep3_6()}
+                            {step === 3.75 && renderStep3_75()}
+                            {step === 4 && renderStep4()}
+                            {step === 5 && renderStep5()}
+                            {step === 6 && renderStep6()}
+                            {step === 6.5 && renderStep6_5()}
+                            {step === 6.75 && renderStep6_75()}
+                            {step === 7 && renderStep7()}
+                            {step === 7.5 && renderStep7_5()}
+                            {step === 8 && renderStep8()}
+                            {step === 10 && renderStep10()}
+                            {step === 11 && renderStep11()}
+                            {step === 12 && renderStep12()}
+                            {step === 13 && renderStep13()}
+                            {step === 14 && renderStep14()}
+                            {step === 15 && renderStep15()}
+                            {step === 16 && renderStep16()}
+                            {step === 17 && renderStep17()}
+                            {step === 19 && renderStep19()}
+                            {step === 20 && renderStep20()}
+                            {step === 21 && renderStep21()}
+                        </>
+                    )}
                 </div>
             </div>
+            {showBundleSelectPrompt && (
+                <div className="fixed inset-0 bg-black/50 z-[120] flex items-center justify-center p-4">
+                    <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6">
+                        <h3 className="text-xl font-bold text-[#273e8e] mb-2">Bundle Selected</h3>
+                        <p className="text-sm text-gray-600 mb-6">
+                            <span className="font-semibold text-gray-800">{lastSelectedBundleName}</span> has been added. Do you want to keep browsing or proceed with your selected bundle?
+                        </p>
+                        <div className="flex flex-col gap-3">
+                            <button
+                                onClick={() => setShowBundleSelectPrompt(false)}
+                                className="w-full py-3 rounded-xl border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
+                            >
+                                Keep Browsing
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowBundleSelectPrompt(false);
+                                    setStep(6.5);
+                                }}
+                                className="w-full py-3 rounded-xl bg-[#273e8e] text-white font-semibold hover:bg-[#1a2b6b] transition-colors"
+                            >
+                                Proceed with Selected Bundle
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
         </div >
     );
