@@ -20,6 +20,19 @@ const toNumber = (v) =>
     ? v
     : Number(String(v ?? "").replace(/[^\d.]/g, "")) || 0;
 
+const parseStockQuantity = (stockValue) => {
+  if (stockValue == null) return 0;
+  if (typeof stockValue === "number") return Number.isFinite(stockValue) ? stockValue : 0;
+  const text = String(stockValue).trim().toLowerCase();
+  if (!text) return 0;
+  const numeric = Number(text);
+  if (Number.isFinite(numeric)) return numeric;
+  if (text.includes("out of stock") || text === "unavailable" || text === "false") return 0;
+  if (text.includes("in stock") || text === "available" || text === "true") return 1;
+  const extracted = Number(text.replace(/[^\d.]/g, ""));
+  return Number.isFinite(extracted) ? extracted : 0;
+};
+
 const formatNGN = (n) => {
   const num = toNumber(n);
   try {
@@ -31,7 +44,7 @@ const formatNGN = (n) => {
 
 const mapApiProductToCard = (p) => {
   if (!p) return null;
-  const stockQty = Number(p?.stock ?? 0);
+  const stockQty = parseStockQuantity(p?.stock);
 
   const image =
     p.featured_image ||
@@ -168,7 +181,7 @@ const SpecificProduct = () => {
         rawList = rawList.filter(
           (p) =>
             String(p?.category_id) === String(id) &&
-            Number(p?.stock ?? 0) > 0
+            parseStockQuantity(p?.stock) > 0
         );
 
         // Keep original raw in Context for cart (if your cart uses it)
@@ -213,7 +226,7 @@ const SpecificProduct = () => {
     const sameCat = (Array.isArray(result) ? result : []).filter(
       (p) =>
         String(p?.category_id) === String(id) &&
-        Number(p?.stock ?? 0) > 0
+        parseStockQuantity(p?.stock) > 0
     );
     const mapped = sameCat.map(mapApiProductToCard).filter(Boolean);
     setSpecificProduct(mapped);

@@ -32,6 +32,18 @@ const formatNGN = (n) => {
 const clamp = (n, a = 0, b = 100) => Math.max(a, Math.min(b, n));
 const safeArray = (v) => (Array.isArray(v) ? v : []);
 const toNum = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
+const parseStockQuantity = (stockValue) => {
+  if (stockValue == null) return 0;
+  if (typeof stockValue === "number") return Number.isFinite(stockValue) ? stockValue : 0;
+  const text = String(stockValue).trim().toLowerCase();
+  if (!text) return 0;
+  const numeric = Number(text);
+  if (Number.isFinite(numeric)) return numeric;
+  if (text.includes("out of stock") || text === "unavailable" || text === "false") return 0;
+  if (text.includes("in stock") || text === "available" || text === "true") return 1;
+  const extracted = Number(text.replace(/[^\d.]/g, ""));
+  return Number.isFinite(extracted) ? extracted : 0;
+};
 const avgRating = (list) => {
   if (!list.length) return 0;
   const sum = list.reduce((s, r) => s + toNum(r.rating), 0);
@@ -160,7 +172,7 @@ const mapApiProductToDetails = (p) => {
   const effectiveRaw = isDiscountActive ? discountRaw : priceRaw;
   const oldRaw = isDiscountActive ? priceRaw : null;
 
-  const current = toNum(p?.stock, 0);
+  const current = parseStockQuantity(p?.stock);
   const total = Math.max(current, toNum(p?.old_quantity, current));
   const stockPct = total ? clamp(Math.round((current / total) * 100)) : 0;
 

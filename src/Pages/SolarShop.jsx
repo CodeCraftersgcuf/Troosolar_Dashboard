@@ -21,9 +21,22 @@ const formatNGN = (n) => {
     }
 };
 
+const parseStockQuantity = (stockValue) => {
+    if (stockValue == null) return 0;
+    if (typeof stockValue === "number") return Number.isFinite(stockValue) ? stockValue : 0;
+    const text = String(stockValue).trim().toLowerCase();
+    if (!text) return 0;
+    const numeric = Number(text);
+    if (Number.isFinite(numeric)) return numeric;
+    if (text.includes("out of stock") || text === "unavailable" || text === "false") return 0;
+    if (text.includes("in stock") || text === "available" || text === "true") return 1;
+    const extracted = Number(text.replace(/[^\d.]/g, ""));
+    return Number.isFinite(extracted) ? extracted : 0;
+};
+
 // Map API product -> card props
 const mapApiProductToCard = (p) => {
-    const stockQty = Number(p?.stock ?? 0);
+    const stockQty = parseStockQuantity(p?.stock);
     const image =
         p?.featured_image_url ||
         p?.featured_image ||
@@ -138,7 +151,7 @@ const SolarShop = () => {
                     },
                 });
                 const list = (Array.isArray(data?.data) ? data.data : []).filter(
-                    (product) => Number(product?.stock ?? 0) > 0
+                    (product) => parseStockQuantity(product?.stock) > 0
                 );
                 const mappedProducts = list.map(mapApiProductToCard);
                 setApiProducts(mappedProducts);

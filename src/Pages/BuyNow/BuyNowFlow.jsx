@@ -108,15 +108,49 @@ const parseBundleSpecifications = (bundle) => {
     return {};
 };
 
+const normalizeSpecKey = (key) =>
+    String(key ?? '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+
+const getSpecValue = (specs, candidateKeys = []) => {
+    if (!specs || typeof specs !== 'object') return undefined;
+
+    for (const key of candidateKeys) {
+        if (Object.prototype.hasOwnProperty.call(specs, key)) {
+            const value = specs[key];
+            if (value !== null && value !== undefined && value !== '') return value;
+        }
+    }
+
+    const normalizedSpecMap = new Map(
+        Object.entries(specs).map(([k, v]) => [normalizeSpecKey(k), v])
+    );
+
+    for (const key of candidateKeys) {
+        const value = normalizedSpecMap.get(normalizeSpecKey(key));
+        if (value !== null && value !== undefined && value !== '') return value;
+    }
+
+    return undefined;
+};
+
 const getBundleBatteryCapacity = (bundle) => {
     const specs = parseBundleSpecifications(bundle);
     return (
-        specs.battery_capacity_kwh ??
-        specs.battery_capacity ??
-        specs.battery_capacity_ah ??
-        specs.battery_capacity_wh ??
-        specs.battery ??
-        specs.battery_kwh ??
+        getSpecValue(specs, [
+            'battery_capacity_kwh',
+            'battery_capacity',
+            'battery_capacity_ah',
+            'battery_capacity_wh',
+            'battery',
+            'battery_kwh',
+            'Battery Capacity (kWh)',
+            'Battery Capacity (Ah)',
+            'Battery Capacity (Wh)',
+            'Battery Capacity',
+            'Battery (kWh)',
+        ]) ??
         bundle?.battery_capacity_kwh ??
         bundle?.battery_capacity ??
         bundle?.battery_capacity_ah ??
@@ -130,8 +164,14 @@ const getBundleInverterRating = (bundle) => {
     const specs = parseBundleSpecifications(bundle);
     return (
         bundle?.inver_rating ??
-        specs.inverter_capacity_kva ??
-        specs.inverter_rating ??
+        getSpecValue(specs, [
+            'inverter_capacity_kva',
+            'inverter_rating',
+            'Inverter Capacity (kVA)',
+            'Inverter Capacity',
+            'Inverter Rating',
+            'Inverter Rating (kVA)',
+        ]) ??
         '—'
     );
 };
@@ -139,8 +179,16 @@ const getBundleInverterRating = (bundle) => {
 const getBundleSolarPanelCapacity = (bundle) => {
     const specs = parseBundleSpecifications(bundle);
     return (
-        specs.solar_panels_wattage ??
-        specs.solar_panel_capacity_kw ??
+        getSpecValue(specs, [
+            'solar_panels_wattage',
+            'solar_panel_capacity_kw',
+            'solar_panel_capacity',
+            'Solar Capacity (kW)',
+            'Solar Panels Wattage',
+            'Solar Panel Capacity (kW)',
+            'Solar Capacity',
+            'Solar Panel Capacity',
+        ]) ??
         bundle?.solar_panels_wattage ??
         bundle?.solar_panel_capacity_kw ??
         '—'

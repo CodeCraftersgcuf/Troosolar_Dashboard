@@ -91,15 +91,49 @@ const parseBundleSpecifications = (bundle) => {
     return {};
 };
 
+const normalizeSpecKey = (key) =>
+    String(key ?? '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+
+const getSpecValue = (specs, candidateKeys = []) => {
+    if (!specs || typeof specs !== 'object') return undefined;
+
+    for (const key of candidateKeys) {
+        if (Object.prototype.hasOwnProperty.call(specs, key)) {
+            const value = specs[key];
+            if (value !== null && value !== undefined && value !== '') return value;
+        }
+    }
+
+    const normalizedSpecMap = new Map(
+        Object.entries(specs).map(([k, v]) => [normalizeSpecKey(k), v])
+    );
+
+    for (const key of candidateKeys) {
+        const value = normalizedSpecMap.get(normalizeSpecKey(key));
+        if (value !== null && value !== undefined && value !== '') return value;
+    }
+
+    return undefined;
+};
+
 const getBundleBatteryCapacity = (bundle) => {
     const specs = parseBundleSpecifications(bundle);
     return (
-        specs.battery_capacity_kwh ??
-        specs.battery_capacity ??
-        specs.battery_capacity_ah ??
-        specs.battery_capacity_wh ??
-        specs.battery ??
-        specs.battery_kwh ??
+        getSpecValue(specs, [
+            'battery_capacity_kwh',
+            'battery_capacity',
+            'battery_capacity_ah',
+            'battery_capacity_wh',
+            'battery',
+            'battery_kwh',
+            'Battery Capacity (kWh)',
+            'Battery Capacity (Ah)',
+            'Battery Capacity (Wh)',
+            'Battery Capacity',
+            'Battery (kWh)',
+        ]) ??
         bundle?.battery_capacity_kwh ??
         bundle?.battery_capacity ??
         bundle?.battery_capacity_ah ??
@@ -113,8 +147,14 @@ const getBundleInverterRating = (bundle) => {
     const specs = parseBundleSpecifications(bundle);
     return (
         bundle?.inver_rating ??
-        specs.inverter_capacity_kva ??
-        specs.inverter_rating ??
+        getSpecValue(specs, [
+            'inverter_capacity_kva',
+            'inverter_rating',
+            'Inverter Capacity (kVA)',
+            'Inverter Capacity',
+            'Inverter Rating',
+            'Inverter Rating (kVA)',
+        ]) ??
         '—'
     );
 };
@@ -122,8 +162,16 @@ const getBundleInverterRating = (bundle) => {
 const getBundleSolarPanelCapacity = (bundle) => {
     const specs = parseBundleSpecifications(bundle);
     return (
-        specs.solar_panels_wattage ??
-        specs.solar_panel_capacity_kw ??
+        getSpecValue(specs, [
+            'solar_panels_wattage',
+            'solar_panel_capacity_kw',
+            'solar_panel_capacity',
+            'Solar Capacity (kW)',
+            'Solar Panels Wattage',
+            'Solar Panel Capacity (kW)',
+            'Solar Capacity',
+            'Solar Panel Capacity',
+        ]) ??
         bundle?.solar_panels_wattage ??
         bundle?.solar_panel_capacity_kw ??
         '—'
@@ -2559,13 +2607,31 @@ const BNPLFlow = () => {
     };
 
     const renderStep4 = () => {
-        const auditTypeOptions = ['home-office'].map((id) => {
-            const fromApi = (auditTypes || []).find((t) => String(t?.id) === id);
-            return fromApi || {
-                id,
-                label: id === 'commercial' ? 'Commercial / Industrial' : 'Home / Office'
-            };
-        });
+        const normalizeAuditTypeId = (id, label = '') => {
+            const text = `${String(id || '')} ${String(label || '')}`.toLowerCase();
+            if (text.includes('commercial')) return 'commercial';
+            if (text.includes('home') || text.includes('office')) return 'home-office';
+            return String(id || '');
+        };
+
+        const defaultAuditTypeOptions = [
+            { id: 'home-office', label: 'Home / Office' },
+            { id: 'commercial', label: 'Commercial / Industrial' },
+        ];
+
+        const fromApi = (auditTypes || [])
+            .map((t) => ({
+                id: normalizeAuditTypeId(t?.id, t?.label),
+                label:
+                    String(t?.label || '').trim() ||
+                    (normalizeAuditTypeId(t?.id, t?.label) === 'commercial'
+                        ? 'Commercial / Industrial'
+                        : 'Home / Office'),
+            }))
+            .filter((t) => t.id === 'home-office' || t.id === 'commercial')
+            .filter((t, idx, arr) => arr.findIndex((x) => x.id === t.id) === idx);
+
+        const auditTypeOptions = fromApi.length > 0 ? fromApi : defaultAuditTypeOptions;
 
         return (
         <div className="animate-fade-in">
@@ -2646,6 +2712,30 @@ const BNPLFlow = () => {
             
             <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Property Details</h2>
             <form onSubmit={handleAddressSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Contact Name *</label>
+                        <input
+                            type="text"
+                            placeholder="Full Name"
+                            required
+                            className="w-full p-3 border rounded-lg"
+                            value={formData.fullName}
+                            onChange={e => setFormData({ ...formData, fullName: e.target.value })}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Contact Phone *</label>
+                        <input
+                            type="tel"
+                            placeholder="Phone Number"
+                            required
+                            className="w-full p-3 border rounded-lg"
+                            value={formData.phone}
+                            onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                        />
+                    </div>
+                </div>
                 {states.length > 0 ? (
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
@@ -2765,6 +2855,8 @@ const BNPLFlow = () => {
                     type="submit" 
                     disabled={
                         loading || 
+                        !formData.fullName ||
+                        !formData.phone ||
                         !formData.state || 
                         !formData.houseNo || 
                         !formData.streetName || 
@@ -2774,6 +2866,8 @@ const BNPLFlow = () => {
                     }
                     className={`w-full py-4 rounded-xl font-bold transition-colors ${
                         loading || 
+                        !formData.fullName ||
+                        !formData.phone ||
                         !formData.state || 
                         !formData.houseNo || 
                         !formData.streetName || 
@@ -2793,9 +2887,9 @@ const BNPLFlow = () => {
                         'Continue'
                     )}
                 </button>
-                {(!formData.state || !formData.houseNo || !formData.streetName || !formData.floors || !formData.rooms) && (
+                {(!formData.fullName || !formData.phone || !formData.state || !formData.houseNo || !formData.streetName || !formData.floors || !formData.rooms) && (
                     <p className="text-sm text-red-600 text-center">
-                        Please fill in all required fields (State, House No, Street Name, Floors, and Rooms)
+                        Please fill in all required fields (Contact Name, Phone, State, House No, Street Name, Floors, and Rooms)
                     </p>
                 )}
                 {formData.isGatedEstate && (!formData.estateName || !formData.estateAddress) && (
@@ -2817,6 +2911,9 @@ const BNPLFlow = () => {
                 </p>
                 <p className="text-gray-600 mb-6">
                     Our team will contact you within 24 - 72 hours to discuss your energy audit.
+                </p>
+                <p className="text-sm text-[#273e8e] font-medium mb-6">
+                    No upfront payment is required for this audit request.
                 </p>
                 <div className="space-y-3">
                     <button 
@@ -3909,13 +4006,24 @@ const BNPLFlow = () => {
         const tenor = Number(ld.tenor || 0);
         const interestRate = Number(ld.interestRate || 0);
 
-        const insurancePct = Number(loanConfig?.insurance_fee_percentage ?? DEFAULT_INSURANCE_PERCENT);
+        // Fee percentages come from admin settings.
+        // Insurance percentage prioritizes BNPL compulsory add-on configuration.
+        const insuranceAddOn = addOns.find((a) => a?.is_compulsory_bnpl);
+        const insurancePctFromAddOn =
+            insuranceAddOn?.calculation_type === 'percentage'
+                ? Number(insuranceAddOn?.calculation_value ?? 0)
+                : NaN;
+        const insurancePct =
+            Number.isFinite(insurancePctFromAddOn) && insurancePctFromAddOn > 0
+                ? insurancePctFromAddOn
+                : DEFAULT_INSURANCE_PERCENT;
         const managementPct = Number(loanConfig?.management_fee_percentage ?? 1);
         const legalPct = Number(loanConfig?.residual_fee_percentage ?? 1);
 
         const baseLoanAmount = Math.max(bundlePrice - depositAmount, 0);
         const insuranceFee = bundlePrice * (insurancePct / 100);
-        // Loan-amount based fees are computed on the actual loan amount before fees.
+        // Loan-amount based fees are computed on the actual loan amount base
+        // (bundle price minus deposit, excluding admin fees).
         const loanBaseForLoanAmountFees = Math.max(baseLoanAmount, 0);
         const managementFee = loanBaseForLoanAmountFees * (managementPct / 100);
         const legalFee = loanBaseForLoanAmountFees * (legalPct / 100);
@@ -3994,6 +4102,9 @@ const BNPLFlow = () => {
 
                     <div className="mt-5 pt-4 border-t border-blue-200">
                         <h4 className="font-semibold text-gray-800 mb-2">Admin Fee Breakdown (from settings)</h4>
+                        <p className="text-xs text-gray-600 mb-2">
+                            Insurance is calculated on bundle price only. Management and legal fees are calculated on loan amount base (actual loan amount before admin fees).
+                        </p>
                         <div className="space-y-1 text-sm">
                             <div className="flex justify-between">
                                 <span>Bundle Price (base)</span>
@@ -5003,9 +5114,9 @@ const BNPLFlow = () => {
         }
     }, [step, applicationId]);
 
-    // Poll audit request status for commercial audits (Step 6)
+    // Poll audit request status for audit flow (Step 6)
     React.useEffect(() => {
-        if (step === 6 && formData.auditRequestId && formData.auditType === 'commercial') {
+        if (step === 6 && formData.auditRequestId) {
             const pollInterval = setInterval(async () => {
                 try {
                     const token = localStorage.getItem('access_token');

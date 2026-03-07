@@ -67,6 +67,33 @@ const parseSpecifications = (value) => {
   return {};
 };
 
+const normalizeSpecKey = (key) =>
+  String(key ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+const getSpecValue = (specs, candidateKeys = []) => {
+  if (!specs || typeof specs !== "object") return undefined;
+
+  for (const key of candidateKeys) {
+    if (Object.prototype.hasOwnProperty.call(specs, key)) {
+      const value = specs[key];
+      if (value !== null && value !== undefined && value !== "") return value;
+    }
+  }
+
+  const normalizedSpecMap = new Map(
+    Object.entries(specs).map(([k, v]) => [normalizeSpecKey(k), v])
+  );
+
+  for (const key of candidateKeys) {
+    const value = normalizedSpecMap.get(normalizeSpecKey(key));
+    if (value !== null && value !== undefined && value !== "") return value;
+  }
+
+  return undefined;
+};
+
 // Map API bundle -> props
 const mapBundleDetail = (b) => {
   if (!b) return null;
@@ -152,23 +179,50 @@ const mapBundleDetail = (b) => {
   const specs = parseSpecifications(b.specifications);
   const inverterRating =
     b.inver_rating ??
-    specs.inverter_capacity_kva ??
-    specs.inverter_rating ??
+    getSpecValue(specs, [
+      "inverter_capacity_kva",
+      "inverter_rating",
+      "Inverter Capacity (kVA)",
+      "Inverter Capacity",
+      "Inverter Rating",
+      "Inverter Rating (kVA)",
+    ]) ??
     "";
   const batteryCapacity =
-    specs.battery_capacity_kwh ??
-    specs.battery_capacity ??
-    specs.battery_capacity_ah ??
-    specs.battery_capacity_wh ??
-    specs.battery ??
-    specs.battery_kwh ??
+    getSpecValue(specs, [
+      "battery_capacity_kwh",
+      "battery_capacity",
+      "battery_capacity_ah",
+      "battery_capacity_wh",
+      "battery",
+      "battery_kwh",
+      "Battery Capacity (kWh)",
+      "Battery Capacity (Ah)",
+      "Battery Capacity (Wh)",
+      "Battery Capacity",
+      "Battery (kWh)",
+    ]) ??
     b.battery_capacity_kwh ??
     b.battery_capacity ??
     b.battery_capacity_ah ??
     b.battery_capacity_wh ??
     b.battery ??
     "";
-  const solarPanelCapacity = specs.solar_panels_wattage ?? specs.solar_panel_capacity_kw ?? b.solar_panels_wattage ?? b.solar_panel_capacity_kw ?? b.solar_panel_capacity ?? "";
+  const solarPanelCapacity =
+    getSpecValue(specs, [
+      "solar_panels_wattage",
+      "solar_panel_capacity_kw",
+      "solar_panel_capacity",
+      "Solar Capacity (kW)",
+      "Solar Panels Wattage",
+      "Solar Panel Capacity (kW)",
+      "Solar Capacity",
+      "Solar Panel Capacity",
+    ]) ??
+    b.solar_panels_wattage ??
+    b.solar_panel_capacity_kw ??
+    b.solar_panel_capacity ??
+    "";
 
   // API: detailed_description, description, desc – prefer detailed_description for display
   const description = (b.detailed_description && String(b.detailed_description).trim())
