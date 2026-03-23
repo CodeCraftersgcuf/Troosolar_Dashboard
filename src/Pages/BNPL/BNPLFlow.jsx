@@ -3061,13 +3061,22 @@ const BNPLFlow = () => {
 
         // 3. Custom services / fees (preferred source)
         const OL_PREFIX = '[OL]';
+        const OL_VIS_TROO_PREFIX = '[OL:TROOSOLAR]';
+        const OL_VIS_OWN_PREFIX = '[OL:OWN]';
         const serviceRows = [];
         const customOrderItems = [];
         const relServices = bundle?.customServices ?? bundle?.custom_services ?? [];
+        const stripOrderItemPrefix = (title) => {
+            const t = String(title || '');
+            if (t.startsWith(OL_VIS_TROO_PREFIX)) return t.slice(OL_VIS_TROO_PREFIX.length).trim();
+            if (t.startsWith(OL_VIS_OWN_PREFIX)) return t.slice(OL_VIS_OWN_PREFIX.length).trim();
+            if (t.startsWith(OL_PREFIX)) return t.slice(OL_PREFIX.length).trim();
+            return t;
+        };
         relServices.forEach((s) => {
             const rawTitle = s?.title || 'Custom Service';
-            if (rawTitle.startsWith(OL_PREFIX)) {
-                const cleanTitle = rawTitle.slice(OL_PREFIX.length);
+            if (rawTitle.startsWith(OL_PREFIX) || rawTitle.startsWith(OL_VIS_TROO_PREFIX) || rawTitle.startsWith(OL_VIS_OWN_PREFIX)) {
+                const cleanTitle = stripOrderItemPrefix(rawTitle);
                 const qtyMeta = resolveQtyAndUnit([s], 1, 'Nos');
                 customOrderItems.push({
                     description: cleanTitle,
@@ -3277,7 +3286,7 @@ const BNPLFlow = () => {
                 <button onClick={() => setStep(formData.optionType === 'audit' ? 5 : (formData.optionType === 'choose-system' ? 3.5 : (formData.optionType ? 3 : 2)))} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
-                <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary</h2>
+                <h2 className="text-2xl font-bold mb-4 text-[#273e8e] border-b pb-4">Order Summary</h2>
 
                 {enrichingBundles && (
                     <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
@@ -3669,7 +3678,7 @@ const BNPLFlow = () => {
                 <button onClick={() => setStep(6.5)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
-                <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Invoice</h2>
+                <h2 className="text-2xl font-bold mb-4 text-[#273e8e] border-b pb-4">Invoice</h2>
 
                 {/* Per-bundle invoice sections (matches Excel FOR INVOICE template) */}
                 {bundleInvoiceSections.map((section, sIdx) => (

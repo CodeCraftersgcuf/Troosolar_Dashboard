@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader, CheckCircle2, XCircle, AlertCircle, CreditCard, Minus, Plus, X, Info, ChevronDown } from 'lucide-react';
+import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader, CheckCircle2, XCircle, AlertCircle, CreditCard, Minus, Plus, X, Info, ChevronDown, User, MapPin, Phone } from 'lucide-react';
 import axios from 'axios';
 import API, { BASE_URL } from '../../config/api.config';
 
@@ -37,6 +37,11 @@ const ensureFlutterwave = () =>
 
 // Fallback image URL
 const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
+const FEE_VIS_TROO_PREFIX = "[FEE:TROOSOLAR]";
+const FEE_VIS_OWN_PREFIX = "[FEE:OWN]";
+const FEE_VIS_BOTH_PREFIX = "[FEE]";
+const OL_VIS_TROO_PREFIX = "[OL:TROOSOLAR]";
+const OL_VIS_OWN_PREFIX = "[OL:OWN]";
 
 // Format backup time text - split sentences by periods and display on separate lines with blank line between
 const formatBackupTime = (text) => {
@@ -248,6 +253,8 @@ const BuyNowFlow = () => {
         installerChoice: '', // 'troosolar', 'own'
         includeInsurance: false,
         includeInspection: true,
+        fullName: '',
+        phone: '',
         address: '',
         state: '',
         stateId: null,
@@ -1417,7 +1424,39 @@ const BuyNowFlow = () => {
         });
     };
 
+    const buyNowContactComplete = () => {
+        if (
+            !formData.fullName?.trim() ||
+            !formData.phone?.trim() ||
+            !formData.state?.trim() ||
+            !formData.houseNo?.trim() ||
+            !formData.streetName?.trim()
+        ) {
+            return false;
+        }
+        if (formData.isGatedEstate && (!formData.estateName?.trim() || !formData.estateAddress?.trim())) {
+            return false;
+        }
+        return true;
+    };
+
+    const formatBuyNowInstallationAddress = () => {
+        const fd = formData;
+        const parts = [
+            fd.houseNo && fd.streetName ? `${fd.houseNo}, ${fd.streetName}` : fd.streetName || fd.houseNo,
+            fd.landmark,
+            fd.state,
+            fd.isGatedEstate && fd.estateName ? `Estate: ${fd.estateName}` : null,
+            fd.isGatedEstate && fd.estateAddress ? fd.estateAddress : null,
+        ].filter(Boolean);
+        return parts.join(' · ') || fd.address || '';
+    };
+
     const handleCheckoutSubmit = async () => {
+        if (!buyNowContactComplete()) {
+            alert('Please complete your contact name, phone, state, and installation address (house no. & street) before confirming.');
+            return;
+        }
         setLoading(true);
         try {
             const token = localStorage.getItem('access_token');
@@ -1432,7 +1471,13 @@ const BuyNowFlow = () => {
                 product_category: formData.productCategory,
                 installer_choice: formData.installerChoice || 'troosolar',
                 include_insurance: formData.includeInsurance || false,
+                property_state: formData.state,
+                property_address: formatBuyNowInstallationAddress(),
+                contact_name: formData.fullName?.trim() || undefined,
+                contact_phone: formData.phone?.trim() || undefined,
             };
+            if (formData.floors) payload.property_floors = Number(formData.floors) || null;
+            if (formData.rooms) payload.property_rooms = Number(formData.rooms) || null;
 
             // For pre-packaged bundles: send bundle_id and amount (so backend has correct price even if bundle record is stale)
             if (formData.selectedBundleId && formData.optionType === 'choose-system') {
@@ -1564,7 +1609,7 @@ const BuyNowFlow = () => {
             // Get user info from localStorage or API
             const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
             const userEmail = userInfo.email || 'customer@troosolar.com';
-            const userName = userInfo.name || userInfo.full_name || 'Customer';
+            const userName = (formData.fullName?.trim() || userInfo.name || userInfo.full_name || [userInfo.first_name, userInfo.sur_name].filter(Boolean).join(' ') || 'Customer').trim();
 
             window.FlutterwaveCheckout({
                 public_key: "FLWPUBK_TEST-dd1514f7562b1d623c4e63fb58b6aedb-X", // TODO: Move to env variable
@@ -1575,6 +1620,7 @@ const BuyNowFlow = () => {
                 customer: {
                     email: userEmail,
                     name: userName,
+                    phone_number: formData.phone?.trim() || userInfo.phone || '',
                 },
                 callback: async (response) => {
                     if (response?.status === "successful") {
@@ -1631,6 +1677,24 @@ const BuyNowFlow = () => {
             }
         };
         fetchConfig();
+    }, []);
+
+    // Prefill contact from logged-in user (once)
+    React.useEffect(() => {
+        try {
+            const u = JSON.parse(localStorage.getItem('user_info') || '{}');
+            const nameFromProfile = [u.first_name, u.sur_name].filter(Boolean).join(' ').trim();
+            setFormData((prev) => {
+                if (prev.fullName?.trim() || prev.phone?.trim()) return prev;
+                return {
+                    ...prev,
+                    fullName: nameFromProfile || u.name || u.full_name || '',
+                    phone: u.phone || '',
+                };
+            });
+        } catch {
+            /* ignore */
+        }
     }, []);
 
     // Fetch delivery locations when state is selected
@@ -3408,6 +3472,29 @@ const BuyNowFlow = () => {
     // Mirrors the identical function in BNPLFlow so both flows show the same data.
     const extractBundleLineItems = (bundle) => {
         const toNumber = (v) => typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.]/g, '')) || 0;
+        const parseFeeVisibility = (title) => {
+            const s = String(title || '');
+            if (s.startsWith(FEE_VIS_TROO_PREFIX)) return 'troosolar';
+            if (s.startsWith(FEE_VIS_OWN_PREFIX)) return 'own';
+            if (s.startsWith(FEE_VIS_BOTH_PREFIX)) return 'both';
+            const lower = s.toLowerCase();
+            // Backward-compatible defaults for legacy untagged fee names
+            if (lower.includes('installation fee') || lower.includes('inspection fee')) return 'troosolar';
+            if (lower.includes('delivery fee') || lower.includes('delivery/logistics')) return 'both';
+            return 'both';
+        };
+        const stripFeeVisibilityPrefix = (title) => {
+            const t = String(title || '');
+            if (t.startsWith(FEE_VIS_TROO_PREFIX)) return t.slice(FEE_VIS_TROO_PREFIX.length).trim();
+            if (t.startsWith(FEE_VIS_OWN_PREFIX)) return t.slice(FEE_VIS_OWN_PREFIX.length).trim();
+            if (t.startsWith(FEE_VIS_BOTH_PREFIX)) return t.slice(FEE_VIS_BOTH_PREFIX.length).trim();
+            return t;
+        };
+        const feeVisibleForInstaller = (visibility, installerChoice) => {
+            if (visibility === 'troosolar') return installerChoice !== 'own';
+            if (visibility === 'own') return installerChoice === 'own';
+            return true; // both
+        };
         const parseQuantityApplies = (value) => {
             if (value === undefined || value === null || value === '') return true;
             if (typeof value === 'boolean') return value;
@@ -3492,7 +3579,8 @@ const BuyNowFlow = () => {
 
         let materialsTotalCost = 0;
         pureInstallMaterials.forEach((m) => { materialsTotalCost += m.rate * m.qty; });
-        const materialLine = pureInstallMaterials.length > 0 ? {
+        // Omit dummy "Installation Materials Cost | Lots | Included" when total is 0 (matches admin preview)
+        const materialLine = pureInstallMaterials.length > 0 && materialsTotalCost > 0 ? {
             description: 'Installation Materials Cost',
             quantity: 1,
             unit: 'Lots',
@@ -3503,25 +3591,62 @@ const BuyNowFlow = () => {
         const OL_PREFIX = '[OL]';
         const serviceRows = [];
         const customOrderItems = [];
+        const parseOrderItemVisibility = (title) => {
+            if (String(title || '').startsWith(OL_VIS_TROO_PREFIX)) return 'troosolar';
+            if (String(title || '').startsWith(OL_VIS_OWN_PREFIX)) return 'own';
+            return 'both';
+        };
+        const orderItemVisibleForInstaller = (visibility, installerChoice) => {
+            if (visibility === 'troosolar') return installerChoice !== 'own';
+            if (visibility === 'own') return installerChoice === 'own';
+            return true;
+        };
+        const stripOrderItemPrefix = (title) => {
+            const t = String(title || '');
+            if (t.startsWith(OL_VIS_TROO_PREFIX)) return t.slice(OL_VIS_TROO_PREFIX.length).trim();
+            if (t.startsWith(OL_VIS_OWN_PREFIX)) return t.slice(OL_VIS_OWN_PREFIX.length).trim();
+            if (t.startsWith(OL_PREFIX)) return t.slice(OL_PREFIX.length).trim();
+            return t;
+        };
         const relServices = bundle?.customServices ?? bundle?.custom_services ?? [];
+        const hasCustomServiceFeeRows = relServices.some((s) => {
+            const t = String(s?.title || '');
+            return !t.startsWith(OL_PREFIX) && !t.startsWith(OL_VIS_TROO_PREFIX) && !t.startsWith(OL_VIS_OWN_PREFIX);
+        });
+        const installerChoice = formData.installerChoice || 'troosolar';
         relServices.forEach((s) => {
             const rawTitle = s?.title || 'Custom Service';
-            if (rawTitle.startsWith(OL_PREFIX)) {
-                const cleanTitle = rawTitle.slice(OL_PREFIX.length);
+            if (rawTitle.startsWith(OL_PREFIX) || rawTitle.startsWith(OL_VIS_TROO_PREFIX) || rawTitle.startsWith(OL_VIS_OWN_PREFIX)) {
+                const cleanTitle = stripOrderItemPrefix(rawTitle);
+                const visibility = parseOrderItemVisibility(rawTitle);
                 const qtyMeta = resolveQtyAndUnit([s], 1, 'Nos');
-                customOrderItems.push({ description: cleanTitle, quantity: qtyMeta.quantity, unit: qtyMeta.unit, quantityApplies: qtyMeta.quantityApplies, rate: toNumber(s?.service_amount) });
+                if (orderItemVisibleForInstaller(visibility, installerChoice)) {
+                    customOrderItems.push({ description: cleanTitle, quantity: qtyMeta.quantity, unit: qtyMeta.unit, quantityApplies: qtyMeta.quantityApplies, rate: toNumber(s?.service_amount) });
+                }
             } else {
-                const qtyMeta = resolveQtyAndUnit([s], 1, /inspection/i.test(rawTitle) ? 'Lots' : 'Nos');
-                serviceRows.push({ description: rawTitle, quantity: qtyMeta.quantity, unit: qtyMeta.unit, quantityApplies: qtyMeta.quantityApplies, rate: toNumber(s?.service_amount) });
+                const cleanTitle = stripFeeVisibilityPrefix(rawTitle);
+                const visibility = parseFeeVisibility(rawTitle);
+                const qtyMeta = resolveQtyAndUnit([s], 1, /inspection/i.test(cleanTitle) ? 'Lots' : 'Nos');
+                if (feeVisibleForInstaller(visibility, installerChoice)) {
+                    serviceRows.push({ description: cleanTitle, quantity: qtyMeta.quantity, unit: qtyMeta.unit, quantityApplies: qtyMeta.quantityApplies, rate: toNumber(s?.service_amount) });
+                }
             }
         });
-        if (serviceRows.length === 0 && fallbackServiceRows.length > 0) serviceRows.push(...fallbackServiceRows);
+        // Do not inject material-derived fee rows when API fees were filtered out for "own installer" (same rules as API fees)
+        if (serviceRows.length === 0 && fallbackServiceRows.length > 0) {
+            fallbackServiceRows.forEach((row) => {
+                const vis = parseFeeVisibility(row.description);
+                if (feeVisibleForInstaller(vis, installerChoice)) {
+                    serviceRows.push(row);
+                }
+            });
+        }
 
         const orderListItems = customOrderItems.length > 0 ? [...customOrderItems] : [...productRows];
         if (materialLine) orderListItems.push(materialLine);
         const invoiceItems = [...orderListItems, ...serviceRows];
         const orderListTotal = orderListItems.reduce((s, i) => s + (i.rate * i.quantity), 0);
-        return { orderListItems, invoiceItems, serviceRows, productRows, materialLine, itemsTotal: orderListTotal };
+        return { orderListItems, invoiceItems, serviceRows, productRows, materialLine, itemsTotal: orderListTotal, hasCustomServiceFeeRows };
     };
 
     // Fetch full bundle details (with custom_services) before showing Order Summary
@@ -3728,7 +3853,11 @@ const BuyNowFlow = () => {
                 <button onClick={() => setStep(4)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
-                <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary</h2>
+                <h2 className="text-2xl font-bold mb-4 text-[#273e8e] border-b pb-4">Order Summary</h2>
+
+                <div className="mb-6 p-4 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
+                    <strong>Next step:</strong> On the invoice screen you will enter your <strong>phone number</strong> and full <strong>installation address</strong> before confirming the order and paying.
+                </div>
 
                 {enrichingBundles && (
                     <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
@@ -3862,7 +3991,7 @@ const BuyNowFlow = () => {
             const bundleObj = sb.bundle;
             const bundleName = bundleObj?.title || bundleObj?.name || `Bundle #${sb.id}`;
             const bundleTotalPrice = (sb.price || 0) * bundleQty;
-            const { invoiceItems, serviceRows } = extractBundleLineItems(bundleObj);
+            const { invoiceItems, serviceRows, hasCustomServiceFeeRows } = extractBundleLineItems(bundleObj);
 
             let allRows;
             if (invoiceItems.length > 0) {
@@ -3890,17 +4019,26 @@ const BuyNowFlow = () => {
                 }];
             }
 
-            if (serviceRows.length === 0) {
-                allRows.push(
-                    { id: `inv-${sb.id}-install`, description: `Installation Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: installationFee, totalCost: installationFee },
-                    { id: `inv-${sb.id}-delivery`, description: `Delivery Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: deliveryFee, totalCost: deliveryFee },
-                    { id: `inv-${sb.id}-inspection`, description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: inspectionFee, totalCost: inspectionFee },
-                );
+            // Only use legacy placeholder fees when the bundle has no fee rows in custom_services (avoids duplicating after installer filter)
+            if (serviceRows.length === 0 && !hasCustomServiceFeeRows) {
+                if (formData.installerChoice === 'own') {
+                    allRows.push(
+                        { id: `inv-${sb.id}-delivery`, description: `Delivery Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: deliveryFee, totalCost: deliveryFee },
+                    );
+                } else {
+                    allRows.push(
+                        { id: `inv-${sb.id}-install`, description: `Installation Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: installationFee, totalCost: installationFee },
+                        { id: `inv-${sb.id}-delivery`, description: `Delivery Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: deliveryFee, totalCost: deliveryFee },
+                        { id: `inv-${sb.id}-inspection`, description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: inspectionFee, totalCost: inspectionFee },
+                    );
+                }
             }
 
             const feesTotal = serviceRows.length > 0
                 ? serviceRows.reduce((s, r) => s + (r.rate * (r.quantityApplies === false ? 1 : r.quantity)), 0)
-                : (installationFee + deliveryFee + inspectionFee);
+                : (!hasCustomServiceFeeRows
+                    ? (formData.installerChoice === 'own' ? deliveryFee : (installationFee + deliveryFee + inspectionFee))
+                    : 0);
             const sectionNetTotal = bundleTotalPrice + feesTotal;
 
             return { bundleName, allRows, netTotal: sectionNetTotal };
@@ -3934,6 +4072,157 @@ const BuyNowFlow = () => {
                 <button onClick={() => setStep(7)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
+
+                <div className="mb-8 p-5 rounded-xl border border-[#273e8e]/25 bg-[#f8faff]">
+                    <h3 className="text-lg font-bold text-[#273e8e] mb-1 flex items-center gap-2">
+                        <User size={22} className="shrink-0" />
+                        Contact & installation site
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                        We use this to reach you and to plan installation. It will appear on your order before you pay.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Full name *</label>
+                            <input
+                                type="text"
+                                className="w-full p-3 border border-gray-300 rounded-lg"
+                                value={formData.fullName}
+                                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                                placeholder="As on your ID / account"
+                            />
+                        </div>
+                        <div>
+                            <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
+                                <Phone size={14} /> Phone (WhatsApp) *
+                            </label>
+                            <input
+                                type="tel"
+                                className="w-full p-3 border border-gray-300 rounded-lg"
+                                value={formData.phone}
+                                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                placeholder="e.g. 0803 …"
+                            />
+                        </div>
+                    </div>
+                    {states.length > 0 ? (
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">State *</label>
+                            <select
+                                className="w-full p-3 border border-gray-300 rounded-lg"
+                                value={formData.stateId || ''}
+                                onChange={(e) => {
+                                    const stateId = e.target.value ? Number(e.target.value) : null;
+                                    const selectedState = states.find((s) => s.id === stateId);
+                                    setFormData({
+                                        ...formData,
+                                        state: selectedState?.name || '',
+                                        stateId,
+                                    });
+                                    setSelectedStateId(stateId);
+                                }}
+                            >
+                                <option value="">Select state</option>
+                                {states.filter((s) => s.is_active).map((state) => (
+                                    <option key={state.id} value={state.id}>{state.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    ) : (
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">State *</label>
+                            <input
+                                type="text"
+                                className="w-full p-3 border border-gray-300 rounded-lg"
+                                value={formData.state}
+                                onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                                placeholder="State"
+                            />
+                        </div>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">House / plot no. *</label>
+                            <input
+                                type="text"
+                                className="w-full p-3 border border-gray-300 rounded-lg"
+                                value={formData.houseNo}
+                                onChange={(e) => setFormData({ ...formData, houseNo: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Street name *</label>
+                            <input
+                                type="text"
+                                className="w-full p-3 border border-gray-300 rounded-lg"
+                                value={formData.streetName}
+                                onChange={(e) => setFormData({ ...formData, streetName: e.target.value })}
+                            />
+                        </div>
+                    </div>
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Landmark (optional)</label>
+                        <input
+                            type="text"
+                            className="w-full p-3 border border-gray-300 rounded-lg"
+                            value={formData.landmark}
+                            onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Floors (optional)</label>
+                            <input
+                                type="number"
+                                min={0}
+                                className="w-full p-3 border border-gray-300 rounded-lg"
+                                value={formData.floors}
+                                onChange={(e) => setFormData({ ...formData, floors: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Rooms (optional)</label>
+                            <input
+                                type="number"
+                                min={0}
+                                className="w-full p-3 border border-gray-300 rounded-lg"
+                                value={formData.rooms}
+                                onChange={(e) => setFormData({ ...formData, rooms: e.target.value })}
+                            />
+                        </div>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer mb-2">
+                        <input
+                            type="checkbox"
+                            checked={formData.isGatedEstate}
+                            onChange={(e) => setFormData({ ...formData, isGatedEstate: e.target.checked })}
+                            className="h-4 w-4 text-[#273e8e] rounded"
+                        />
+                        <span className="text-sm text-gray-700">Property is in a gated estate</span>
+                    </label>
+                    {formData.isGatedEstate && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                            <input
+                                type="text"
+                                placeholder="Estate name *"
+                                className="p-3 border rounded-lg"
+                                value={formData.estateName}
+                                onChange={(e) => setFormData({ ...formData, estateName: e.target.value })}
+                            />
+                            <input
+                                type="text"
+                                placeholder="Estate address *"
+                                className="p-3 border rounded-lg"
+                                value={formData.estateAddress}
+                                onChange={(e) => setFormData({ ...formData, estateAddress: e.target.value })}
+                            />
+                        </div>
+                    )}
+                    {!buyNowContactComplete() && (
+                        <p className="text-sm text-amber-700 mt-3">Fill name, phone, state, house no., and street to continue.</p>
+                    )}
+                </div>
+
                 <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Invoice</h2>
 
                 {bundleInvoiceSections.map((section, sIdx) => (
@@ -4031,8 +4320,8 @@ const BuyNowFlow = () => {
 
                 <button
                     onClick={handleCheckoutSubmit}
-                    disabled={loading}
-                    className={`w-full py-4 rounded-xl font-bold transition-colors ${loading
+                    disabled={loading || !buyNowContactComplete()}
+                    className={`w-full py-4 rounded-xl font-bold transition-colors ${loading || !buyNowContactComplete()
                         ? 'bg-gray-400 text-white cursor-not-allowed'
                         : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
                     }`}
@@ -4347,7 +4636,7 @@ const BuyNowFlow = () => {
             const bundleObj = sb.bundle;
             const bundleName = bundleObj?.title || bundleObj?.name || `Bundle #${sb.id}`;
             const bundleTotalPrice = (sb.price || 0) * bundleQty;
-            const { invoiceItems, serviceRows } = extractBundleLineItems(bundleObj);
+            const { invoiceItems, serviceRows, hasCustomServiceFeeRows } = extractBundleLineItems(bundleObj);
 
             let allRows;
             if (invoiceItems.length > 0) {
@@ -4374,17 +4663,25 @@ const BuyNowFlow = () => {
                 }];
             }
 
-            if (serviceRows.length === 0) {
-                allRows.push(
-                    { id: `inv5-${sb.id}-install`, description: 'Installation Fees', quantity: 1, unit: 'Nos', rate: apiInstall, totalCost: apiInstall },
-                    { id: `inv5-${sb.id}-delivery`, description: 'Delivery/Logistics Fees', quantity: 1, unit: 'Nos', rate: apiDelivery, totalCost: apiDelivery },
-                    { id: `inv5-${sb.id}-inspect`, description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: apiInspect, totalCost: apiInspect },
-                );
+            if (serviceRows.length === 0 && !hasCustomServiceFeeRows) {
+                if (formData.installerChoice === 'own') {
+                    allRows.push(
+                        { id: `inv5-${sb.id}-delivery`, description: 'Delivery/Logistics Fees', quantity: 1, unit: 'Nos', rate: apiDelivery, totalCost: apiDelivery },
+                    );
+                } else {
+                    allRows.push(
+                        { id: `inv5-${sb.id}-install`, description: 'Installation Fees', quantity: 1, unit: 'Nos', rate: apiInstall, totalCost: apiInstall },
+                        { id: `inv5-${sb.id}-delivery`, description: 'Delivery/Logistics Fees', quantity: 1, unit: 'Nos', rate: apiDelivery, totalCost: apiDelivery },
+                        { id: `inv5-${sb.id}-inspect`, description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: apiInspect, totalCost: apiInspect },
+                    );
+                }
             }
 
             const feesTotal = serviceRows.length > 0
                 ? serviceRows.reduce((s, r) => s + (r.rate * (r.quantityApplies === false ? 1 : r.quantity)), 0)
-                : (apiInstall + apiDelivery + apiInspect);
+                : (!hasCustomServiceFeeRows
+                    ? (formData.installerChoice === 'own' ? apiDelivery : (apiInstall + apiDelivery + apiInspect))
+                    : 0);
             const sectionNetTotal = bundleTotalPrice + feesTotal;
             return { bundleName, allRows, netTotal: sectionNetTotal };
         });
@@ -4392,14 +4689,20 @@ const BuyNowFlow = () => {
         if (bundleInvoiceSections5.length === 0) {
             const label = invoiceDetails?.bundle_title || formData.selectedBundle?.title || formData.selectedBundle?.name || 'Solar System';
             const price = Number(invoiceDetails?.product_price || formData.selectedProductPrice || 0);
-            const netTotal = price + apiInstall + apiDelivery + apiInspect;
+            const netTotal = formData.installerChoice === 'own'
+                ? price + apiDelivery
+                : price + apiInstall + apiDelivery + apiInspect;
             bundleInvoiceSections5.push({
                 bundleName: label,
                 allRows: [
                     { id: 'inv5-main', description: label, quantity: 1, unit: 'Nos', rate: price, totalCost: price },
-                    { id: 'inv5-install', description: 'Installation Fees', quantity: 1, unit: 'Nos', rate: apiInstall, totalCost: apiInstall },
                     { id: 'inv5-delivery', description: 'Delivery/Logistics Fees', quantity: 1, unit: 'Nos', rate: apiDelivery, totalCost: apiDelivery },
-                    { id: 'inv5-inspect', description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: apiInspect, totalCost: apiInspect },
+                    ...(formData.installerChoice === 'own'
+                        ? []
+                        : [
+                            { id: 'inv5-install', description: 'Installation Fees', quantity: 1, unit: 'Nos', rate: apiInstall, totalCost: apiInstall },
+                            { id: 'inv5-inspect', description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: apiInspect, totalCost: apiInspect },
+                        ]),
                 ],
                 netTotal,
             });
@@ -4416,7 +4719,45 @@ const BuyNowFlow = () => {
             <button onClick={() => setStep(7.5)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
-            <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Invoice #{orderId || 'Pending'}</h2>
+            <h2 className="text-2xl font-bold mb-4 text-[#273e8e] border-b pb-4">Invoice #{orderId || 'Pending'}</h2>
+
+            {(() => {
+                let userEmail = '';
+                try {
+                    userEmail = JSON.parse(localStorage.getItem('user_info') || '{}').email || '';
+                } catch {
+                    userEmail = '';
+                }
+                const addr = formatBuyNowInstallationAddress();
+                return (
+                    <div className="mb-6 p-4 rounded-xl border border-gray-200 bg-gray-50">
+                        <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                            <MapPin size={18} className="text-[#273e8e] shrink-0" />
+                            Customer & installation details
+                        </h3>
+                        <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                            <div>
+                                <dt className="text-gray-500">Contact name</dt>
+                                <dd className="font-medium text-gray-900">{formData.fullName?.trim() || '—'}</dd>
+                            </div>
+                            <div>
+                                <dt className="text-gray-500">Phone</dt>
+                                <dd className="font-medium text-gray-900">{formData.phone?.trim() || '—'}</dd>
+                            </div>
+                            {userEmail ? (
+                                <div className="md:col-span-2">
+                                    <dt className="text-gray-500">Account email</dt>
+                                    <dd className="font-medium text-gray-900">{userEmail}</dd>
+                                </div>
+                            ) : null}
+                            <div className="md:col-span-2">
+                                <dt className="text-gray-500">Installation site address</dt>
+                                <dd className="font-medium text-gray-900">{addr || '—'}</dd>
+                            </div>
+                        </dl>
+                    </div>
+                );
+            })()}
 
             {bundleInvoiceSections5.map((section, sIdx) => (
                 <div key={`inv5-section-${sIdx}`} className="mb-6">
@@ -4502,7 +4843,10 @@ const BuyNowFlow = () => {
                             Available Installation Dates
                         </h3>
                         <p className="text-sm text-gray-600 mb-3">
-                            Installation slots are available starting 72 hours after payment confirmation. Select your preferred date:
+                            <strong>Estimated dates:</strong> these calendar options are typical availability windows. Final installation date and time are confirmed after payment and a quick site coordination call.
+                        </p>
+                        <p className="text-sm text-gray-600 mb-3">
+                            Slots usually open from 72 hours after payment confirmation. Pick your preferred day below (exact time is scheduled with our team):
                         </p>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                             {uniqueDates.slice(0, 9).map((slot, idx) => {

@@ -90,6 +90,17 @@ const OrderSummary = ({ order, onBack }) => {
             appAddr?.phone_number ||
             data.user_info?.phone ||
             "Phone not provided";
+          const customerName =
+            data.user_info?.name ||
+            [data.include_user_info?.first_name, data.include_user_info?.sur_name]
+              .filter(Boolean)
+              .join(" ")
+              .trim() ||
+            "Customer";
+          const customerEmail =
+            data.user_info?.email ||
+            data.include_user_info?.email ||
+            "Email not provided";
 
           // Total quantity across all line items; keep items array for per-line display
           const items = Array.isArray(data.items) ? data.items : [];
@@ -106,7 +117,6 @@ const OrderSummary = ({ order, onBack }) => {
             paymentStatus: data.payment_status,
             productName: data.items?.[0]?.item?.title || "Product",
             price: `₦${parseFloat(data.total_price).toLocaleString()}`,
-            views: "12 views", // This might not be in API response
             deliveryDate: new Date(data.created_at).toLocaleDateString(
               "en-GB",
               {
@@ -118,24 +128,8 @@ const OrderSummary = ({ order, onBack }) => {
             ),
             deliveryAddress: deliveryAddressText,
             phoneNumber,
-            estimatedDeliveryTime: "July 2 - 7, 2025", // This might need to be calculated or from API
-            deliveryPrice: "₦20,000", // This might need to be from API
-            installationNote:
-              "Installation will be carried out by one of our skilled technicians, you can choose not to use our installers",
-            estimatedInstallationTime: data.installation?.installation_date
-              ? new Date(
-                  data.installation.installation_date
-                ).toLocaleDateString("en-GB", {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })
-              : "July 2 - 7, 2025",
-            installationPrice: data.installation?.installation_fee
-              ? `₦${parseFloat(
-                  data.installation.installation_fee
-                ).toLocaleString()}`
-              : "₦25,000",
+            customerName,
+            customerEmail,
             paymentMethod:
               data.payment_method === "direct" ? "Direct" : data.payment_method,
             charge: "Free", // This might need to be from API
@@ -403,14 +397,11 @@ const OrderSummary = ({ order, onBack }) => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="text-sm font-medium text-gray-900 mb-2">
-                        {lineItem?.item?.title || "Product"}
+                        {lineItem?.item?.title || lineItem?.name || `Item ${idx + 1}`}
                       </h4>
                       <div className="flex items-center gap-2 mb-2">
                         <span className="bg-purple-100 text-[#000000] text-xs px-2 py-1 rounded">
                           Qty: {qty}
-                        </span>
-                        <span className="bg-gray-100 text-[#000000] text-xs px-2 py-1 rounded">
-                          {orderData.views}
                         </span>
                       </div>
                       <p className="text-xl font-bold text-[#273E8E]">
@@ -436,9 +427,6 @@ const OrderSummary = ({ order, onBack }) => {
                   <div className="flex items-center gap-2 mb-2">
                     <span className="bg-purple-100 text-[#000000] text-xs px-2 py-1 rounded">
                       Qty: {orderData.quantity}
-                    </span>
-                    <span className="bg-gray-100 text-[#000000] text-xs px-2 py-1 rounded">
-                      {orderData.views}
                     </span>
                   </div>
                   <p className="text-xl font-bold text-[#273E8E]">
@@ -482,56 +470,21 @@ const OrderSummary = ({ order, onBack }) => {
                 </div>
               </div>
 
-              {/* Estimated Time */}
+              {/* Customer Name */}
               <div className="flex justify-between items-center py-3 border-t border-gray-300 mb-0">
-                <span className="text-sm text-gray-600">Estimated time</span>
+                <span className="text-sm text-gray-600">Customer Name</span>
                 <span className="text-sm font-medium text-gray-900">
-                  {orderData.estimatedDeliveryTime}
+                  {orderData.customerName}
                 </span>
               </div>
 
-              {/* Price */}
+              {/* Customer Email */}
               <div className="flex justify-between items-center py-3 border-t border-gray-300">
-                <span className="text-sm text-gray-600">Price</span>
-                <span className="text-sm  text-[#273E8E]">
-                  {orderData.deliveryPrice}
+                <span className="text-sm text-gray-600">Email</span>
+                <span className="text-sm text-gray-900">
+                  {orderData.customerEmail}
                 </span>
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Installation Section */}
-        <div className="bg-white rounded-2xl border border-gray-400">
-          {/* Card Header */}
-          <div className="px-6 py-3 border-b border-gray-400">
-            <h3 className="text-base font-medium text-gray-900">
-              Installation
-            </h3>
-          </div>
-
-          <div className="p-6 pb-1 space-y-6">
-            {/* Installation Note */}
-            <div className="bg-gray-100 border-2 border-dashed border-blue-600 rounded-xl p-4">
-              <p className="text-sm text-blue-800">
-                {orderData.installationNote}
-              </p>
-            </div>
-
-            {/* Estimated Time */}
-            <div className="flex justify-between items-center py-3 border-t border-gray-300 mb-0">
-              <span className="text-sm text-gray-600">Estimated time</span>
-              <span className="text-sm font-medium text-gray-900">
-                {orderData.estimatedInstallationTime}
-              </span>
-            </div>
-
-            {/* Price */}
-            <div className="flex justify-between items-center py-3 border-t border-gray-300 mb-0">
-              <span className="text-sm text-gray-600">Price</span>
-              <span className="text-sm text-[#273E8E]">
-                {orderData.installationPrice}
-              </span>
             </div>
           </div>
         </div>
