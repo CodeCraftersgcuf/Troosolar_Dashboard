@@ -121,6 +121,8 @@ const getSpecValue = (specs, candidateKeys = []) => {
 const getBundleBatteryCapacity = (bundle) => {
     const specs = parseBundleSpecifications(bundle);
     return (
+        bundle?.total_output ??
+        bundle?.totalOutput ??
         getSpecValue(specs, [
             'battery_capacity_kwh',
             'battery_capacity',
@@ -543,18 +545,6 @@ const BNPLFlow = () => {
         return Array.from(new Set(categoryIds[groupType] || []));
     };
 
-    // System size options (1.2kW to 10kW)
-    const sizeOptions = useMemo(() => {
-        const sizes = [];
-        for (let i = 1.2; i <= 10; i += 0.5) {
-            sizes.push({
-                label: `${i}kW`,
-                value: i.toString(),
-            });
-        }
-        return [{ label: "All Sizes", value: "all" }, ...sizes];
-    }, []);
-
     // Helper function to extract numeric value from inverter rating (e.g., "1.2 kVA" -> 1.2)
     const extractSystemSize = (bundle) => {
         const rating = bundle.inver_rating || bundle.inverter_rating || bundle.inverterRating || '';
@@ -587,6 +577,25 @@ const BNPLFlow = () => {
             return bundlePrice >= bnplMinimumLoanAmount;
         });
     }, [bundles, bnplMinimumLoanAmount]);
+
+    // System size options derived from actual bundles (only sizes we have)
+    const sizeOptions = useMemo(() => {
+        const sizeSet = new Set();
+        bundlesMeetingMinLoan.forEach((bundle) => {
+            const size = extractSystemSize(bundle);
+            if (size && Number.isFinite(size)) {
+                // Round to 1 decimal place to normalize
+                const rounded = Number(size.toFixed(1));
+                sizeSet.add(rounded);
+            }
+        });
+        const sorted = Array.from(sizeSet).sort((a, b) => a - b);
+        const options = sorted.map((val) => ({
+            label: `${val}kVA`,
+            value: val.toString(),
+        }));
+        return [{ label: "All Sizes", value: "all" }, ...options];
+    }, [bundlesMeetingMinLoan]);
 
     // Filter bundles based on selected system size
     const filteredBundles = useMemo(() => {
@@ -1002,7 +1011,21 @@ const BNPLFlow = () => {
                 setBundlesLoading(true);
                 try {
                     const token = localStorage.getItem('access_token');
-                    const url = `${API.BUNDLES}?q=${encodeURIComponent(loadW)}`;
+                    const productCategory = searchParams.get('category') || 'full-kit';
+                    const bundleTypeByCategory = {
+                        'full-kit': 'Solar+Inverter+Battery',
+                        'inverter-battery': 'Inverter + Battery',
+                    };
+                    const bundleTypeParam = bundleTypeByCategory[productCategory];
+                    const queryParams = new URLSearchParams({ q: String(loadW) });
+                    const kvaParam = searchParams.get('kva');
+                    if (kvaParam) {
+                        queryParams.set('kva', String(kvaParam));
+                    }
+                    if (bundleTypeParam) {
+                        queryParams.set('bundle_type', bundleTypeParam);
+                    }
+                    const url = `${API.BUNDLES}?${queryParams.toString()}`;
                     const response = await axios.get(url, {
                         headers: {
                             Accept: 'application/json',
@@ -1018,7 +1041,6 @@ const BNPLFlow = () => {
                     } else if (root && typeof root === "object" && root.id) {
                         arr = [root];
                     }
-                    const productCategory = searchParams.get('category') || 'full-kit';
                     arr = filterBundlesByCategory(arr, productCategory);
                     setBundles(arr);
                 } catch (error) {
@@ -1075,43 +1097,35 @@ const BNPLFlow = () => {
             setStep(2.5); // Navigate to Product Selection step first to show loading
             
             try {
-                const token = localStorage.getItem('access_token');
                 let allProducts = [];
-                
-                // Fetch products from all matching categories
-                for (const categoryId of categoryIds) {
-                    try {
-                        const response = await axios.get(API.CATEGORY_PRODUCTS(categoryId), {
-                            headers: {
-                                Accept: 'application/json',
-                                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                            },
-                        });
-                        const root = response.data?.data ?? response.data;
-                        const products = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
-                        allProducts = [...allProducts, ...products];
-                    } catch (err) {
-                        console.warn(`Failed to fetch products for category ${categoryId}:`, err);
-                    }
+
+                // First, use dedicated public group endpoint for these option cards
+                try {
+                    const groupRes = await axios.get(API.PRODUCTS_BY_GROUP(groupType), {
+                        headers: { Accept: 'application/json' },
+                    });
+                    const groupRoot = groupRes.data?.data ?? groupRes.data;
+                    const groupProducts = Array.isArray(groupRoot)
+                        ? groupRoot
+                        : Array.isArray(groupRoot?.data)
+                            ? groupRoot.data
+                            : [];
+                    allProducts = groupProducts;
+                } catch (groupErr) {
+                    console.warn(`Failed to fetch products by group (${groupType}):`, groupErr);
                 }
-                
-                // If no products found via category endpoint, try fetching all and filtering
-                if (allProducts.length === 0) {
-                    try {
-                        const allProductsRes = await axios.get(API.PRODUCTS, {
-                            headers: {
-                                Accept: 'application/json',
-                                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                            },
-                        });
-                        const allProductsList = Array.isArray(allProductsRes.data?.data) ? allProductsRes.data.data : [];
-                        allProducts = allProductsList.filter(p => categoryIds.includes(Number(p.category_id)));
-                    } catch (error) {
-                        console.error("Failed to fetch all products:", error);
-                    }
-                }
-                
-                setCategoryProducts(allProducts);
+
+                // Intentionally no category/product fallback for individual-component cards.
+                // These flows must rely only on the grouped endpoint to avoid mismatched records.
+
+                // Deduplicate by product id
+                const uniqueProducts = Object.values(
+                    (allProducts || []).reduce((acc, product) => {
+                        if (product?.id != null) acc[product.id] = product;
+                        return acc;
+                    }, {})
+                );
+                setCategoryProducts(uniqueProducts);
             } catch (error) {
                 console.error("Failed to fetch products:", error);
                 alert("Failed to load products. Please try again.");
@@ -1962,7 +1976,12 @@ const BNPLFlow = () => {
 
     const renderStep3_5 = () => {
         const formatPrice = (price) => {
-            return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
+            return new Intl.NumberFormat('en-NG', { 
+                style: 'currency', 
+                currency: 'NGN',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            }).format(price || 0);
         };
 
         const selectedSizeLabel = sizeOptions.find((o) => o.value === selectedSystemSize)?.label || "All Sizes";
@@ -1984,56 +2003,24 @@ const BNPLFlow = () => {
                 {solutionLabel}
                 </h2>
                 <p className="text-center text-gray-600 mb-2">
-                    {searchParams.get('q') ? `${isInverterFlow ? 'Solutions' : 'Bundles'} matching your load (${searchParams.get('q')} W)` : `Select from our pre-configured ${solutionListLabel}`}
+                    {(() => {
+                        const originalLoad = searchParams.get('load') || searchParams.get('q');
+                        return originalLoad
+                            ? `${isInverterFlow ? 'Solutions' : 'Bundles'} matching your load (${originalLoad} W)`
+                            : `Select from our pre-configured ${solutionListLabel}`;
+                    })()}
                 </p>
                 {searchParams.get('q') && (
                     <p className="text-center mb-8">
-                        <a href={`/tools?inverter=true&returnTo=bnpl&source=flow&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`} className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
+                        <a
+                            href={`/tools?inverter=true&returnTo=bnpl&source=flow&category=${encodeURIComponent(formData.productCategory || 'full-kit')}&q=${encodeURIComponent(searchParams.get('q') || '')}`}
+                            className="text-[#273e8e] underline font-medium text-sm"
+                        >
+                            Edit load
+                        </a>
                     </p>
                 )}
                 {!searchParams.get('q') && <div className="mb-8" />}
-
-                {/* System Size Filter */}
-                {!bundlesLoading && bundles.length > 0 && (
-                    <div className="mb-6 flex justify-center">
-                        <div className="relative" ref={sizeDropdownRef}>
-                            <button
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setIsSizeDropdownOpen(!isSizeDropdownOpen);
-                                }}
-                                className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
-                            >
-                                <span>System Size: {selectedSizeLabel}</span>
-                                <ChevronDown size={16} className={`transition-transform ${isSizeDropdownOpen ? 'rotate-180' : ''}`} />
-                            </button>
-                            
-                            {isSizeDropdownOpen && (
-                                <div className="absolute left-0 top-full mt-1 max-h-[300px] z-50 w-[200px] bg-white rounded-md shadow-lg border border-gray-200 overflow-y-auto">
-                                    <div className="py-1">
-                                        {sizeOptions.map((option) => (
-                                            <div
-                                                key={option.value}
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    setSelectedSystemSize(option.value);
-                                                    setIsSizeDropdownOpen(false);
-                                                }}
-                                                className={`px-4 py-2 text-sm cursor-pointer hover:bg-gray-100 ${
-                                                    selectedSystemSize === option.value ? 'bg-[#273e8e]/10 text-[#273e8e] font-medium' : 'text-gray-700'
-                                                }`}
-                                            >
-                                                {option.label}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
                 {!bundlesLoading && bnplMinimumLoanAmount > 0 && (
                     <p className="text-center text-sm text-gray-500 mb-5">
                         BNPL eligible bundles only: minimum amount is ₦{bnplMinimumLoanAmount.toLocaleString()}.
@@ -2115,6 +2102,13 @@ const BNPLFlow = () => {
                                                 <div className="absolute top-2 right-2 bg-[#273e8e] text-white rounded-full p-2">
                                                     <CheckCircle size={20} />
                                                 </div>
+                                            )}
+                                            {getBundleInverterRating(bundle) && (
+                                                <span className="absolute top-2 left-2 bg-[#E8A91D] text-white text-[11px] px-2 py-1 rounded-full font-semibold shadow">
+                                                    {String(getBundleInverterRating(bundle)).includes('kVA')
+                                                        ? String(getBundleInverterRating(bundle))
+                                                        : `${getBundleInverterRating(bundle)}kVA`}
+                                                </span>
                                             )}
                                         </div>
                                         <h3 className="font-bold text-lg mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">
@@ -2912,9 +2906,9 @@ const BNPLFlow = () => {
                 <p className="text-gray-600 mb-6">
                     Our team will contact you within 24 - 72 hours to discuss your energy audit.
                 </p>
-                <p className="text-sm text-[#273e8e] font-medium mb-6">
+                {/* <p className="text-sm text-[#273e8e] font-medium mb-6">
                     No upfront payment is required for this audit request.
-                </p>
+                </p> */}
                 <div className="space-y-3">
                     <button 
                         onClick={() => navigate('/')} 
@@ -3057,15 +3051,8 @@ const BNPLFlow = () => {
         let materialsTotalCost = 0;
         pureInstallMaterials.forEach((m) => { materialsTotalCost += m.rate * m.qty; });
 
-        const materialNames = pureInstallMaterials
-            .map((m) => String(m.name || '').trim())
-            .filter(Boolean);
-        const materialLineLabel = materialNames.length > 0
-            ? `Installation Materials Cost (${materialNames.join(', ')})`
-            : 'Installation Materials Cost';
-
         const materialLine = pureInstallMaterials.length > 0 ? {
-            description: materialLineLabel,
+            description: 'Installation Materials Cost',
             quantity: 1,
             unit: 'Lots',
             quantityApplies: true,
@@ -3762,23 +3749,23 @@ const BNPLFlow = () => {
                 <div className="bg-[#273e8e]/5 border border-[#273e8e]/20 rounded-lg p-4 mb-6">
                     <div className="flex justify-between items-center text-sm text-gray-700 mb-1">
                         <span>Overall Net-Total</span>
-                        <span className="font-semibold">₦{Number(overallNetTotal).toLocaleString()}</span>
+                        <span className="font-semibold">₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(overallNetTotal || 0)}</span>
                     </div>
                     <div className="flex justify-between items-center text-sm text-gray-700 mb-2">
                         <span>VAT ({vatPercent}%)</span>
-                        <span className="font-semibold">₦{Number(overallVat).toLocaleString()}</span>
+                        <span className="font-semibold">₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(overallVat || 0)}</span>
                     </div>
                     <div className="flex justify-between items-center border-t border-[#273e8e]/20 pt-2">
                         <span className="font-bold text-lg text-[#273e8e]">Overall Grand-Total</span>
-                        <span className="font-bold text-xl text-[#273e8e]">₦{Number(overallGrandTotal).toLocaleString()}</span>
+                        <span className="font-bold text-xl text-[#273e8e]">₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(overallGrandTotal || 0)}</span>
                     </div>
                 </div>
 
                 <button
                     onClick={() => {
-                        const minOrderValue = 1500000;
+                        const minOrderValue = bnplMinimumLoanAmount > 0 ? bnplMinimumLoanAmount : 1500000;
                         if (overallGrandTotal < minOrderValue) {
-                            alert(`Your order total (₦${overallGrandTotal.toLocaleString()}) does not meet the minimum ₦1,500,000 amount required for credit financing. To qualify for Buy Now, Pay Later, please add more items to your cart. Thank you.`);
+                            alert(`Your order total (₦${overallGrandTotal.toLocaleString()}) does not meet the minimum ₦${minOrderValue.toLocaleString()} amount required for credit financing. To qualify for Buy Now, Pay Later, please add more items to your cart. Thank you.`);
                             return;
                         }
                         setStep(8); // Go to Loan Calculator
@@ -4006,17 +3993,8 @@ const BNPLFlow = () => {
         const tenor = Number(ld.tenor || 0);
         const interestRate = Number(ld.interestRate || 0);
 
-        // Fee percentages come from admin settings.
-        // Insurance percentage prioritizes BNPL compulsory add-on configuration.
-        const insuranceAddOn = addOns.find((a) => a?.is_compulsory_bnpl);
-        const insurancePctFromAddOn =
-            insuranceAddOn?.calculation_type === 'percentage'
-                ? Number(insuranceAddOn?.calculation_value ?? 0)
-                : NaN;
-        const insurancePct =
-            Number.isFinite(insurancePctFromAddOn) && insurancePctFromAddOn > 0
-                ? insurancePctFromAddOn
-                : DEFAULT_INSURANCE_PERCENT;
+        // Fee percentages come from admin BNPL settings.
+        const insurancePct = Number(loanConfig?.insurance_fee_percentage ?? DEFAULT_INSURANCE_PERCENT);
         const managementPct = Number(loanConfig?.management_fee_percentage ?? 1);
         const legalPct = Number(loanConfig?.residual_fee_percentage ?? 1);
 
@@ -4028,8 +4006,10 @@ const BNPLFlow = () => {
         const managementFee = loanBaseForLoanAmountFees * (managementPct / 100);
         const legalFee = loanBaseForLoanAmountFees * (legalPct / 100);
         const feesTotal = insuranceFee + managementFee + legalFee;
+        const upfrontDepositTotal = depositAmount + feesTotal;
 
-        const totalLoanAmount = baseLoanAmount + feesTotal;
+        // Admin fees are paid upfront with the initial deposit (not added to repayable loan principal).
+        const totalLoanAmount = baseLoanAmount;
         const totalAmount = bundlePrice + feesTotal;
         const totalInterestAmount = totalLoanAmount * (interestRate / 100) * tenor;
         const totalRepaymentAmount = totalLoanAmount + totalInterestAmount;
@@ -4040,6 +4020,7 @@ const BNPLFlow = () => {
             totalAmount,
             depositPercent,
             depositAmount,
+            upfrontDepositTotal,
             baseLoanAmount,
             insurancePct,
             insuranceFee,
@@ -4067,68 +4048,67 @@ const BNPLFlow = () => {
                 const snapshot = buildLoanReviewSnapshot();
                 if (!snapshot) return null;
                 return (
-                <div className="bg-blue-50 border border-blue-200 p-6 rounded-lg mb-6">
-                    <h3 className="font-bold text-gray-800 mb-4">Loan Summary</h3>
-                    <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                            <span>1. Total Amount</span>
-                            <span className="font-bold">₦{snapshot.totalAmount.toLocaleString()}</span>
+                    <div className="bg-blue-50 border border-blue-200 p-6 rounded-lg mb-6">
+                        <h3 className="font-bold text-gray-800 mb-4">Loan Summary</h3>
+                        <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                                <span>1. <span className="font-semibold">Initial Deposit{snapshot.depositPercent ? ` (${snapshot.depositPercent}%)` : ''} + Total Administrative Fees</span></span>
+                                <span className="font-bold">₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(snapshot.upfrontDepositTotal || 0)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>2. Total Loan Amount</span>
+                                <span>₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(snapshot.totalLoanAmount || 0)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>
+                                    3. Total Interest Amount
+                                    {snapshot.interestRate != null && snapshot.tenor
+                                        ? ` (${snapshot.interestRate}% × ${snapshot.tenor} mo)`
+                                        : snapshot.interestRate != null
+                                        ? ` (${snapshot.interestRate}% of loan)`
+                                        : ''}
+                                </span>
+                                <span>₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(snapshot.totalInterestAmount || 0)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>4. Total Repayment Amount</span>
+                                <span>₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(snapshot.totalRepaymentAmount || 0)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>5. <span className="font-semibold">Monthly Repayment Amount</span></span>
+                                <span className="font-bold">₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(snapshot.monthlyRepaymentAmount || 0)}</span>
+                            </div>
+                            <div className="flex justify-between border-t pt-2 mt-2">
+                                <span>6. Loan Tenor</span>
+                                <span className="font-bold text-[#273e8e]">{snapshot.tenor} months</span>
+                            </div>
                         </div>
-                        <div className="flex justify-between">
-                            <span>2. Initial Deposit{snapshot.depositPercent ? ` (${snapshot.depositPercent}%)` : ''}</span>
-                            <span className="font-bold">₦{snapshot.depositAmount.toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span>3. Total Loan Amount</span>
-                            <span className="font-bold">₦{snapshot.totalLoanAmount.toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span>4. Total Interest Amount{snapshot.interestRate != null && snapshot.tenor ? ` (${snapshot.interestRate}% × ${snapshot.tenor} mo)` : snapshot.interestRate != null ? ` (${snapshot.interestRate}% of loan)` : ''}</span>
-                            <span className="font-bold">₦{snapshot.totalInterestAmount.toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span>5. Total Repayment Amount</span>
-                            <span className="font-bold">₦{snapshot.totalRepaymentAmount.toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span>6. Monthly Repayment Amount</span>
-                            <span className="font-bold">₦{snapshot.monthlyRepaymentAmount.toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between border-t pt-2 mt-2">
-                            <span>7. Loan Tenor</span>
-                            <span className="font-bold text-[#273e8e]">{snapshot.tenor} months</span>
-                        </div>
-                    </div>
 
-                    <div className="mt-5 pt-4 border-t border-blue-200">
-                        <h4 className="font-semibold text-gray-800 mb-2">Admin Fee Breakdown (from settings)</h4>
-                        <p className="text-xs text-gray-600 mb-2">
-                            Insurance is calculated on bundle price only. Management and legal fees are calculated on loan amount base (actual loan amount before admin fees).
-                        </p>
-                        <div className="space-y-1 text-sm">
-                            <div className="flex justify-between">
-                                <span>Bundle Price (base)</span>
-                                <span className="font-medium">₦{snapshot.bundlePrice.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span>Insurance Fee ({snapshot.insurancePct}% of bundle price)</span>
-                                <span className="font-medium">₦{snapshot.insuranceFee.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span>Management Fee ({snapshot.managementPct}% of loan amount base)</span>
-                                <span className="font-medium">₦{snapshot.managementFee.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span>Legal Fee ({snapshot.legalPct}% of loan amount base)</span>
-                                <span className="font-medium">₦{snapshot.legalFee.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between font-semibold border-t border-blue-200 pt-1 mt-1">
-                                <span>Total Admin Fees Added Here</span>
-                                <span>₦{snapshot.feesTotal.toLocaleString()}</span>
+                        <div className="mt-5 pt-4 border-t border-blue-200">
+                            <h4 className="font-semibold text-gray-800 mb-2">Administrative Fees</h4>
+                            <p className="text-xs text-gray-600 mb-2">
+                                Insurance is calculated on the bundle price only. Management and legal fees are calculated on the loan amount.
+                            </p>
+                            <div className="space-y-1 text-sm">
+                                <div className="flex justify-between">
+                                    <span>1. Insurance Fee ({snapshot.insurancePct}% of bundle price)</span>
+                                    <span className="font-medium">₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(snapshot.insuranceFee || 0)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span>2. Management Fee ({snapshot.managementPct}% of the loan amount)</span>
+                                    <span className="font-medium">₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(snapshot.managementFee || 0)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span>3. Legal Fee ({snapshot.legalPct}% of the loan amount)</span>
+                                    <span className="font-medium">₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(snapshot.legalFee || 0)}</span>
+                                </div>
+                                <div className="flex justify-between font-semibold border-t border-blue-200 pt-1 mt-1">
+                                    <span>Total Administrative Fees</span>
+                                    <span>₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(snapshot.feesTotal || 0)}</span>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
                 );
             })()}
             <p className="text-gray-600 mb-6">
@@ -4147,7 +4127,8 @@ const BNPLFlow = () => {
                             loanDetails: {
                                 ...prev.loanDetails,
                                 totalAmount: snapshot.totalAmount,
-                                depositAmount: snapshot.depositAmount,
+                                baseDepositAmount: snapshot.depositAmount,
+                                depositAmount: snapshot.upfrontDepositTotal,
                                 principal: snapshot.totalLoanAmount,
                                 totalLoanAmount: snapshot.totalLoanAmount,
                                 totalInterestAmount: snapshot.totalInterestAmount,
@@ -5711,10 +5692,8 @@ const BNPLFlow = () => {
                     }
                     
                     // Fallback: Calculate from formData if API is not available
-                    const insuranceAddOn = addOns.find(a => a.is_compulsory_bnpl);
-                    const insuranceFee = insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
-                        ? (formData.selectedProductPrice * insuranceAddOn.calculation_value) / 100
-                        : (insuranceAddOn?.price ?? (formData.selectedProductPrice * DEFAULT_INSURANCE_PERCENT) / 100);
+                    const insurancePct = Number(loanConfig?.insurance_fee_percentage ?? DEFAULT_INSURANCE_PERCENT);
+                    const insuranceFee = (formData.selectedProductPrice * insurancePct) / 100;
                     
                     setInvoiceData({
                         product_price: formData.selectedProductPrice,
@@ -5736,7 +5715,7 @@ const BNPLFlow = () => {
             };
             fetchInvoice();
         }
-    }, [step, applicationId, formData.selectedProductPrice, formData.loanDetails, addOns]);
+    }, [step, applicationId, formData.selectedProductPrice, formData.loanDetails, loanConfig]);
 
     const renderStep21 = () => {
         const invoice = invoiceData || {
@@ -5745,8 +5724,8 @@ const BNPLFlow = () => {
             installation_fee: 50000,
             delivery_fee: 25000,
             inspection_fee: 10000,
-            insurance_fee: (formData.selectedProductPrice * DEFAULT_INSURANCE_PERCENT) / 100,
-            total: formData.selectedProductPrice + 50000 + 50000 + 25000 + 10000 + ((formData.selectedProductPrice * DEFAULT_INSURANCE_PERCENT) / 100)
+            insurance_fee: (formData.selectedProductPrice * Number(loanConfig?.insurance_fee_percentage ?? DEFAULT_INSURANCE_PERCENT)) / 100,
+            total: formData.selectedProductPrice + 50000 + 50000 + 25000 + 10000 + ((formData.selectedProductPrice * Number(loanConfig?.insurance_fee_percentage ?? DEFAULT_INSURANCE_PERCENT)) / 100)
         };
 
         // Use product_price from API if available, otherwise use formData
@@ -5896,7 +5875,7 @@ const BNPLFlow = () => {
                 <div className="bg-blue-50 p-4 rounded-lg mb-8">
                     <h4 className="font-bold text-[#273e8e] mb-2">Payment Schedule</h4>
                     <div className="flex justify-between text-sm mb-1">
-                        <span>Initial Deposit</span>
+                        <span>Initial Deposit + Admin Fees</span>
                         <span className="font-bold">₦{Number(invoice.loan_details?.deposit_amount || formData.loanDetails?.depositAmount || 0).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-sm mb-1">

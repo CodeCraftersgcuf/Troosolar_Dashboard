@@ -138,6 +138,8 @@ const getSpecValue = (specs, candidateKeys = []) => {
 const getBundleBatteryCapacity = (bundle) => {
     const specs = parseBundleSpecifications(bundle);
     return (
+        bundle?.total_output ??
+        bundle?.totalOutput ??
         getSpecValue(specs, [
             'battery_capacity_kwh',
             'battery_capacity',
@@ -245,6 +247,7 @@ const BuyNowFlow = () => {
         singleItemQuantity: 1, // Quantity for single item (fallback case)
         installerChoice: '', // 'troosolar', 'own'
         includeInsurance: false,
+        includeInspection: true,
         address: '',
         state: '',
         stateId: null,
@@ -267,6 +270,8 @@ const BuyNowFlow = () => {
     const [selectedSystemSize, setSelectedSystemSize] = useState("all"); // System size filter
     const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false);
     const sizeDropdownRef = useRef(null);
+    const [showBundleSelectPrompt, setShowBundleSelectPrompt] = useState(false);
+    const [lastSelectedBundleName, setLastSelectedBundleName] = useState('');
 
     // Defensive guard: never remain on step 3.6 without details data.
     useEffect(() => {
@@ -430,8 +435,9 @@ const BuyNowFlow = () => {
             };
             
             loadBundleForEditing();
-        } else if (bundleId && (stepParam === '7' || fromBundle === 'true')) {
-            // Coming from ProductBundle detail page (Buy Now): load bundle details and show order summary with price
+        } else if (bundleId && (fromBundle === 'true' || stepParam === '4' || stepParam === '7')) {
+            // Coming from ProductBundle detail page (Buy Now): preload bundle details,
+            // then continue at requested step (default step 4 for installer/insurance).
             const loadBundleForOrderSummary = async () => {
                 try {
                     const token = localStorage.getItem('access_token');
@@ -458,10 +464,14 @@ const BuyNowFlow = () => {
                             selectedProductPrice: totalPrice,
                             optionType: prev.optionType || 'choose-system',
                             productCategory: prev.productCategory || 'full-kit',
+                            installerChoice: prev.installerChoice || 'troosolar',
+                            includeInsurance: prev.includeInsurance || false,
+                            includeInspection: prev.includeInspection !== undefined ? prev.includeInspection : true,
                         }));
                         // Cache the full bundle detail so extractBundleLineItems gets custom_services
                         setEnrichedBundles({ [bundleData.id]: bundleData });
-                        setStep(7);
+                        const nextStep = Number(stepParam || 4);
+                        setStep(Number.isFinite(nextStep) ? nextStep : 4);
                     }
                 } catch (error) {
                     console.error('Failed to load bundle for order summary:', error);
@@ -631,43 +641,35 @@ const BuyNowFlow = () => {
             setStep(2.5); // Navigate to Product Selection step first to show loading
             
             try {
-                const token = localStorage.getItem('access_token');
                 let allProducts = [];
-                
-                // Fetch products from all matching categories
-                for (const categoryId of categoryIds) {
-                    try {
-                        const response = await axios.get(API.CATEGORY_PRODUCTS(categoryId), {
-                            headers: {
-                                Accept: 'application/json',
-                                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                            },
-                        });
-                        const root = response.data?.data ?? response.data;
-                        const products = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
-                        allProducts = [...allProducts, ...products];
-                    } catch (err) {
-                        console.warn(`Failed to fetch products for category ${categoryId}:`, err);
-                    }
+
+                // First, use dedicated public group endpoint for these option cards
+                try {
+                    const groupRes = await axios.get(API.PRODUCTS_BY_GROUP(groupType), {
+                        headers: { Accept: 'application/json' },
+                    });
+                    const groupRoot = groupRes.data?.data ?? groupRes.data;
+                    const groupProducts = Array.isArray(groupRoot)
+                        ? groupRoot
+                        : Array.isArray(groupRoot?.data)
+                            ? groupRoot.data
+                            : [];
+                    allProducts = groupProducts;
+                } catch (groupErr) {
+                    console.warn(`Failed to fetch products by group (${groupType}):`, groupErr);
                 }
-                
-                // If no products found via category endpoint, try fetching all and filtering
-                if (allProducts.length === 0) {
-                    try {
-                        const allProductsRes = await axios.get(API.PRODUCTS, {
-                            headers: {
-                                Accept: 'application/json',
-                                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                            },
-                        });
-                        const allProductsList = Array.isArray(allProductsRes.data?.data) ? allProductsRes.data.data : [];
-                        allProducts = allProductsList.filter(p => categoryIds.includes(Number(p.category_id)));
-                    } catch (error) {
-                        console.error("Failed to fetch all products:", error);
-                    }
-                }
-                
-                setCategoryProducts(allProducts);
+
+                // Intentionally no category/product fallback for individual-component cards.
+                // These flows must rely only on the grouped endpoint to avoid mismatched records.
+
+                // Deduplicate by product id
+                const uniqueProducts = Object.values(
+                    (allProducts || []).reduce((acc, product) => {
+                        if (product?.id != null) acc[product.id] = product;
+                        return acc;
+                    }, {})
+                );
+                setCategoryProducts(uniqueProducts);
             } catch (error) {
                 console.error("Failed to fetch products:", error);
                 alert("Failed to load products. Please try again.");
@@ -829,18 +831,6 @@ const BuyNowFlow = () => {
 
     const bundlesFetchedRef = useRef(false);
 
-    // System size options (1.2kW to 10kW)
-    const sizeOptions = useMemo(() => {
-        const sizes = [];
-        for (let i = 1.2; i <= 10; i += 0.5) {
-            sizes.push({
-                label: `${i}kW`,
-                value: i.toString(),
-            });
-        }
-        return [{ label: "All Sizes", value: "all" }, ...sizes];
-    }, []);
-
     // Helper function to extract numeric value from inverter rating (e.g., "1.2 kVA" -> 1.2)
     const extractSystemSize = (bundle) => {
         const rating = bundle.inver_rating || bundle.inverter_rating || bundle.inverterRating || '';
@@ -853,6 +843,24 @@ const BuyNowFlow = () => {
         }
         return null;
     };
+
+    // System size options derived from actual bundles (only sizes we have)
+    const sizeOptions = useMemo(() => {
+        const sizeSet = new Set();
+        bundles.forEach((bundle) => {
+            const size = extractSystemSize(bundle);
+            if (size && Number.isFinite(size)) {
+                const rounded = Number(size.toFixed(1));
+                sizeSet.add(rounded);
+            }
+        });
+        const sorted = Array.from(sizeSet).sort((a, b) => a - b);
+        const options = sorted.map((val) => ({
+            label: `${val}kVA`,
+            value: val.toString(),
+        }));
+        return [{ label: "All Sizes", value: "all" }, ...options];
+    }, [bundles]);
 
     // Filter bundles based on selected system size
     const filteredBundles = useMemo(() => {
@@ -1203,20 +1211,39 @@ const BuyNowFlow = () => {
 
     const handleBundleSelect = (bundle) => {
         const price = Number(bundle.discount_price || bundle.total_price || 0);
-        setFormData(prev => ({
-            ...prev,
-            selectedBundleId: bundle.id,
-            selectedBundle: bundle,
-            selectedBundles: [{
-                id: bundle.id,
-                bundle: bundle,
-                price: price,
-                quantity: 1,
-            }],
-            selectedProductPrice: price,
-            singleItemQuantity: 1,
-        }));
-        setStep(4);
+        const wasAlreadySelected = formData.selectedBundleId === bundle.id;
+        setFormData(prev => {
+            const isSelected = prev.selectedBundleId === bundle.id;
+            if (isSelected) {
+                return {
+                    ...prev,
+                    selectedBundleId: null,
+                    selectedBundle: null,
+                    selectedBundles: [],
+                    selectedProductPrice: 0,
+                    singleItemQuantity: 1,
+                };
+            }
+
+            return {
+                ...prev,
+                selectedBundleId: bundle.id,
+                selectedBundle: bundle,
+                selectedBundles: [{
+                    id: bundle.id,
+                    bundle: bundle,
+                    price: price,
+                    quantity: 1,
+                }],
+                selectedProductPrice: price,
+                singleItemQuantity: 1,
+            };
+        });
+
+        if (!wasAlreadySelected) {
+            setLastSelectedBundleName(bundle?.title || bundle?.name || 'Selected bundle');
+            setShowBundleSelectPrompt(true);
+        }
     };
 
     const handleProductSelect = (product) => {
@@ -1403,7 +1430,7 @@ const BuyNowFlow = () => {
             const payload = {
                 customer_type: formData.customerType,
                 product_category: formData.productCategory,
-                installer_choice: formData.installerChoice,
+                installer_choice: formData.installerChoice || 'troosolar',
                 include_insurance: formData.includeInsurance || false,
             };
 
@@ -1719,7 +1746,21 @@ const BuyNowFlow = () => {
                 setBundlesLoading(true);
                 try {
                     const token = localStorage.getItem('access_token');
-                    const url = `${API.BUNDLES}?q=${encodeURIComponent(loadW)}`;
+                    const productCategory = searchParams.get('category') || 'full-kit';
+                    const bundleTypeByCategory = {
+                        'full-kit': 'Solar+Inverter+Battery',
+                        'inverter-battery': 'Inverter + Battery',
+                    };
+                    const bundleTypeParam = bundleTypeByCategory[productCategory];
+                    const queryParams = new URLSearchParams({ q: String(loadW) });
+                    const kvaParam = searchParams.get('kva');
+                    if (kvaParam) {
+                        queryParams.set('kva', String(kvaParam));
+                    }
+                    if (bundleTypeParam) {
+                        queryParams.set('bundle_type', bundleTypeParam);
+                    }
+                    const url = `${API.BUNDLES}?${queryParams.toString()}`;
                     const response = await axios.get(url, {
                         headers: {
                             Accept: 'application/json',
@@ -1735,7 +1776,6 @@ const BuyNowFlow = () => {
                     } else if (root && typeof root === "object" && root.id) {
                         arr = [root];
                     }
-                    const productCategory = searchParams.get('category') || 'full-kit';
                     arr = filterBundlesByCategory(arr, productCategory);
                     setBundles(arr);
                 } catch (error) {
@@ -2574,56 +2614,24 @@ const BuyNowFlow = () => {
                 {solutionLabel}
                 </h2>
                 <p className="text-center text-gray-600 mb-2">
-                    {searchParams.get('q') ? `${isInverterFlow ? 'Solutions' : 'Bundles'} matching your load (${searchParams.get('q')} W)` : `Select from our pre-configured ${solutionListLabel}`}
+                    {(() => {
+                        const originalLoad = searchParams.get('load') || searchParams.get('q');
+                        return originalLoad
+                            ? `${isInverterFlow ? 'Solutions' : 'Bundles'} matching your load (${originalLoad} W)`
+                            : `Select from our pre-configured ${solutionListLabel}`;
+                    })()}
                 </p>
                 {searchParams.get('q') && (
                     <p className="text-center mb-8">
-                        <a href={`/tools?inverter=true&returnTo=buy-now&source=flow&category=${encodeURIComponent(formData.productCategory || 'full-kit')}`} className="text-[#273e8e] underline font-medium text-sm">Edit load</a>
+                        <a
+                            href={`/tools?inverter=true&returnTo=buy-now&source=flow&category=${encodeURIComponent(formData.productCategory || 'full-kit')}&q=${encodeURIComponent(searchParams.get('q') || '')}`}
+                            className="text-[#273e8e] underline font-medium text-sm"
+                        >
+                            Edit load
+                        </a>
                     </p>
                 )}
                 {!searchParams.get('q') && <div className="mb-8" />}
-
-                {/* System Size Filter */}
-                {!bundlesLoading && bundles.length > 0 && (
-                    <div className="mb-6 flex justify-center">
-                        <div className="relative" ref={sizeDropdownRef}>
-                            <button
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setIsSizeDropdownOpen(!isSizeDropdownOpen);
-                                }}
-                                className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
-                            >
-                                <span>System Size: {selectedSizeLabel}</span>
-                                <ChevronDown size={16} className={`transition-transform ${isSizeDropdownOpen ? 'rotate-180' : ''}`} />
-                            </button>
-                            
-                            {isSizeDropdownOpen && (
-                                <div className="absolute left-0 top-full mt-1 max-h-[300px] z-50 w-[200px] bg-white rounded-md shadow-lg border border-gray-200 overflow-y-auto">
-                                    <div className="py-1">
-                                        {sizeOptions.map((option) => (
-                                            <div
-                                                key={option.value}
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    setSelectedSystemSize(option.value);
-                                                    setIsSizeDropdownOpen(false);
-                                                }}
-                                                className={`px-4 py-2 text-sm cursor-pointer hover:bg-gray-100 ${
-                                                    selectedSystemSize === option.value ? 'bg-[#273e8e]/10 text-[#273e8e] font-medium' : 'text-gray-700'
-                                                }`}
-                                            >
-                                                {option.label}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
 
                 {bundlesLoading ? (
                     <div className="text-center py-16">
@@ -2696,6 +2704,13 @@ const BuyNowFlow = () => {
                                             <div className="absolute top-2 right-2 bg-[#FFA500] text-white px-3 py-1 rounded-full text-sm font-bold">
                                                 -{discount}%
                                             </div>
+                                        )}
+                                        {getBundleInverterRating(bundle) && (
+                                            <span className="absolute top-2 left-2 bg-[#E8A91D] text-white text-[11px] px-2 py-1 rounded-full font-semibold shadow">
+                                                {String(getBundleInverterRating(bundle)).includes('kVA')
+                                                    ? String(getBundleInverterRating(bundle))
+                                                    : `${getBundleInverterRating(bundle)}kVA`}
+                                            </span>
                                         )}
                                         {isSelected && (
                                             <div className="absolute inset-0 bg-[#273e8e]/20 flex items-center justify-center">
@@ -3282,7 +3297,7 @@ const BuyNowFlow = () => {
                             }`}>
                                 {formData.installerChoice === 'own' 
                                     ? 'Insurance is only available with Troosolar Certified Installer.' 
-                                    : 'Protect your investment against damage and theft (0.5% of product price).'}
+                                    : 'Protect your investment against damage and theft (3% of product price).'}
                             </p>
                         </div>
                     </label>
@@ -3477,15 +3492,8 @@ const BuyNowFlow = () => {
 
         let materialsTotalCost = 0;
         pureInstallMaterials.forEach((m) => { materialsTotalCost += m.rate * m.qty; });
-        const materialNames = pureInstallMaterials
-            .map((m) => String(m.name || '').trim())
-            .filter(Boolean);
-        const materialLineLabel = materialNames.length > 0
-            ? `Installation Materials Cost (${materialNames.join(', ')})`
-            : 'Installation Materials Cost';
-
         const materialLine = pureInstallMaterials.length > 0 ? {
-            description: materialLineLabel,
+            description: 'Installation Materials Cost',
             quantity: 1,
             unit: 'Lots',
             quantityApplies: true,
@@ -3836,11 +3844,12 @@ const BuyNowFlow = () => {
         const itemsSubtotal = bundlesTotal + productsTotal;
         const basePrice = itemsSubtotal > 0 ? itemsSubtotal : formData.selectedProductPrice;
 
-        const insuranceAddOn = addOns.find(a => a.is_compulsory_buy_now);
+        // Insurance should be calculated after any outright discount is applied to the product price.
+        // The API returns the discounted product price as `invoiceDetails.product_price` after checkout.
+        const productPriceForInsurance =
+            invoiceDetails?.product_price != null ? Number(invoiceDetails.product_price) : Number(basePrice || 0);
         const insuranceFee = formData.includeInsurance
-            ? (insuranceAddOn && insuranceAddOn.calculation_type === 'percentage'
-                ? (basePrice * insuranceAddOn.calculation_value) / 100
-                : (insuranceAddOn?.price ?? (basePrice * 3) / 100))
+            ? (productPriceForInsurance * 3) / 100
             : 0;
 
         const installationFee = 50000;
@@ -4536,15 +4545,7 @@ const BuyNowFlow = () => {
                 );
             })()}
             
-            {/* Installation fee note - from API or default */}
-            {(invoiceDetails?.note || (formData.installerChoice === 'troosolar')) && (
-                <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg mb-6 flex items-start">
-                    <AlertCircle className="text-yellow-600 mr-3 mt-1" size={20} />
-                    <p className="text-sm text-yellow-700">
-                        {invoiceDetails?.note || "Installation fees may change after site inspection. Any difference will be updated and shared with you for a one-off payment before installation."}
-                    </p>
-                </div>
-            )}
+            {/* Removed price-change disclaimer under installation date picker */}
             
             <button 
                 onClick={handleProceedToPayment}
@@ -4891,6 +4892,34 @@ const BuyNowFlow = () => {
                             </button>
                         </div>
                     </div>
+            )}
+
+            {showBundleSelectPrompt && (
+                <div className="fixed inset-0 bg-black/50 z-[120] flex items-center justify-center p-4">
+                    <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6">
+                        <h3 className="text-xl font-bold text-[#273e8e] mb-2">Bundle Selected</h3>
+                        <p className="text-sm text-gray-600 mb-6">
+                            <span className="font-semibold text-gray-800">{lastSelectedBundleName}</span> has been added. Do you want to keep browsing or proceed with your selected bundle?
+                        </p>
+                        <div className="flex flex-col gap-3">
+                            <button
+                                onClick={() => setShowBundleSelectPrompt(false)}
+                                className="w-full py-3 rounded-xl border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
+                            >
+                                Keep Browsing
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowBundleSelectPrompt(false);
+                                    setStep(4);
+                                }}
+                                className="w-full py-3 rounded-xl bg-[#273e8e] text-white font-semibold hover:bg-[#1a2b6b] transition-colors"
+                            >
+                                Proceed with Selected Bundle
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
 
         </div>

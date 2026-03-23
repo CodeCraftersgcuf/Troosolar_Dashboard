@@ -4,19 +4,22 @@ import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import API from "../config/api.config";
 
+// Load range (kW) -> Minimum Recommended Inverter Rating (per shared sheet screenshot)
 const DEFAULT_INVERTER_SELECTION_RANGES = [
-  { minKw: 0, maxKw: 0.96, targetKva: 1.2, label: "1.2kVA/12V" },
-  { minKw: 0.96, maxKw: 1.13, targetKva: 1.5, label: "1.5kVA/12V" },
-  { minKw: 1.13, maxKw: 1.35, targetKva: 1.8, label: "1.8kVA/12V" },
-  { minKw: 1.35, maxKw: 2.88, targetKva: 3.6, label: "3.6kVA/24V or 4kVA/24V" },
-  { minKw: 2.88, maxKw: 4.0, targetKva: 5, label: "5kVA/48V" },
-  { minKw: 4.0, maxKw: 4.5, targetKva: 6, label: "6kVA/48V or 6.5kVA/48V" },
-  { minKw: 4.5, maxKw: 6.0, targetKva: 8, label: "8kVA/48V" },
-  { minKw: 6.0, maxKw: 7.5, targetKva: 10, label: "10kVA - 2 units of 5kVA/48V" },
-  { minKw: 7.5, maxKw: 9.0, targetKva: 12, label: "12kVA/48V" },
-  { minKw: 9.0, maxKw: 11.5, targetKva: 15, label: "15kVA - 3 units of 5kVA/48V" },
-  { minKw: 11.5, maxKw: 13.5, targetKva: 18, label: "18kVA - 3 units of 6kVA/48V" },
-  { minKw: 13.5, maxKw: 15.0, targetKva: 20, label: "20kVA - 4 units of 5kVA/48V" },
+  { minKw: 0.0, maxKw: 0.96, targetKva: 1.2, voltageV: 12, label: "1.2kVA/12V" },
+  { minKw: 0.96, maxKw: 1.13, targetKva: 1.5, voltageV: 12, label: "1.5kVA/12V" },
+  { minKw: 1.13, maxKw: 1.35, targetKva: 1.8, voltageV: 12, label: "1.8kVA/12V" },
+  { minKw: 1.35, maxKw: 2.52, targetKva: 3.6, voltageV: 24, label: "3.6kVA/24V" },
+  { minKw: 2.52, maxKw: 2.89, targetKva: 4.0, voltageV: 24, label: "4kVA/24V" },
+  { minKw: 2.89, maxKw: 4.0, targetKva: 5.0, voltageV: 48, label: "5kVA/48V" },
+  { minKw: 4.0, maxKw: 4.2, targetKva: 6.0, voltageV: 48, label: "6kVA/48V" },
+  { minKw: 4.2, maxKw: 4.5, targetKva: 6.5, voltageV: 48, label: "6.5kVA/48V" },
+  { minKw: 4.5, maxKw: 6.0, targetKva: 8.0, voltageV: 48, label: "8kVA/48V" },
+  { minKw: 6.0, maxKw: 7.5, targetKva: 10.0, voltageV: 48, label: "10kVA/48V" },
+  { minKw: 7.5, maxKw: 9.0, targetKva: 12.0, voltageV: 48, label: "12kVA/48V" },
+  { minKw: 9.0, maxKw: 11.5, targetKva: 15.0, voltageV: 48, label: "15kVA/48V" },
+  { minKw: 11.5, maxKw: 13.5, targetKva: 18.0, voltageV: 48, label: "18kVA/48V" },
+  { minKw: 13.5, maxKw: 15.0, targetKva: 20.0, voltageV: 48, label: "20kVA/48V" },
 ];
 
 const InverterLoadCalculator = () => {
@@ -180,7 +183,9 @@ const InverterLoadCalculator = () => {
     DEFAULT_INVERTER_SELECTION_RANGES
   );
 
-
+  // Decide when to restore saved appliances from localStorage
+  const shouldRestoreFromStorage =
+    fromBundles || (source === "flow" && !!returnTo);
   // Filter appliances based on search term
   const filteredAppliances = appliances.filter((appliance) =>
     appliance.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -202,24 +207,55 @@ const InverterLoadCalculator = () => {
               minKw: Number(r?.min_kw),
               maxKw: Number(r?.max_kw),
               targetKva: Number(r?.target_kva),
+              voltageV: Number(r?.voltage_v ?? r?.voltageV),
               label: String(r?.label || ""),
             }))
-            .filter((r) => Number.isFinite(r.minKw) && Number.isFinite(r.maxKw) && Number.isFinite(r.targetKva) && r.label)
+            .filter(
+              (r) =>
+                Number.isFinite(r.minKw) &&
+                Number.isFinite(r.maxKw) &&
+                Number.isFinite(r.targetKva) &&
+                (r.label || Number.isFinite(r.voltageV))
+            )
             .sort((a, b) => a.minKw - b.minKw);
-          if (normalized.length > 0) {
+          const approxEq = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
+          const looksLikeSheet = (() => {
+            if (normalized.length < 6) return false;
+            // Reject old "or" labels that caused wrong display/selection.
+            if (normalized.some((r) => /(?:\s|^)or(?:\s|$)/i.test(String(r.label || "")))) {
+              return false;
+            }
+            // Must contain the critical breakpoint ranges from the provided sheet:
+            // 1.35–2.52 => 3.6 and 2.52–2.89 => 4.0
+            const has36 = normalized.some(
+              (r) =>
+                approxEq(r.minKw, 1.35, 0.02) &&
+                approxEq(r.maxKw, 2.52, 0.02) &&
+                approxEq(r.targetKva, 3.6, 0.05)
+            );
+            const has4 = normalized.some(
+              (r) =>
+                approxEq(r.minKw, 2.52, 0.02) &&
+                approxEq(r.maxKw, 2.89, 0.02) &&
+                (approxEq(r.targetKva, 4.0, 0.05) || approxEq(r.targetKva, 4, 0.05))
+            );
+            return has36 && has4;
+          })();
+
+          if (normalized.length > 0 && looksLikeSheet) {
             setInverterSelectionRanges(normalized);
           }
         }
-      } catch (e) {
+      } catch {
         // Keep defaults when API is unavailable.
       }
     };
     fetchCalculatorSettings();
   }, []);
 
-  // When user returns from "Edit Load" on recommended bundles page, restore previous appliance entries.
+  // When user returns from bundles or BNPL/BuyNow flow ("Edit load"), restore previous appliance entries.
   useEffect(() => {
-    if (!fromBundles) return;
+    if (!shouldRestoreFromStorage) return;
     try {
       const raw = localStorage.getItem("loadCalculatorAppliances");
       if (!raw) return;
@@ -254,7 +290,7 @@ const InverterLoadCalculator = () => {
     } catch (e) {
       console.warn("Failed to restore calculator data:", e);
     }
-  }, [fromBundles]);
+  }, [shouldRestoreFromStorage]);
 
   // Per row: Power (W) = Quantity * Watts; Watts Hours / Day = Power (W) * Hours/Day
   const totalLoadW = appliances.reduce(
@@ -267,22 +303,61 @@ const InverterLoadCalculator = () => {
   );
   const totalEnergyKwh = totalEnergyWh / 1000;
   const totalLoadKw = totalLoadW / 1000;
-  const selectedRange =
-    totalLoadKw > 0
-      ? (inverterSelectionRanges.find((r) => {
-          return totalLoadKw >= r.minKw && totalLoadKw <= r.maxKw;
-        }) || inverterSelectionRanges[inverterSelectionRanges.length - 1])
-      : null;
-  const proposedInverterW = selectedRange ? Math.round(selectedRange.targetKva * 1000) : 0;
-  const proposedInverterKva = selectedRange ? String(selectedRange.targetKva) : "0.0";
-  const proposedInverterLabel = selectedRange ? selectedRange.label : "—";
+  const findRange = (kw) => {
+    if (!Number.isFinite(kw) || kw <= 0) return null;
+    // Avoid overlap issues by treating maxKw as exclusive, except for the last range.
+    for (let i = 0; i < inverterSelectionRanges.length; i++) {
+      const r = inverterSelectionRanges[i];
+      const isLast = i === inverterSelectionRanges.length - 1;
+      const within =
+        kw >= r.minKw && (isLast ? kw <= r.maxKw : kw < r.maxKw);
+      if (within) return r;
+    }
+    return inverterSelectionRanges[inverterSelectionRanges.length - 1] || null;
+  };
+  // Proposed inverter rating follows the sheet "Load Range" using the raw load (kW).
+  // We apply +30% headroom only when querying recommended bundles.
+  const selectedRange = totalLoadKw > 0 ? findRange(totalLoadKw) : null;
+  const displayInverterW = Math.max(0, Math.round(totalLoadW));
+  const formatKva = (n) => {
+    if (!Number.isFinite(n)) return "";
+    return Math.abs(n - Math.round(n)) < 1e-9 ? String(Math.round(n)) : n.toFixed(1);
+  };
+  const inferVoltageV = (kva) => {
+    if (!Number.isFinite(kva)) return null;
+    // Per the provided load→rating table.
+    if (kva <= 1.8) return 12;
+    if (kva <= 4.0) return 24;
+    return 48;
+  };
+  const proposedRatingText = (() => {
+    if (selectedRange?.label && /units of/i.test(String(selectedRange.label))) {
+      // Keep multi-unit guidance labels as-is (10kVA - 2 units..., etc).
+      return String(selectedRange.label).trim();
+    }
+    if (selectedRange && Number.isFinite(selectedRange.targetKva)) {
+      const kvaStr = formatKva(Number(selectedRange.targetKva));
+      const v =
+        Number.isFinite(selectedRange.voltageV) && selectedRange.voltageV > 0
+          ? Math.round(Number(selectedRange.voltageV))
+          : inferVoltageV(Number(selectedRange.targetKva));
+      return v ? `${kvaStr}kVA/${v}V` : `${kvaStr}kVA`;
+    }
+    // Fallback when no range selected
+    return `${formatKva(displayInverterW / 1000)}kVA`;
+  })();
+
+  // Recommendation target used for bundle query after user proceeds.
+  // Match the sizing rule: +30% headroom.
+  const recommendationInverterW = Math.max(0, Math.round(totalLoadW * 1.3));
   const peakLoadW = totalLoadW;
 
   // Handle proceed button - navigate back with load (q parameter)
   const handleProceed = () => {
-    // Send proposed inverter capacity based on approved inverter selection range table.
-    const q = Math.max(0, Math.round(proposedInverterW));
-    if (q <= 0) {
+    // Keep UI showing exact inverter rating from load, but query bundles using +43% target.
+    const q = recommendationInverterW;
+    const originalLoad = Math.max(0, Math.round(peakLoadW));
+    if (q <= 0 || originalLoad <= 0) {
       alert("Please add appliance quantity/load before proceeding.");
       return;
     }
@@ -304,19 +379,23 @@ const InverterLoadCalculator = () => {
       console.warn("Failed to save calculator data:", e);
     }
     
-    // Return to Buy Now or BNPL flow with load (q) and category so they see bundles matching their usage and category
+    // Return to Buy Now or BNPL flow with:
+    // - q: boosted value for bundle matching
+    // - load: original peak load for display text
     const categoryParam = category ? `&category=${encodeURIComponent(category)}` : "";
+    const proposedKva = selectedRange ? Number(selectedRange.targetKva) : Number((displayInverterW / 1000).toFixed(1));
+    const baseParams = `q=${q}&load=${originalLoad}&kva=${encodeURIComponent(String(proposedKva))}&fromCalculator=true${categoryParam}`;
     if (returnTo === "buy-now") {
-      navigate(`/buy-now?step=3.5&q=${q}&fromCalculator=true${categoryParam}`);
+      navigate(`/buy-now?step=3.5&${baseParams}`);
       return;
     }
     if (returnTo === "bnpl") {
-      navigate(`/bnpl?step=3.5&q=${q}&fromCalculator=true${categoryParam}`);
+      navigate(`/bnpl?step=3.5&${baseParams}`);
       return;
     }
     
     // Default: go to solar bundles if no returnTo specified
-    navigate(`/solar-bundles?q=${q}`);
+    navigate(`/solar-bundles?${baseParams}`);
   };
 
   const handleGoBack = () => {
@@ -552,7 +631,7 @@ const InverterLoadCalculator = () => {
             )}
           </div>
 
-          {/* Summary: Total Load, Total Energy, Proposed Inverter Rating — then Proceed → recommended bundles */}
+          {/* Summary: Total Load, Total Energy, Inverter Rating — then Proceed → recommended bundles */}
           <div className="col-span-4">
             <div className="bg-[#273e8e] text-white rounded-2xl px-5 py-5 flex flex-col gap-4 shadow-lg">
               <h2 className="text-lg font-semibold border-b border-white/30 pb-2">Load calculation result</h2>
@@ -568,10 +647,8 @@ const InverterLoadCalculator = () => {
                   <p className="text-sm text-white/90">{totalEnergyKwh.toFixed(3)} kWh/day</p>
                 </div>
                 <div>
-                  <p className="text-white/80 text-xs">Proposed Inverter Rating.</p>
-                  <p className="text-xl font-bold">{proposedInverterKva} kVA</p>
-                  <p className="text-sm text-white/90">{proposedInverterW.toLocaleString()} W</p>
-                  <p className="text-[11px] text-white/80 mt-1">{proposedInverterLabel}</p>
+                  <p className="text-white/80 text-xs">Minimum Recommended Inverter Rating</p>
+                  <p className="text-xl font-bold">{proposedRatingText}</p>
                 </div>
               </div>
               <p className="text-white/80 text-xs">Click Proceed to see recommended bundles for this load.</p>
@@ -595,7 +672,7 @@ const InverterLoadCalculator = () => {
             Inverter Load Calculator
           </h2>
           <p className="text-[12px] text-gray-600">
-            Add appliances and usage to see Total Load, Total Energy, and Proposed Inverter Rating. Then tap Proceed for recommended bundles.
+            Add appliances and usage to see Total Load, Total Energy, and Inverter Rating. Then tap Proceed for recommended bundles.
           </p>
         </div>
 
@@ -746,7 +823,7 @@ const InverterLoadCalculator = () => {
           )}
         </div>
 
-        {/* Total Load, Total Energy, Proposed Inverter — then Proceed */}
+        {/* Total Load, Total Energy, Inverter Rating — then Proceed */}
         <div className="fixed bottom-0 left-0 right-0 bg-[#273e8e] text-white px-4 py-4 shadow-lg">
           <div className="grid grid-cols-2 gap-2 text-xs mb-3">
             <div>
@@ -758,8 +835,8 @@ const InverterLoadCalculator = () => {
               <p className="font-bold">{totalEnergyKwh.toFixed(2)} kWh/day</p>
             </div>
             <div>
-              <p className="text-white/80">Proposed Inverter</p>
-              <p className="font-bold">{proposedInverterKva} kVA</p>
+              <p className="text-white/80">Minimum Recommended Inverter Rating</p>
+              <p className="font-bold">{proposedRatingText}</p>
             </div>
           </div>
           <button

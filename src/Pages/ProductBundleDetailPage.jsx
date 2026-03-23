@@ -189,6 +189,8 @@ const mapBundleDetail = (b) => {
     ]) ??
     "";
   const batteryCapacity =
+    b.total_output ??
+    b.totalOutput ??
     getSpecValue(specs, [
       "battery_capacity_kwh",
       "battery_capacity",
@@ -341,6 +343,13 @@ const ProductBundle = () => {
   const [err, setErr] = useState("");
   const [bundleDetailTab, setBundleDetailTab] = useState("description"); // 'description' | 'specs'
   const recommendedLoadQ = searchParams.get("q");
+  const handleBackNavigation = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate(`/solar-bundles${location.search || ""}`);
+  };
   const hasRecommendedSolarContext = Boolean(recommendedLoadQ);
   const isSolarBundleByType = /solar/i.test(
     `${productData?.label ?? ""} ${productData?.bundleTitle ?? ""}`
@@ -497,17 +506,18 @@ const ProductBundle = () => {
         }
       );
       
-      // Navigate to Buy Now flow, continuing from after bundle selection (step 7 - Order Summary)
+      // Navigate to Buy Now flow at installer/insurance step (step 4),
+      // while keeping the current bundle preloaded.
       const returnUrl = cartToken
-        ? `/buy-now?token=${cartToken}&bundleId=${id}&step=7&fromBundle=true`
-        : `/buy-now?bundleId=${id}&step=7&fromBundle=true`;
+        ? `/buy-now?token=${cartToken}&bundleId=${id}&step=4&fromBundle=true`
+        : `/buy-now?bundleId=${id}&step=4&fromBundle=true`;
       navigate(returnUrl);
     } catch (e) {
       if (e?.response?.status === 409) {
         // Item already in cart, proceed to Buy Now flow
         const returnUrl = cartToken
-          ? `/buy-now?token=${cartToken}&bundleId=${id}&step=7&fromBundle=true`
-          : `/buy-now?bundleId=${id}&step=7&fromBundle=true`;
+          ? `/buy-now?token=${cartToken}&bundleId=${id}&step=4&fromBundle=true`
+          : `/buy-now?bundleId=${id}&step=4&fromBundle=true`;
         navigate(returnUrl);
         return;
       }
@@ -565,12 +575,13 @@ const ProductBundle = () => {
               <h1 className="text-2xl font-semibold mb-2">
                 Recommended Bundle
               </h1>
-              <Link
-                to="/solar-bundles"
+              <button
+                type="button"
+                onClick={handleBackNavigation}
                 className="text-blue-500 underline mb-3 block"
               >
                 Back
-              </Link>
+              </button>
             </div>
 
             {/* Desktop two-column layout - aligned with BNPL/Buy Now flow */}

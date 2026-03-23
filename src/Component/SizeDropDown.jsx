@@ -1,14 +1,24 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { ChevronDown, X } from "lucide-react";
 
-// Size options from 1.2kW to 10kW
-const SIZE_OPTIONS = [];
-for (let i = 1.2; i <= 10; i += 0.5) {
-  SIZE_OPTIONS.push({
-    label: `${i}kW`,
-    value: i,
-  });
-}
+// Size options (match inverter rating table).
+// Values are numeric kVA so the existing size filter logic works.
+const SIZE_OPTIONS = [
+  { label: "1.2kVA/12V", value: 1.2 },
+  { label: "1.5kVA/12V", value: 1.5 },
+  { label: "1.8kVA/12V", value: 1.8 },
+  { label: "3.6kVA/24V", value: 3.6 },
+  { label: "4kVA/24V", value: 4.0 },
+  { label: "5kVA/48V", value: 5.0 },
+  { label: "6kVA/48V", value: 6.0 },
+  { label: "6.5kVA/48V", value: 6.5 },
+  { label: "8kVA/48V", value: 8.0 },
+  { label: "10kVA/48V", value: 10.0 },
+  { label: "12kVA/48V", value: 12.0 },
+  { label: "15kVA/48V", value: 15.0 },
+  { label: "18kVA/48V", value: 18.0 },
+  { label: "20kVA/48V", value: 20.0 },
+];
 
 const SizeDropDown = ({ onFilter }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -55,7 +65,11 @@ const SizeDropDown = ({ onFilter }) => {
     return () => scrollParent.removeEventListener("scroll", handleScroll);
   }, [isOpen]);
 
-  const selectedLabel = selectedSize ? `${selectedSize}kW` : "Size";
+  const selectedLabel =
+    selectedSize !== null
+      ? SIZE_OPTIONS.find((o) => Number(o.value) === Number(selectedSize))?.label ||
+        `${selectedSize}kVA`
+      : "Size";
 
   return (
     <>

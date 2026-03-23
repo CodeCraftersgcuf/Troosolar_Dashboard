@@ -84,7 +84,7 @@ const ProductBrandFilter = ({ categoryId, onFilter }) => {
   }, [isOpen]);
 
   const selectedLabel = useMemo(() => {
-    if (!selectedIds.length) return "All";
+    if (!selectedIds.length) return "Brand";
     if (selectedIds.length === 1) {
       const b = brands.find((x) => x.id === selectedIds[0]);
       return b ? b.name : "1 selected";
@@ -229,20 +229,6 @@ const ProductBrandFilter = ({ categoryId, onFilter }) => {
                   {brands.length === 0 && (
                     <div className="px-4 py-3 text-sm text-gray-500">No brands in this category.</div>
                   )}
-                  <button
-                    type="button"
-                    onClick={clearSelection}
-                    className={`flex items-center justify-between w-full px-8 py-4 text-sm transition-colors ${
-                      !selectedIds.length ? "bg-blue-50 font-semibold text-gray-800" : "text-gray-700 hover:bg-gray-100"
-                    }`}
-                    role="option"
-                    aria-selected={!selectedIds.length}
-                  >
-                    <span>All</span>
-                    <span className="h-4 w-4 p-0 flex items-center justify-center border border-[#273e8e]">
-                      {!selectedIds.length && <span className="h-4 w-4 bg-[#273e8e]" aria-hidden="true" />}
-                    </span>
-                  </button>
                   {brands.map((b) => {
                     const checked = selectedIds.includes(b.id);
                     return (

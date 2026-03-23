@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { Calculator, ArrowRight } from 'lucide-react';
 import API from '../config/api.config';
@@ -23,7 +23,7 @@ const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: l
         } else {
           setLoanConfig(null);
         }
-      } catch (_) {
+      } catch {
         setLoanConfig(null);
       } finally {
         setConfigLoading(false);
@@ -35,18 +35,18 @@ const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: l
   const config = loanConfigProp || loanConfig;
   const minDepositPercent = config?.equity_contribution_min ?? 30;
   const maxDepositPercent = config?.equity_contribution_max ?? 80;
-  const minInterestRate = config?.interest_rate_min ?? 3;
   const maxInterestRate = config?.interest_rate_max ?? 4;
   const minAmount = Number(config?.minimum_loan_amount) || 1500000;
-  const managementFeePercent = config?.management_fee_percentage ?? 1.0;
-  const residualFeePercent = config?.residual_fee_percentage ?? 1.0;
-  const allowedTenors = Array.isArray(config?.loan_durations) && config.loan_durations.length > 0
+  const allowedTenors = useMemo(() => (Array.isArray(config?.loan_durations) && config.loan_durations.length > 0
     ? config.loan_durations
-    : [3, 6, 9, 12];
+    : [3, 6, 9, 12]), [config?.loan_durations]);
+  const downPaymentOptions = useMemo(() => (Array.isArray(config?.down_payment_options) && config.down_payment_options.length > 0
+    ? [...new Set(config.down_payment_options.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v >= 0 && v <= 100))].sort((a, b) => a - b)
+    : [30, 40, 50, 60, 70, 80].filter((p) => p >= minDepositPercent && p <= maxDepositPercent)), [config?.down_payment_options, minDepositPercent, maxDepositPercent]);
 
-  const [depositPercent, setDepositPercent] = useState(minDepositPercent);
+  const [depositPercent, setDepositPercent] = useState(downPaymentOptions[0] ?? minDepositPercent);
   const [tenor, setTenor] = useState(allowedTenors.includes(12) ? 12 : allowedTenors[0] || 12);
-  const [interestRate, setInterestRate] = useState(maxInterestRate);
+  const [interestRate] = useState(maxInterestRate);
 
   const totalAmount = isStandalone
     ? Number(String(standaloneAmount).replace(/[^\d.]/g, '')) || 0
@@ -57,21 +57,30 @@ const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: l
   const totalInterest = principal * (interestRate / 100) * tenor;
   const totalRepayment = principal + totalInterest; // Total Repayment Amount
   const monthlyRepayment = tenor > 0 ? totalRepayment / tenor : 0;
-  const managementFee = principal * (managementFeePercent / 100);
-  const residualFee = principal * (residualFeePercent / 100);
-
   const isEligible = totalAmount >= minAmount;
   const showMinError = isStandalone && touched && totalAmount > 0 && totalAmount < minAmount;
 
   const formatCurrency = (val) => {
-    return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(Number(val) || 0);
+    return new Intl.NumberFormat('en-NG', { 
+      style: 'currency', 
+      currency: 'NGN',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number(val) || 0);
   };
 
   useEffect(() => {
     if (Array.isArray(config?.loan_durations) && config.loan_durations.length > 0 && !allowedTenors.includes(tenor)) {
       setTenor(allowedTenors.includes(12) ? 12 : allowedTenors[0]);
     }
-  }, [config?.loan_durations]);
+  }, [config?.loan_durations, allowedTenors, tenor]);
+
+  useEffect(() => {
+    if (downPaymentOptions.length === 0) return;
+    if (!downPaymentOptions.includes(depositPercent)) {
+      setDepositPercent(downPaymentOptions[0]);
+    }
+  }, [downPaymentOptions, depositPercent]);
 
   if (configLoading && isStandalone) {
     return (
@@ -140,7 +149,7 @@ const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: l
                   Initial Deposit ({depositPercent}%)
                 </label>
                 <div className="grid grid-cols-3 gap-2 mb-3">
-                  {[30, 40, 50, 60, 70, 80].filter(p => p >= minDepositPercent && p <= maxDepositPercent).map((p) => (
+                  {downPaymentOptions.map((p) => (
                     <button
                       key={p}
                       type="button"

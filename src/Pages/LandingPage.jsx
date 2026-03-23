@@ -52,7 +52,7 @@ const LandingPage = () => {
           </Link>
 
           {/* Shop Solar Card */}
-          <Link to="/shop" className="group relative bg-white/10 backdrop-blur-lg border border-white/20 rounded-3xl p-8 hover:bg-white/20 transition-all duration-500 transform hover:-translate-y-2 hover:shadow-2xl flex flex-col items-center text-center overflow-hidden">
+          <Link to="/homePage" className="group relative bg-white/10 backdrop-blur-lg border border-white/20 rounded-3xl p-8 hover:bg-white/20 transition-all duration-500 transform hover:-translate-y-2 hover:shadow-2xl flex flex-col items-center text-center overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
             <div className="bg-purple-500/20 p-6 rounded-full mb-6 group-hover:scale-110 transition-transform duration-500">
               <ShoppingBag size={48} className="text-purple-300" />

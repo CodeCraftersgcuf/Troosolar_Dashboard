@@ -187,7 +187,7 @@ const Tools = () => {
                       </h3>
                       <p className="text-[10px] text-gray-600">
                         {tool.id === "inverter" &&
-                          "Estimate total power needs with the load table (appliances, quantity, watts, hours). See Total Load, Total Energy, and Proposed Inverter Rating, then get recommended bundles."}
+                          "Estimate total power needs with the load table (appliances, quantity, watts, hours). See Total Load, Total Energy, and Minimum Recommended Inverter Rating, then get recommended bundles."}
                         {tool.id === "solarSaving" &&
                           "A solar savings calculator estimates how much money you can save by switching to solar energy. It helps you understand long-term cost benefits based on an electricity bill, location, and system size."}
                         {tool.id === "loan" &&

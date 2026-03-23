@@ -40,7 +40,7 @@ const ServiceCards = ({ hasActiveLoan = false }) => {
             </Link>
 
             {/* Shop Solar Card */}
-            <Link to="/shop" className="group relative bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 flex flex-col items-center text-center overflow-hidden">
+            <Link to="/homePage" className="group relative bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 flex flex-col items-center text-center overflow-hidden">
                 <div className="bg-purple-50 p-4 rounded-full mb-4 group-hover:bg-purple-600 transition-colors duration-300">
                     <ShoppingBag size={32} className="text-purple-600 group-hover:text-white transition-colors duration-300" />
                 </div>

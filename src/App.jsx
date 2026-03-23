@@ -1,10 +1,9 @@
 import React, { useContext } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import Auth from "./Pages/Auth";
 import LandingPage from "./Pages/LandingPage";
 import BNPLFlow from "./Pages/BNPL/BNPLFlow";
 import BuyNowFlow from "./Pages/BuyNow/BuyNowFlow";
-import SolarShop from "./Pages/SolarShop";
 import Otp from "./Pages/Otp";
 import ForgotPassword from "./Pages/ForgotPassword";
 import Home from "./Pages/Home";
@@ -62,7 +61,7 @@ const App = () => {
         {/* New Flow Routes */}
         <Route path="/bnpl/*" element={<BNPLFlow />} />
         <Route path="/buy-now/*" element={<BuyNowFlow />} />
-        <Route path="/shop" element={<SolarShop />} />
+        <Route path="/shop" element={<Navigate to="/homePage" replace />} />
 
         <Route path="/register" element={<Auth />} />
         <Route path="/login" element={<Auth />} />

@@ -9,6 +9,7 @@ import ProductBrandFilter from "../Component/ProductBrandFilter";
 import ProductPriceFilter from "../Component/ProductPriceFilter";
 import TopNavbar from "../Component/TopNavbar";
 import HrLine from "../Component/MobileSectionResponsive/HrLine";
+import Items from "../Component/Items";
 
 import API from "../config/api.config";
 import { ContextApi } from "../Context/AppContext";
@@ -25,10 +26,25 @@ const parseStockQuantity = (stockValue) => {
   if (typeof stockValue === "number") return Number.isFinite(stockValue) ? stockValue : 0;
   const text = String(stockValue).trim().toLowerCase();
   if (!text) return 0;
+  const compactText = text.replace(/[\s_-]/g, "");
   const numeric = Number(text);
   if (Number.isFinite(numeric)) return numeric;
-  if (text.includes("out of stock") || text === "unavailable" || text === "false") return 0;
-  if (text.includes("in stock") || text === "available" || text === "true") return 1;
+  if (
+    text.includes("out of stock") ||
+    compactText === "outofstock" ||
+    text === "unavailable" ||
+    text === "false"
+  ) {
+    return 0;
+  }
+  if (
+    text.includes("in stock") ||
+    compactText === "instock" ||
+    text === "available" ||
+    text === "true"
+  ) {
+    return 1;
+  }
   const extracted = Number(text.replace(/[^\d.]/g, ""));
   return Number.isFinite(extracted) ? extracted : 0;
 };
@@ -119,6 +135,8 @@ const SpecificProduct = () => {
   const [category, setCategory] = useState(null);
   const [catLoading, setCatLoading] = useState(false);
   const [catError, setCatError] = useState("");
+  const [allCategories, setAllCategories] = useState([]);
+  const [allCategoriesLoading, setAllCategoriesLoading] = useState(false);
 
   // products in this category
   const [allProducts, setAllProducts] = useState([]); // full set for this category
@@ -151,6 +169,28 @@ const SpecificProduct = () => {
     };
     if (id) fetchCategory();
   }, [id]);
+
+  // Fetch all categories for the heading strip, so category links remain visible
+  useEffect(() => {
+    const fetchCategories = async () => {
+      setAllCategoriesLoading(true);
+      try {
+        const token = localStorage.getItem("access_token");
+        const { data } = await axios.get(API.CATEGORIES, {
+          headers: {
+            Accept: "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
+        setAllCategories(Array.isArray(data?.data) ? data.data : []);
+      } catch {
+        setAllCategories([]);
+      } finally {
+        setAllCategoriesLoading(false);
+      }
+    };
+    fetchCategories();
+  }, []);
 
   // fetch category products + fallback to /products filtered by category_id
   useEffect(() => {
@@ -259,8 +299,9 @@ const SpecificProduct = () => {
                     : `Shop for ${displayCategoryName}`}
                 </p>
               </div>
-              <SearchBar />
+              <SearchBar categories={allCategories} products={allProducts} />
             </div>
+            <Items categories={allCategories} loading={allCategoriesLoading} />
           </div>
 
           <div className="px-6 py-6 flex-1 overflow-auto">
@@ -344,6 +385,7 @@ const SpecificProduct = () => {
               <ProductPriceFilter onFilter={handlePriceFilter} />
             </div>
           </div>
+          <Items categories={allCategories} loading={allCategoriesLoading} />
 
           <div className="px-6 py-6 flex-1 overflow-auto">
             <HrLine text={displayCategoryName} />

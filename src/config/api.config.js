@@ -18,6 +18,8 @@ const API = {
     CATEGORIES: `${BASE_URL}/categories`,
     CATEGORY_BY_ID: (id) => `${BASE_URL}/categories/${id}`,
     CATEGORY_PRODUCTS: (id) => `${BASE_URL}/categories/${id}/products`,
+    PUBLIC_CATEGORY_PRODUCTS: (id) => `${BASE_URL}/website/categories/${id}/products`,
+    PRODUCTS_BY_GROUP: (groupType) => `${BASE_URL}/website/products/group/${groupType}`,
     PRODUCTS: `${BASE_URL}/products`,
     PRODUCT_BY_ID: (id) => `${BASE_URL}/products/${id}`,
     BUNDLES: `${BASE_URL}/bundles`,

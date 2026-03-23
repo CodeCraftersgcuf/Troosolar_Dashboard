@@ -20,7 +20,7 @@ const USER_KEYS = [
 const mobileNavItems = [
   { name: "Home", link: "/", icon: assets.dashboard_mob },
   { name: "Store", link: "/homePage", icon: assets.ShopMgt_mob },
-  { name: "Loans", link: "/loan", icon: assets.Loanmgt_mob },
+  { name: "Bundles", link: "/solar-bundles", icon: assets.Loanmgt_mob },
   { name: "BNPL", link: "/bnpl-credit-check", icon: assets.creditMgt },
   { name: "Tools", link: "/tools", icon: assets.settings_mob },
   { name: "More", link: "/more", icon: assets.userGear_mob },
@@ -73,13 +73,6 @@ const SideBar = () => {
       // adjust if your auth route differs
       navigate("/login", { replace: true });
     }
-  };
-
-  const getWidth = () => {
-    const width = window.innerWidth;
-    if (width <= 325) return "215px";
-    if (width <= 375) return "325px";
-    return "390px"; // Default for larger screens
   };
 
   return (
@@ -141,9 +134,11 @@ const SideBar = () => {
         <div
           className="sm:hidden fixed z-50"
           style={{
-            width: getWidth(),
+            width: "calc(100vw - 24px)",
+            maxWidth: "420px",
             height: "60px",
-            left: `calc(50% - ${getWidth()} / 2)`, // Center the div based on its dynamic width
+            left: "50%",
+            transform: "translateX(-50%)",
             bottom: "23px",
             background: "#FFFFFF",
             border: "0.3px solid #CDCDCD",
@@ -152,14 +147,14 @@ const SideBar = () => {
             boxSizing: "border-box",
           }}
         >
-          <div className="flex items-center justify-around h-full px-4">
+          <div className="flex items-center h-full px-2 gap-1 overflow-x-auto whitespace-nowrap no-scrollbar">
             {mobileNavItems.map((item, index) => {
               const isActive = location.pathname === item.link;
               return (
                 <Link
                   key={index}
                   to={item.link}
-                  className="flex flex-col items-center justify-center py-2 px-3 min-w-0 flex-1"
+                  className="flex flex-col items-center justify-center py-2 px-3 min-w-[58px] flex-none"
                   onClick={() => setActiveLink(item.link)}
                 >
                   <div className="flex flex-col items-center">

@@ -12,7 +12,13 @@ const Z_DROPDOWN_PANEL = 10000;
  * - onFilteringChange: callback(boolean) when filtering state changes
  * - onFilteredResults: callback(filteredArray) when filtered list is computed (e.g. for SolarBundle)
  */
-const SearchBar = ({ categories = [], products = [], onFilteringChange, onFilteredResults }) => {
+const SearchBar = ({
+  categories = [],
+  products = [],
+  onFilteringChange,
+  onFilteredResults,
+  showSizeFilter = true,
+}) => {
   const { setFilteredResults } = useContext(ContextApi);
 
   // Build dropdown options from API cats
@@ -35,15 +41,24 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange, onFilter
   const [query, setQuery] = useState("");
   const [selectedSize, setSelectedSize] = useState("all");
 
-  // Size options from 1.2kW to 10kW
+  // Size options – match inverter ratings table (value in kVA, labels without "units of ...")
   const sizeOptions = useMemo(() => {
-    const sizes = [];
-    for (let i = 1.2; i <= 10; i += 0.5) {
-      sizes.push({
-        label: `${i}kW`,
-        value: i.toString(),
-      });
-    }
+    const sizes = [
+      { value: "1.2", label: "1.2kVA/12V" },
+      { value: "1.5", label: "1.5kVA/12V" },
+      { value: "1.8", label: "1.8kVA/12V" },
+      { value: "3.6", label: "3.6kVA/24V" },
+      { value: "4.0", label: "4kVA/24V" },
+      { value: "5.0", label: "5kVA/48V" },
+      { value: "6.0", label: "6kVA/48V" },
+      { value: "6.5", label: "6.5kVA/48V" },
+      { value: "8.0", label: "8kVA/48V" },
+      { value: "10.0", label: "10kVA/48V" },
+      { value: "12.0", label: "12kVA/48V" },
+      { value: "15.0", label: "15kVA/48V" },
+      { value: "18.0", label: "18kVA/48V" },
+      { value: "20.0", label: "20kVA/48V" },
+    ];
     return [{ label: "All Sizes", value: "all" }, ...sizes];
   }, []);
 
@@ -96,10 +111,26 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange, onFilter
 
   // Extract size from query (e.g., "1.2kW" or "1.2 kw")
   const extractSizeFromQuery = (q) => {
-    const sizeMatch = q.match(/(\d+\.?\d*)\s*kw/i);
-    if (sizeMatch) {
-      return parseFloat(sizeMatch[1]);
+    const raw = String(q ?? "").trim();
+    if (!raw) return null;
+
+    const qLower = raw.toLowerCase();
+
+    // Match explicit kVA/kW inputs first (e.g. "1.2kVA", "1.2 kW", "4kVA/24V")
+    const kvaMatch = qLower.match(/(\d+(?:\.\d+)?)\s*kva/i);
+    if (kvaMatch) return parseFloat(kvaMatch[1]);
+
+    const kwMatch = qLower.match(/(\d+(?:\.\d+)?)\s*kw/i);
+    if (kwMatch) return parseFloat(kwMatch[1]);
+
+    // If the query is ONLY a number like "1.2" treat it as kVA size.
+    // Keep it bounded so we don't accidentally parse unrelated numbers (e.g. battery kWh like "1.3").
+    const numericOnlyMatch = qLower.match(/^(\d+(?:\.\d+)?)$/);
+    if (numericOnlyMatch) {
+      const n = parseFloat(numericOnlyMatch[1]);
+      if (Number.isFinite(n) && n > 0 && n <= 30) return n;
     }
+
     return null;
   };
 
@@ -118,9 +149,18 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange, onFilter
       }
 
       let results = [...products]; // Start with all products
-      const querySize = extractSizeFromQuery(query);
-      const sizeToFilter = selectedSize !== "all" ? parseFloat(selectedSize) : querySize;
-      const isFilteringActive = selectedValue !== "all" || query.trim() !== "" || selectedSize !== "all";
+      const querySize = showSizeFilter ? extractSizeFromQuery(query) : null;
+      const sizeToFilter =
+        showSizeFilter && selectedSize !== "all" ? parseFloat(selectedSize) : querySize;
+      const normalizeKva = (val) => {
+        const n = typeof val === "number" ? val : parseFloat(val);
+        if (!Number.isFinite(n)) return null;
+        // Inverter table uses 1-decimal steps (e.g. 3.6, 4.0, 6.5). Normalize to match exactly.
+        return Math.round(n * 10) / 10;
+      };
+      const sizeToFilterNorm = sizeToFilter ? normalizeKva(sizeToFilter) : null;
+      const isFilteringActive =
+        selectedValue !== "all" || query.trim() !== "" || (showSizeFilter && selectedSize !== "all");
 
       // Category filtering: by category_id first, then fallback by product title so
       // inverters show under Inverters, panels under Panels, batteries under Lithium Batteries, etc.
@@ -136,7 +176,7 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange, onFilter
       }
 
       // Size filtering (for bundles)
-      if (sizeToFilter && !isNaN(sizeToFilter)) {
+      if (sizeToFilterNorm !== null) {
         results = results.filter((item) => {
           // Check if it's a bundle (has bundle properties)
           const bundle = item.bundle || item;
@@ -150,14 +190,22 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange, onFilter
           const loadkW = totalLoad > 1000 ? totalLoad / 1000 : totalLoad;
           const inverterkW = inverterRating > 1000 ? inverterRating / 1000 : inverterRating;
           const outputkW = totalOutput > 1000 ? totalOutput / 1000 : totalOutput;
-          
-          // Check if any of these values match the selected size (within ±0.3kW range)
-          const tolerance = 0.3;
-          const matchesLoad = loadkW > 0 && Math.abs(loadkW - sizeToFilter) <= tolerance;
-          const matchesInverter = inverterkW > 0 && Math.abs(inverterkW - sizeToFilter) <= tolerance;
-          const matchesOutput = outputkW > 0 && Math.abs(outputkW - sizeToFilter) <= tolerance;
-          
-          return matchesLoad || matchesInverter || matchesOutput;
+
+          const inverterNorm = normalizeKva(inverterkW);
+          const loadNorm = normalizeKva(loadkW);
+          const outputNorm = normalizeKva(outputkW);
+
+          // For bundles, `inver_rating` is the source of truth.
+          // If it's present, only match by inverter rating to avoid "extra irrelevant sizes".
+          if (inverterNorm !== null && inverterNorm > 0) {
+            return inverterNorm === sizeToFilterNorm;
+          }
+
+          // Fallback: try matching by load/output if inverter rating is missing.
+          return (
+            (loadNorm !== null && loadNorm > 0 && loadNorm === sizeToFilterNorm) ||
+            (outputNorm !== null && outputNorm > 0 && outputNorm === sizeToFilterNorm)
+          );
         });
       }
 
@@ -268,39 +316,40 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange, onFilter
               </button>
             ))}
 
-            {/* Size Filter Section */}
-            <div className="border-t border-gray-200 mt-2">
-              <div className="px-4 py-2 bg-gray-50">
-                <p className="text-center text-gray-500 font-medium">Select Size</p>
+            {showSizeFilter && (
+              <div className="border-t border-gray-200 mt-2">
+                <div className="px-4 py-2 bg-gray-50">
+                  <p className="text-center text-gray-500 font-medium">Select Size</p>
+                </div>
+                <div className="max-h-[200px] overflow-y-auto">
+                  {sizeOptions.map((size) => (
+                    <button
+                      key={size.value}
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setSelectedSize(size.value);
+                      }}
+                      className={`flex items-center justify-between w-full px-4 py-2 text-sm hover:bg-gray-100 ${
+                        selectedSize === size.value
+                          ? "bg-blue-50 font-semibold"
+                          : "text-gray-700"
+                      }`}
+                      role="option"
+                      aria-selected={selectedSize === size.value}
+                    >
+                      <span>{size.label}</span>
+                      <span className="h-4 w-4 rounded-full border border-[#273e8e] flex items-center justify-center">
+                        {selectedSize === size.value && (
+                          <span className="h-2 w-2 bg-[#273e8e] rounded-full" />
+                        )}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="max-h-[200px] overflow-y-auto">
-                {sizeOptions.map((size) => (
-                  <button
-                    key={size.value}
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setSelectedSize(size.value);
-                    }}
-                    className={`flex items-center justify-between w-full px-4 py-2 text-sm hover:bg-gray-100 ${
-                      selectedSize === size.value
-                        ? "bg-blue-50 font-semibold"
-                        : "text-gray-700"
-                    }`}
-                    role="option"
-                    aria-selected={selectedSize === size.value}
-                  >
-                    <span>{size.label}</span>
-                    <span className="h-4 w-4 rounded-full border border-[#273e8e] flex items-center justify-center">
-                      {selectedSize === size.value && (
-                        <span className="h-2 w-2 bg-[#273e8e] rounded-full" />
-                      )}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
         </>
       )}
@@ -321,7 +370,7 @@ const SearchBar = ({ categories = [], products = [], onFilteringChange, onFilter
           className="w-full px-2 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none"
           aria-label="Search products and bundles"
         />
-        {(query || selectedValue !== "all" || selectedSize !== "all") && (
+        {(query || selectedValue !== "all" || (showSizeFilter && selectedSize !== "all")) && (
           <button
             onClick={() => {
               setQuery("");

@@ -13,6 +13,7 @@ const SolarBundleComponent = ({
   rating,
   borderColor,
   bundleTitle,
+  inverterRating,
 }) => {
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
@@ -52,6 +53,12 @@ const SolarBundleComponent = ({
   };
 
   const detailLink = `/productBundle/details/${id}${location.search || ""}`;
+  const inverterRatingText = (() => {
+    if (inverterRating == null || inverterRating === "") return "";
+    const raw = String(inverterRating).trim();
+    if (!raw) return "";
+    return /kva/i.test(raw) ? raw : `${raw}kVA`;
+  })();
 
   return (
     <div
@@ -61,6 +68,11 @@ const SolarBundleComponent = ({
     >
       {/* Image: Fixed height container to prevent layout shift - matches Product component */}
       <div className="relative rounded-2xl mb-2 overflow-hidden bg-gray-100 h-[140px] sm:h-[180px] flex items-center justify-center">
+        {inverterRatingText && (
+          <span className="absolute top-2 right-2 z-10 bg-[#E8A91D] text-white text-[10px] sm:text-[11px] px-2 py-1 rounded-full font-semibold shadow">
+            {inverterRatingText}
+          </span>
+        )}
         {/* Loading Indicator - Shows while image is loading */}
         {imageLoading && !imageError && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
@@ -101,14 +113,16 @@ const SolarBundleComponent = ({
           onError={handleImageError}
         />
       </div>
-      {/* {bundleTitle && <h2 className="text-[16px] font-[400] mb-2">{bundleTitle}</h2>} */}
-      {/* <hr className="mb-3 text-gray-400/40" /> */}
-
       {/* Title - with fixed height to prevent layout shift */}
-      <div className="min-h-[42px] mb-2">
+      <div className="min-h-[60px] mb-2">
         <h2 className="text-[13px] sm:text-[14px] font-medium text-slate-800 leading-snug line-clamp-2">
           {heading}
         </h2>
+        {bundleTitle && (
+          <p className="mt-1 text-[11px] sm:text-[12px] text-gray-500 line-clamp-1">
+            {bundleTitle}
+          </p>
+        )}
       </div>
 
       <hr className="border-gray-300 mb-2" />

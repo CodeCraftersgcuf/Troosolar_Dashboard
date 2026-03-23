@@ -15,7 +15,7 @@ const Items = ({ categories = [], loading = false }) => {
             {Array.from({ length: 8 }).map((_, i) => (
               <div
                 key={i}
-                className="flex flex-col items-center justify-center w-[120px] h-[120px] bg-white rounded-2xl shadow-sm shrink-0 animate-pulse"
+                className="flex flex-col items-center justify-center w-[160px] h-[120px] bg-white rounded-2xl shadow-sm shrink-0 animate-pulse"
               >
                 <div className="w-[70px] h-[70px] rounded-full bg-gray-200" />
                 <div className="mt-2 h-3 w-16 bg-gray-200 rounded" />
@@ -55,7 +55,7 @@ const Items = ({ categories = [], loading = false }) => {
         <div className="flex gap-4 px-4 py-4 min-w-fit">
           {categories.map((cat) => (
             <Link key={cat.id} to={`/product/${cat.id}`}>
-              <div className="flex flex-col items-center justify-center w-[120px] h-[120px] bg-white rounded-2xl shadow-sm shrink-0">
+              <div className="flex flex-col items-center justify-center w-[160px] h-[120px] bg-white rounded-2xl shadow-sm shrink-0">
                 <div className="flex items-center justify-center w-[70px] h-[70px] rounded-full bg-[#0000ff]/10 overflow-hidden">
                   {cat.icon ? (
                     <img
@@ -71,7 +71,7 @@ const Items = ({ categories = [], loading = false }) => {
                     </span>
                   )}
                 </div>
-                <h1 className="mt-2 text-center text-blue-700 text-sm">
+                <h1 className="mt-2 text-center text-blue-700 text-sm whitespace-nowrap">
                   {cat.title || cat.name}
                 </h1>
               </div>

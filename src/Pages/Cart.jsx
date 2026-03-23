@@ -26,6 +26,17 @@ const toAbsolute = (path) => {
   return `${API_ORIGIN}/storage/${cleaned}`;
 };
 
+const formatDateLabel = (value) => {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
 // Local storage key (set from Product Details page when you add to cart)
 const INSTALL_MAP_KEY = "install_price_map";
 
@@ -40,9 +51,11 @@ const mapCartItem = (ci) => {
     (Array.isArray(model.images) && model.images[0]?.image) ||
     "/placeholder-product.png";
 
-  const unit = toNumber(
-    ci?.unit_price ?? model.discount_price ?? model.price ?? model.total_price
-  );
+  const serverUnit = toNumber(ci?.unit_price);
+  const modelDiscount = toNumber(model.discount_price);
+  const modelBase = toNumber(model.price ?? model.total_price);
+  const modelEffective = modelDiscount > 0 ? modelDiscount : modelBase;
+  const unit = serverUnit > 0 ? serverUnit : modelEffective;
   const qty = toNumber(ci?.quantity);
   const subtotal = toNumber(ci?.subtotal ?? unit * qty);
 
@@ -166,7 +179,8 @@ const Cart = () => {
   const [processingPayment, setProcessingPayment] = useState(false);
 
   // Add installation toggle state
-  const [includeInstallation, setIncludeInstallation] = useState(true);
+  const [includeInstallation, setIncludeInstallation] = useState(false);
+  const [serverInstallEstimatedDate, setServerInstallEstimatedDate] = useState("");
 
   const token =
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
@@ -463,7 +477,7 @@ const Cart = () => {
     [lines]
   );
 
-  // Installation total = sum(installUnit * qty)
+  // Keep local installation computation for backward compatibility only.
   const installationTotal = useMemo(
     () =>
       lines.reduce((s, l) => s + toNumber(l.installUnit) * toNumber(l.qty), 0),
@@ -472,8 +486,8 @@ const Cart = () => {
 
   // Prefer server items_total if we have it (after pressing Checkout)
   const itemsTotalToShow = serverItemsTotal || amountTotal;
-  const installationToShow =
-    installationTotal > 0 ? installationTotal : serverInstallPrice;
+  // Always trust backend checkout-summary for fees.
+  const installationToShow = serverInstallPrice || 0;
   const deliveryToShow = serverDeliveryPrice || 0;
   // Only include installation cost if the checkbox is checked
   const grandTotal =
@@ -508,6 +522,7 @@ const Cart = () => {
       setServerItemsCount(toNumber(cart.items_count));
       setServerDeliveryPrice(toNumber(delivery.price));
       setServerInstallPrice(toNumber(installation.price));
+      setServerInstallEstimatedDate(installation.estimated_date || "");
       setServerGrandTotal(toNumber(payload.grand_total));
       setType(cart.type);
       console.log("The type is", cart.type);
@@ -1272,7 +1287,7 @@ const Cart = () => {
                       <div className="flex justify-between text-gray-600 text-sm">
                         <span>Estimated Time</span>
                         <span className="text-gray-900 font-medium">
-                          July 3, 2025
+                          {formatDateLabel(serverInstallEstimatedDate)}
                         </span>
                       </div>
                       <hr className="border-gray-300" />
@@ -1285,11 +1300,7 @@ const Cart = () => {
                               : ""
                           }`}
                         >
-                          N
-                          {(installationTotal > 0
-                            ? installationTotal
-                            : installationToShow
-                          ).toLocaleString()}
+                          ₦{installationToShow.toLocaleString()}
                         </span>
                       </div>
                     </div>
@@ -1712,7 +1723,7 @@ const Cart = () => {
                   <div className="flex justify-between items-center py-3 border-t border-gray-200 text-xs">
                     <span className="text-gray-600">Estimated time</span>
                     <span className="text-gray-900 font-medium">
-                      July 2 - 7, 2025
+                      {formatDateLabel(serverInstallEstimatedDate)}
                     </span>
                   </div>
 
@@ -1755,11 +1766,7 @@ const Cart = () => {
                         !includeInstallation ? "line-through opacity-50" : ""
                       }`}
                     >
-                      N
-                      {(installationTotal > 0
-                        ? installationTotal
-                        : installationToShow
-                      ).toLocaleString()}
+                      ₦{installationToShow.toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -1868,7 +1875,7 @@ const Cart = () => {
                   <div className="flex justify-between text-xs">
                     <span>Estimated time</span>
                     <span className="text-gray-900 font-sm">
-                      July 2 - 7, 2025
+                      {formatDateLabel(serverInstallEstimatedDate)}
                     </span>
                   </div>
                   <div className="flex justify-between text-xs">
@@ -1878,11 +1885,7 @@ const Cart = () => {
                         !includeInstallation ? "line-through opacity-50" : ""
                       }`}
                     >
-                      N
-                      {(installationTotal > 0
-                        ? installationTotal
-                        : installationToShow
-                      ).toLocaleString()}
+                      ₦{installationToShow.toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -1904,7 +1907,7 @@ const Cart = () => {
                   <div>
                     <p className="text-sm text-gray-700">Total</p>
                     <p className="mt-1 font-[500] text-[18px] text-[#273e8e]">
-                      N{(orderData?.total_price || grandTotal).toLocaleString()}
+                      ₦{(orderData?.total_price || grandTotal).toLocaleString()}
                     </p>
                   </div>
 

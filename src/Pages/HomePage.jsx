@@ -10,7 +10,6 @@ import TopNavbar from "../Component/TopNavbar";
 import HrLine from "../Component/MobileSectionResponsive/HrLine";
 import { ShoppingCart, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import API from "../config/api.config";
-import SizeDropDown from "../Component/SizeDropDown";
 import PriceDropDown from "../Component/PriceDropDown";
 
 // ₦ formatter
@@ -33,10 +32,25 @@ const parseStockQuantity = (stockValue) => {
   if (typeof stockValue === "number") return Number.isFinite(stockValue) ? stockValue : 0;
   const text = String(stockValue).trim().toLowerCase();
   if (!text) return 0;
+  const compactText = text.replace(/[\s_-]/g, "");
   const numeric = Number(text);
   if (Number.isFinite(numeric)) return numeric;
-  if (text.includes("out of stock") || text === "unavailable" || text === "false") return 0;
-  if (text.includes("in stock") || text === "available" || text === "true") return 1;
+  if (
+    text.includes("out of stock") ||
+    compactText === "outofstock" ||
+    text === "unavailable" ||
+    text === "false"
+  ) {
+    return 0;
+  }
+  if (
+    text.includes("in stock") ||
+    compactText === "instock" ||
+    text === "available" ||
+    text === "true"
+  ) {
+    return 1;
+  }
   const extracted = Number(text.replace(/[^\d.]/g, ""));
   return Number.isFinite(extracted) ? extracted : 0;
 };
@@ -61,7 +75,7 @@ const mapApiProductToCard = (p) => {
   let discount = "";
 
   // Check if there's a meaningful discount
-  if (discountRaw != null && discountRaw < priceRaw) {
+  if (discountRaw != null && discountRaw > 0 && discountRaw < priceRaw) {
     // Check if discount is still valid based on end date
     if (p?.discount_end_date) {
       isDiscountActive = new Date(p.discount_end_date) > new Date();
@@ -118,6 +132,8 @@ const HomePage = () => {
   const [searchBarKey, setSearchBarKey] = useState(0); // Key to force SearchBar re-render
   const [selectedSize, setSelectedSize] = useState(null);
   const [priceRange, setPriceRange] = useState({ min: null, max: null });
+  const [selectedBrandId, setSelectedBrandId] = useState(null);
+  const [brandOptions, setBrandOptions] = useState([]);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -141,6 +157,12 @@ const HomePage = () => {
       max: max !== null && max !== undefined ? max : null 
     });
     setCurrentPage(1); // Reset to first page when filter changes
+  }, []);
+
+  // Handle brand filter
+  const handleBrandFilter = useCallback((brandId) => {
+    setSelectedBrandId(brandId != null && brandId !== "" ? String(brandId) : null);
+    setCurrentPage(1);
   }, []);
 
   // Fetch categories
@@ -208,6 +230,71 @@ const HomePage = () => {
     fetchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount - removed registerProducts and setFilteredResults to prevent infinite loops
+
+  // Fetch all brands used by currently loaded products (via category brands endpoints)
+  useEffect(() => {
+    let mounted = true;
+    const fetchBrands = async () => {
+      try {
+        const categoryIds = Array.from(
+          new Set(
+            (rawProducts || [])
+              .map((p) => p?.category_id)
+              .filter((id) => id != null)
+              .map((id) => String(id))
+          )
+        );
+
+        if (!categoryIds.length) {
+          if (mounted) setBrandOptions([]);
+          return;
+        }
+
+        const token = localStorage.getItem("access_token");
+        const responses = await Promise.all(
+          categoryIds.map((categoryId) =>
+            axios
+              .get(API.CATEGORY_BRANDS(categoryId), {
+                headers: {
+                  Accept: "application/json",
+                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+              })
+              .catch(() => null)
+          )
+        );
+
+        const brandMap = new Map();
+        responses.forEach((res) => {
+          const brands = Array.isArray(res?.data?.data)
+            ? res.data.data
+            : Array.isArray(res?.data)
+            ? res.data
+            : [];
+          brands.forEach((b) => {
+            const id = b?.id;
+            if (id == null) return;
+            if (!brandMap.has(String(id))) {
+              brandMap.set(String(id), b?.name || b?.title || `Brand #${id}`);
+            }
+          });
+        });
+
+        const options = Array.from(brandMap.entries())
+          .map(([id, name]) => ({ id, name }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        if (mounted) setBrandOptions(options);
+      } catch {
+        if (mounted) setBrandOptions([]);
+      }
+    };
+
+    fetchBrands();
+    return () => {
+      mounted = false;
+    };
+  }, [rawProducts]);
 
   // Build a quick id->name map for categories
   const catMap = useMemo(() => {
@@ -344,9 +431,17 @@ const HomePage = () => {
         return minOk && maxOk;
       });
     }
+
+    // Apply brand filter
+    if (selectedBrandId != null) {
+      products = products.filter((item) => {
+        const rawProduct = rawProductMap[item.id];
+        return String(rawProduct?.brand_id ?? "") === String(selectedBrandId);
+      });
+    }
     
     return products;
-  }, [filteredResults, apiProducts, rawProducts, isFiltering, selectedSize, priceRange, extractSizeFromTitle]);
+  }, [filteredResults, apiProducts, rawProducts, isFiltering, selectedSize, priceRange, selectedBrandId, extractSizeFromTitle]);
 
   // Enrich cards with category name
   const gridProducts = useMemo(() => {
@@ -368,7 +463,7 @@ const HomePage = () => {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedSize, priceRange, isFiltering]);
+  }, [selectedSize, priceRange, selectedBrandId, isFiltering]);
 
   // Handle page change
   const handlePageChange = useCallback((page) => {
@@ -406,6 +501,7 @@ const HomePage = () => {
                 categories={categories} 
                 products={apiProducts} 
                 onFilteringChange={handleFilteringChange}
+                showSizeFilter={false}
               />
             </div>
 
@@ -418,14 +514,28 @@ const HomePage = () => {
           <div className="px-6 py-6 w-full overflow-x-hidden">
             {/* Filters - relative z-[100] so dropdown panels paint above "All Products" and grid */}
             <div className="relative z-[100] flex justify-start items-center gap-4 mb-4">
-              <SizeDropDown onFilter={handleSizeFilter} />
               <PriceDropDown onFilter={handlePriceFilter} />
+              <div className="w-full max-w-[200px]">
+                <select
+                  value={selectedBrandId ?? ""}
+                  onChange={(e) => handleBrandFilter(e.target.value)}
+                  className="w-full px-4 py-4 bg-white border border-black/50 rounded-2xl shadow-sm hover:border-black/70 transition-colors text-sm lg:text-lg text-gray-500"
+                >
+                  <option value="">Brand</option>
+                  {brandOptions.map((brand) => (
+                    <option key={brand.id} value={brand.id}>
+                      {brand.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               {/* Show active filters count */}
-              {(selectedSize !== null || priceRange.min != null || priceRange.max != null) && (
+              {(selectedSize !== null || priceRange.min != null || priceRange.max != null || selectedBrandId != null) && (
                 <button
                   onClick={() => {
                     setSelectedSize(null);
                     setPriceRange({ min: null, max: null });
+                    setSelectedBrandId(null);
                     setCurrentPage(1);
                   }}
                   className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -623,6 +733,7 @@ const HomePage = () => {
                 categories={categories} 
                 products={apiProducts} 
                 onFilteringChange={handleFilteringChange}
+                      showSizeFilter={false}
               />
             </div>
           </div>
@@ -637,14 +748,28 @@ const HomePage = () => {
           <div className="px-5 py-6 w-full">
             {/* Filters - relative z-[100] so dropdown panels paint above content below */}
             <div className="relative z-[100] flex justify-start items-center gap-2 mb-4 flex-wrap">
-              <SizeDropDown onFilter={handleSizeFilter} />
               <PriceDropDown onFilter={handlePriceFilter} />
+              <div className="w-full max-w-[180px]">
+                <select
+                  value={selectedBrandId ?? ""}
+                  onChange={(e) => handleBrandFilter(e.target.value)}
+                  className="w-full px-3 py-3 bg-white border border-black/50 rounded-2xl shadow-sm hover:border-black/70 transition-colors text-sm text-gray-500"
+                >
+                  <option value="">Brand</option>
+                  {brandOptions.map((brand) => (
+                    <option key={brand.id} value={brand.id}>
+                      {brand.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               {/* Show active filters count */}
-              {(selectedSize !== null || priceRange.min != null || priceRange.max != null) && (
+              {(selectedSize !== null || priceRange.min != null || priceRange.max != null || selectedBrandId != null) && (
                 <button
                   onClick={() => {
                     setSelectedSize(null);
                     setPriceRange({ min: null, max: null });
+                    setSelectedBrandId(null);
                     setCurrentPage(1);
                   }}
                   className="px-3 py-2 text-xs text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"

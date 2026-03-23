@@ -7,7 +7,7 @@ import SearchBar from "../Component/SearchBar";
 import SolarBundleComponent from "../Component/SolarBundleComponent";
 import API, { BASE_URL } from "../config/api.config";
 import { assets } from "../assets/data";
-import { Edit } from "lucide-react";
+import { ChevronLeft, ChevronRight, Edit } from "lucide-react";
 import Loading from "../Component/Loading";
 
 // --- utils -------------------------------------------------------------
@@ -66,6 +66,7 @@ const mapBundle = (b) => {
     discount: badge,
     rating: assets?.fiveStars || assets?.rating || "",
     bundleTitle: b?.bundle_type || "",
+    inverterRating: b?.inver_rating ?? b?.inverter_rating ?? b?.inverterRating ?? "",
     borderColor: "#273e8e", // theme color frame
   };
 };
@@ -86,11 +87,17 @@ const SolarBundle = () => {
   const navigate = useNavigate();
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const qParam = searchParams.get("q")?.trim();
+  const kvaParam = searchParams.get("kva")?.trim();
 
   const [rawBundles, setRawBundles] = useState([]); // API response before mapBundle
   const [displayBundles, setDisplayBundles] = useState([]); // what we show (all or filtered)
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [selectedBundleType, setSelectedBundleType] = useState("all");
+  const [selectedSystemSize, setSelectedSystemSize] = useState("all");
+  const [priceSort, setPriceSort] = useState("default");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(12);
 
   useEffect(() => {
     const fetchBundles = async () => {
@@ -99,9 +106,16 @@ const SolarBundle = () => {
       try {
         const token = localStorage.getItem("access_token");
 
-        const url = qParam && !Number.isNaN(Number(qParam))
-          ? `${API.BUNDLES}?q=${encodeURIComponent(qParam)}`
-          : API.BUNDLES;
+        const url = (() => {
+          if (qParam && !Number.isNaN(Number(qParam))) {
+            const qp = new URLSearchParams({ q: String(qParam) });
+            if (kvaParam) {
+              qp.set("kva", String(kvaParam));
+            }
+            return `${API.BUNDLES}?${qp.toString()}`;
+          }
+          return API.BUNDLES;
+        })();
 
         const { data } = await axios.get(url, {
           headers: {
@@ -112,31 +126,97 @@ const SolarBundle = () => {
 
         const arr = normalizeBundles(data);
         setRawBundles(arr);
-        setDisplayBundles(arr.map(mapBundle));
       } catch (e) {
         setErr(
           e?.response?.data?.message || e?.message || "Failed to load bundles."
         );
         setRawBundles([]);
-        setDisplayBundles([]);
       } finally {
         setLoading(false);
       }
     };
 
     fetchBundles();
-  }, [qParam]);
+  }, [qParam, kvaParam]);
 
-  // When raw bundles change, reset display to all (SearchBar may filter later)
+  // Filter/sort display bundles
   useEffect(() => {
-    setDisplayBundles(rawBundles.map(mapBundle));
-  }, [rawBundles]);
+    const parseKva = (value) => {
+      const n = Number(String(value ?? "").replace(/[^\d.]/g, ""));
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    let list = rawBundles.filter((b) => {
+      const bundleType = String(b?.bundle_type || "").trim();
+      const inverterRating = parseKva(
+        b?.inver_rating ?? b?.inverter_rating ?? b?.inverterRating ?? ""
+      );
+
+      const typeMatch =
+        selectedBundleType === "all" ||
+        bundleType.toLowerCase() === selectedBundleType.toLowerCase();
+
+      const eps = 1e-6;
+      const sizeMatch =
+        selectedSystemSize === "all" ||
+        (selectedSystemSize === "small" && inverterRating > 0 && inverterRating < 2 - eps) ||
+        (selectedSystemSize === "medium" && inverterRating >= 2 - eps && inverterRating <= 6.5 + eps) ||
+        (selectedSystemSize === "large" && inverterRating >= 6.5 - eps);
+
+      return typeMatch && sizeMatch;
+    });
+
+    if (priceSort !== "default") {
+      list = [...list].sort((a, b) => {
+        const aPrice = Number(a?.discount_price || a?.total_price || 0);
+        const bPrice = Number(b?.discount_price || b?.total_price || 0);
+        return priceSort === "low-high" ? aPrice - bPrice : bPrice - aPrice;
+      });
+    }
+
+    setDisplayBundles(list.map(mapBundle));
+  }, [rawBundles, selectedBundleType, selectedSystemSize, priceSort]);
+
+  // Reset to first page when major filters/data source change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedBundleType, selectedSystemSize, priceSort, qParam, kvaParam]);
 
   // Products for SearchBar: each item has mapBundle fields + raw bundle for size filter
   const searchBarProducts = useMemo(
     () => rawBundles.map((r) => ({ ...mapBundle(r), bundle: r })),
     [rawBundles]
   );
+
+  const bundleTypeOptions = useMemo(() => {
+    const types = Array.from(
+      new Set(
+        rawBundles
+          .map((b) => String(b?.bundle_type || "").trim())
+          .filter(Boolean)
+      )
+    );
+    return types;
+  }, [rawBundles]);
+
+  const totalItems = displayBundles.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedBundles = displayBundles.slice(startIndex, endIndex);
+
+  // Clamp current page when result count changes (e.g. after search/filter)
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const handlePageChange = (page) => {
+    if (page < 1 || page > totalPages) return;
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   return (
     <div className="flex w-full min-h-screen bg-gray-100">
@@ -164,7 +244,10 @@ const SolarBundle = () => {
               <SearchBar
                 categories={[]}
                 products={searchBarProducts}
-                onFilteredResults={setDisplayBundles}
+                onFilteredResults={(results) => {
+                  setDisplayBundles(results);
+                  setCurrentPage(1);
+                }}
               />
             )}
           </div>
@@ -187,6 +270,59 @@ const SolarBundle = () => {
             {qParam ? "Choose from Recommended Bundle(s)" : "All Bundles"}
           </h1>
 
+          <div className="relative z-[100] flex justify-start items-center gap-4 mb-4 flex-wrap">
+            <div className="w-full max-w-[220px]">
+              <select
+                value={selectedBundleType}
+                onChange={(e) => setSelectedBundleType(e.target.value)}
+                className="w-full px-4 py-4 bg-white border border-black/50 rounded-2xl shadow-sm hover:border-black/70 transition-colors text-sm lg:text-base text-gray-500"
+              >
+                <option value="all">All Types</option>
+                {bundleTypeOptions.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="w-full max-w-[220px]">
+              <select
+                value={selectedSystemSize}
+                onChange={(e) => setSelectedSystemSize(e.target.value)}
+                className="w-full px-4 py-4 bg-white border border-black/50 rounded-2xl shadow-sm hover:border-black/70 transition-colors text-sm lg:text-base text-gray-500"
+              >
+                <option value="all">All Sizes</option>
+                <option value="small">Small (&lt; 2kVA)</option>
+                <option value="medium">Medium (2-6.5kVA)</option>
+                <option value="large">Large (6.5kVA+)</option>
+              </select>
+            </div>
+
+            <div className="w-full max-w-[220px]">
+              <select
+                value={priceSort}
+                onChange={(e) => setPriceSort(e.target.value)}
+                className="w-full px-4 py-4 bg-white border border-black/50 rounded-2xl shadow-sm hover:border-black/70 transition-colors text-sm lg:text-base text-gray-500"
+              >
+                <option value="default">Price</option>
+                <option value="low-high">Price: Low to High</option>
+                <option value="high-low">Price: High to Low</option>
+              </select>
+            </div>
+
+            <button
+              onClick={() => {
+                setSelectedBundleType("all");
+                setSelectedSystemSize("all");
+                setPriceSort("default");
+              }}
+              className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Clear Filters
+            </button>
+          </div>
+
           {err && <p className="text-red-600 text-sm mb-3">{err}</p>}
           {loading && (
             <div className="flex justify-center items-center py-12">
@@ -195,7 +331,7 @@ const SolarBundle = () => {
           )}
 
           <div className="grid xl:grid-cols-4 lg:grid-cols-4 md:grid-cols-2 grid-cols-1 gap-3">
-            {displayBundles.map((item) => (
+            {paginatedBundles.map((item) => (
               <SolarBundleComponent
                 key={item.id}
                 id={item.id}
@@ -207,6 +343,7 @@ const SolarBundle = () => {
                 borderColor={item.borderColor}
                 rating={item.rating}
                 bundleTitle={item.bundleTitle}
+                inverterRating={item.inverterRating}
               />
             ))}
 
@@ -218,6 +355,65 @@ const SolarBundle = () => {
               </div>
             )}
           </div>
+
+          {/* Pagination */}
+          {!loading && !err && totalPages > 1 && (
+            <div className="flex justify-center items-center gap-2 mt-8">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={20} />
+              </button>
+
+              <div className="flex gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        currentPage === pageNum
+                          ? "bg-[#273e8e] text-white"
+                          : "border border-gray-300 hover:bg-gray-50 text-gray-700"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                aria-label="Next page"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+          )}
+
+          {/* Results Info */}
+          {!loading && !err && totalItems > 0 && (
+            <div className="text-center text-sm text-gray-500 mt-4">
+              Showing {startIndex + 1} - {Math.min(endIndex, totalItems)} of {totalItems} bundles
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -54,7 +54,7 @@ const mapApiProductToCard = (p) => {
     let oldPrice = "";
     let discount = "";
 
-    if (discountRaw != null && discountRaw < priceRaw) {
+    if (discountRaw != null && discountRaw > 0 && discountRaw < priceRaw) {
         if (p?.discount_end_date) {
             isDiscountActive = new Date(p.discount_end_date) > new Date();
         } else {

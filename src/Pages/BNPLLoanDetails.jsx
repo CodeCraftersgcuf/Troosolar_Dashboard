@@ -553,7 +553,9 @@ const BNPLLoanDetails = () => {
             : amount;
         return new Intl.NumberFormat('en-NG', {
             style: 'currency',
-            currency: 'NGN'
+            currency: 'NGN',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
         }).format(numAmount || 0);
     };
 
@@ -789,6 +791,49 @@ const BNPLLoanDetails = () => {
             loanCalc, 
             repaymentSchedule, 
             installmentsWithHistory
+        );
+        const toNum = (v) => {
+            const n = Number(String(v ?? '').replace(/[^\d.-]/g, ''));
+            return Number.isFinite(n) ? n : null;
+        };
+        const pickPositive = (...vals) => {
+            for (const v of vals) {
+                const n = toNum(v);
+                if (n !== null && n > 0) return n;
+            }
+            for (const v of vals) {
+                const n = toNum(v);
+                if (n !== null) return n;
+            }
+            return null;
+        };
+        const pickText = (...vals) => {
+            for (const v of vals) {
+                if (v === 0) return '0';
+                const s = String(v ?? '').trim();
+                if (s) return s;
+            }
+            return '';
+        };
+        const displayLoanAmount = pickPositive(
+            loanApp?.loan_amount,
+            loanCalc?.loan_amount,
+            order?.loan_details?.loan_amount,
+            order?.loan_amount,
+            order?.total_price
+        );
+        const displayRepaymentDuration = pickText(
+            loanApp?.repayment_duration,
+            loanCalc?.repayment_duration,
+            order?.loan_details?.repayment_duration
+        );
+        const displayCreditCheckMethod = pickText(
+            loanApp?.credit_check_method,
+            order?.credit_check_method
+        );
+        const displayCustomerType = pickText(
+            loanApp?.customer_type,
+            order?.customer_type
         );
 
         return (
@@ -1621,25 +1666,25 @@ const BNPLLoanDetails = () => {
                                 <div>
                                     <p className="text-sm text-gray-500 mb-1">Loan Amount</p>
                                     <p className="font-semibold text-gray-800">
-                                        {formatCurrency(loanApp.loan_amount)}
+                                        {displayLoanAmount != null ? formatCurrency(displayLoanAmount) : 'N/A'}
                                     </p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-gray-500 mb-1">Repayment Duration</p>
                                     <p className="font-semibold text-gray-800">
-                                        {loanApp.repayment_duration || 'N/A'} months
+                                        {displayRepaymentDuration || 'N/A'} months
                                     </p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-gray-500 mb-1">Credit Check Method</p>
                                     <p className="font-semibold text-gray-800 capitalize">
-                                        {loanApp.credit_check_method || 'N/A'}
+                                        {displayCreditCheckMethod || 'N/A'}
                                     </p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-gray-500 mb-1">Customer Type</p>
                                     <p className="font-semibold text-gray-800 capitalize">
-                                        {loanApp.customer_type || 'N/A'}
+                                        {displayCustomerType || 'N/A'}
                                     </p>
                                 </div>
                                 <div>

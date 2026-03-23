@@ -32,6 +32,41 @@ const formatNGN = (n) => {
 const clamp = (n, a = 0, b = 100) => Math.max(a, Math.min(b, n));
 const safeArray = (v) => (Array.isArray(v) ? v : []);
 const toNum = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
+const parseSpecificationItems = (specifications) => {
+  if (specifications == null || specifications === "") return [];
+
+  if (Array.isArray(specifications)) {
+    return specifications
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+  }
+
+  if (typeof specifications === "object") {
+    return Object.entries(specifications)
+      .map(([k, v]) => `${k}: ${v}`)
+      .filter((item) => String(item).trim());
+  }
+
+  const asString = String(specifications).trim();
+  if (!asString) return [];
+
+  // If backend sends JSON string, parse and format nicely.
+  try {
+    const parsed = JSON.parse(asString);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item || "").trim()).filter(Boolean);
+    }
+    if (parsed && typeof parsed === "object") {
+      return Object.entries(parsed)
+        .map(([k, v]) => `${k}: ${v}`)
+        .filter((item) => String(item).trim());
+    }
+  } catch {
+    // Plain text specification fallback.
+  }
+
+  return [asString];
+};
 const parseStockQuantity = (stockValue) => {
   if (stockValue == null) return 0;
   if (typeof stockValue === "number") return Number.isFinite(stockValue) ? stockValue : 0;
@@ -163,7 +198,7 @@ const mapApiProductToDetails = (p) => {
     p?.discount_price != null ? toNum(p.discount_price, null) : null;
 
   let isDiscountActive = false;
-  if (discountRaw != null && discountRaw < priceRaw) {
+  if (discountRaw != null && discountRaw > 0 && discountRaw < priceRaw) {
     isDiscountActive = p?.discount_end_date
       ? new Date(p.discount_end_date) > new Date()
       : true;
@@ -190,6 +225,8 @@ const mapApiProductToDetails = (p) => {
     details: safeArray(p?.details)
       .map((d) => d?.detail)
       .filter(Boolean),
+    description: String(p?.description || "").trim(),
+    specifications: parseSpecificationItems(p?.specifications),
     gallery: safeArray(p?.images)
       .map((i) => i?.image)
       .filter(Boolean),
@@ -218,7 +255,7 @@ export default function ProductDetails() {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [showReview, setShowReview] = useState(true);
+  const [activeTab, setActiveTab] = useState("details");
   const [balance] = useState(false);
   const [addingToCart, setAddingToCart] = useState(false); // NEW: Loading state for add to cart
 
@@ -340,12 +377,16 @@ export default function ProductDetails() {
   };
 
   const handleAddToCart = async () => {
-    if (!product?.id || addingToCart) return;
+    if (!product?.id || addingToCart) return false;
     if (Number(product?.stockQty ?? 0) <= 0) {
-      return toast.error("This product is out of stock.");
+      toast.error("This product is out of stock.");
+      return false;
     }
     const tok = localStorage.getItem("access_token");
-    if (!tok) return toast.error("Please log in to add items to cart.");
+    if (!tok) {
+      toast.error("Please log in to add items to cart.");
+      return false;
+    }
 
     setAddingToCart(true);
     try {
@@ -371,13 +412,14 @@ export default function ProductDetails() {
       // Show cart notification with correct product data
       showCartNotificationModal(product.heading, product.image);
       // Removed toast.success - only show loading indicator
+      return true;
     } catch (e) {
       if (e?.response?.status === 409) {
         try {
           const line = await fetchCartAndFindLine(tok, product.id);
           if (!line) {
             toast.error("Item in cart, but couldn't locate to update.");
-            return;
+            return false;
           }
           const newQty = Number(line.quantity || 0) + 1;
           await axios.put(
@@ -396,19 +438,28 @@ export default function ProductDetails() {
           // Show cart notification with correct product data
           showCartNotificationModal(product.heading, product.image);
           // Removed toast.success - only show loading indicator
+          return true;
         } catch (e2) {
           toast.error(
             e2?.response?.data?.message || e2.message || "Failed to update cart"
           );
+          return false;
         }
       } else {
         toast.error(
           e?.response?.data?.message || e.message || "Failed to add to cart"
         );
+        return false;
       }
     } finally {
       setAddingToCart(false);
     }
+    return false;
+  };
+
+  const handleBuyNow = async () => {
+    const ok = await handleAddToCart();
+    if (ok) navigate("/cart");
   };
 
   const handleDecrease = async () => {
@@ -480,6 +531,10 @@ export default function ProductDetails() {
   const average = avgRating(reviews);
   const totalReviews = reviews.length;
   const categoryName = catMap[product.categoryId] || "Solar Inverter";
+  const hasDescription = Boolean(product?.description);
+  const hasSpecifications = Array.isArray(product?.specifications) && product.specifications.length > 0;
+  const hasLegacyDetails = Array.isArray(product?.details) && product.details.length > 0;
+  const hasDetailsContent = hasDescription || hasLegacyDetails;
 
   /* ---------------- UI ---------------- */
 
@@ -542,12 +597,13 @@ export default function ProductDetails() {
                       )}
                       {Number(product?.stockQty ?? 0) <= 0 ? "Out of Stock" : addingToCart ? "Adding..." : "Add To Cart"}
                     </button>
-                    <Link
-                      to="/cart"
-                      className="py-4 bg-[#273e8e] text-white rounded-full text-center hover:bg-[#273e8e]/90 transition"
+                    <button
+                      onClick={handleBuyNow}
+                      disabled={addingToCart || Number(product?.stockQty ?? 0) <= 0}
+                      className="py-4 bg-[#273e8e] text-white rounded-full text-center hover:bg-[#273e8e]/90 transition disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       Buy Now
-                    </Link>
+                    </button>
                   </div>
                   <div className="p-4 mt-6 bg-[#FFFF0033] rounded-lg">
                     <p className="text-[#E8A91D] text-[14px] pb-5">
@@ -612,47 +668,89 @@ export default function ProductDetails() {
                   </div>
                 </div>
 
-                <div className="mt-8 mb-8 bg-white border-1 border-[#acacad] rounded-full w-[167px] h-[57px] sm:w-[30%] flex py-1 px-1">
-                  {["Details", "Reviews"].map((tab, i) => (
+                <div className="mt-8 mb-8 bg-white border-1 border-[#acacad] rounded-full w-full sm:w-[65%] md:w-[55%] lg:w-[75%] xl:w-[60%] h-[57px] flex py-1 px-1">
+                  {[
+                    { id: "details", label: "Details" },
+                    { id: "specifications", label: "Specifications" },
+                    { id: "reviews", label: "Reviews" },
+                  ].map((tab) => (
                     <button
-                      key={tab}
-                      onClick={() => setShowReview(i === 0)}
-                      className={`flex-1 w-[66] h-[45] rounded-[100px] text-sm ${
-                        (showReview && i === 0) || (!showReview && i === 1)
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`flex-1 h-[45px] rounded-[100px] text-xs sm:text-sm ${
+                        activeTab === tab.id
                           ? "bg-[#273e8e] text-white"
                           : "text-gray-500"
                       }`}
                     >
-                      {tab}
+                      {tab.label}
                     </button>
                   ))}
                 </div>
 
                 <h2 className="text-md font-medium mt-4 text-gray-800">
-                  {showReview ? "Product Details" : "Reviews"}
+                  {activeTab === "details"
+                    ? "Product Details"
+                    : activeTab === "specifications"
+                    ? "Specifications"
+                    : "Reviews"}
                 </h2>
 
                 <div className="mt-4">
-                  {showReview ? (
+                  {activeTab === "details" ? (
                     <div className="border border-[#ccc] bg-white p-4 rounded-xl space-y-3">
-                      {(product.details?.length
-                        ? product.details
-                        : Array(6).fill("Premium quality")
-                      ).map((txt, i, arr) => (
-                        <React.Fragment key={i}>
-                          <div className="flex items-center gap-3">
-                            <img
-                              src={assets.light}
-                              className="h-5 w-5"
-                              alt="Feature"
-                            />
-                            <p className="text-sm sm:text-base">{txt}</p>
-                          </div>
-                          {i < arr.length - 1 && (
-                            <hr className="border-gray-200" />
-                          )}
-                        </React.Fragment>
-                      ))}
+                      {hasDescription && (
+                        <>
+                          <h3 className="text-sm font-semibold text-gray-800">Description</h3>
+                          <p className="text-sm sm:text-base text-gray-700 whitespace-pre-wrap">
+                            {product.description}
+                          </p>
+                        </>
+                      )}
+
+                      {hasLegacyDetails && (
+                        <>
+                          {hasDescription && <hr className="border-gray-200" />}
+                          <h3 className="text-sm font-semibold text-gray-800">Additional Details</h3>
+                          {product.details.map((txt, i, arr) => (
+                            <React.Fragment key={`detail-${i}`}>
+                              <div className="flex items-center gap-3">
+                                <img
+                                  src={assets.light}
+                                  className="h-5 w-5"
+                                  alt="Feature"
+                                />
+                                <p className="text-sm sm:text-base">{txt}</p>
+                              </div>
+                              {i < arr.length - 1 && (
+                                <hr className="border-gray-200" />
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </>
+                      )}
+
+                      {!hasDetailsContent && (
+                        <p className="text-sm text-gray-500">No product details available.</p>
+                      )}
+                    </div>
+                  ) : activeTab === "specifications" ? (
+                    <div className="border border-[#ccc] bg-white p-4 rounded-xl space-y-3">
+                      {hasSpecifications ? (
+                        <>
+                          {product.specifications.map((txt, i, arr) => (
+                            <React.Fragment key={`spec-tab-${i}`}>
+                              <div className="flex items-center gap-3">
+                                <img src={assets.light} className="h-5 w-5" alt="Specification" />
+                                <p className="text-sm sm:text-base">{txt}</p>
+                              </div>
+                              {i < arr.length - 1 && <hr className="border-gray-200" />}
+                            </React.Fragment>
+                          ))}
+                        </>
+                      ) : (
+                        <p className="text-sm text-gray-500">No specifications available.</p>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-6">
@@ -834,41 +932,77 @@ export default function ProductDetails() {
           {/* Tabs */}
           <div className="px-4">
             <div className="bg-white border mt-4 rounded-full w-full flex py-1 px-1">
-              {["Details", "Reviews"].map((tab, i) => (
+              {[
+                { id: "details", label: "Details" },
+                { id: "specifications", label: "Specifications" },
+                { id: "reviews", label: "Reviews" },
+              ].map((tab) => (
                 <button
-                  key={tab}
-                  onClick={() => setShowReview(i === 0)}
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
                   className={`flex-1 py-2 rounded-full text-sm ${
-                    (showReview && i === 0) || (!showReview && i === 1)
+                    activeTab === tab.id
                       ? "bg-[#273e8e] text-white"
                       : "text-gray-500"
                   }`}
                 >
-                  {tab}
+                  {tab.label}
                 </button>
               ))}
             </div>
 
             {/* Tab content */}
             <div className="mt-4">
-              {showReview ? (
+              {activeTab === "details" ? (
                 <div className="border border-[#ccc] bg-white p-4 rounded-xl space-y-3">
-                  {(product.details?.length
-                    ? product.details
-                    : Array(6).fill("Premium quality")
-                  ).map((txt, i, arr) => (
-                    <React.Fragment key={i}>
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={assets.light}
-                          className="h-5 w-5"
-                          alt="Feature"
-                        />
-                        <p className="text-sm">{txt}</p>
-                      </div>
-                      {i < arr.length - 1 && <hr className="border-gray-200" />}
-                    </React.Fragment>
-                  ))}
+                  {hasDescription && (
+                    <>
+                      <h3 className="text-sm font-semibold text-gray-800">Description</h3>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{product.description}</p>
+                    </>
+                  )}
+
+                  {hasLegacyDetails && (
+                    <>
+                      {hasDescription && <hr className="border-gray-200" />}
+                      <h3 className="text-sm font-semibold text-gray-800">Additional Details</h3>
+                      {product.details.map((txt, i, arr) => (
+                        <React.Fragment key={`m-detail-${i}`}>
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={assets.light}
+                              className="h-5 w-5"
+                              alt="Feature"
+                            />
+                            <p className="text-sm">{txt}</p>
+                          </div>
+                          {i < arr.length - 1 && <hr className="border-gray-200" />}
+                        </React.Fragment>
+                      ))}
+                    </>
+                  )}
+
+                  {!hasDetailsContent && (
+                    <p className="text-sm text-gray-500">No product details available.</p>
+                  )}
+                </div>
+              ) : activeTab === "specifications" ? (
+                <div className="border border-[#ccc] bg-white p-4 rounded-xl space-y-3">
+                  {hasSpecifications ? (
+                    <>
+                      {product.specifications.map((txt, i, arr) => (
+                        <React.Fragment key={`m-spec-tab-${i}`}>
+                          <div className="flex items-center gap-3">
+                            <img src={assets.light} className="h-5 w-5" alt="Specification" />
+                            <p className="text-sm">{txt}</p>
+                          </div>
+                          {i < arr.length - 1 && <hr className="border-gray-200" />}
+                        </React.Fragment>
+                      ))}
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-500">No specifications available.</p>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -962,12 +1096,13 @@ export default function ProductDetails() {
                   )}
                   {Number(product?.stockQty ?? 0) <= 0 ? "Out of Stock" : addingToCart ? "Adding..." : "Add To Cart"}
                 </button>
-                <Link
-                  to="/cart"
-                  className="py-3 bg-[#273e8e] text-white rounded-full text-center hover:bg-[#273e8e]/90 transition"
+                <button
+                  onClick={handleBuyNow}
+                  disabled={addingToCart || Number(product?.stockQty ?? 0) <= 0}
+                  className="py-3 bg-[#273e8e] text-white rounded-full text-center hover:bg-[#273e8e]/90 transition disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   Buy Now
-                </Link>
+                </button>
               </div>
             </div>
           </div>
