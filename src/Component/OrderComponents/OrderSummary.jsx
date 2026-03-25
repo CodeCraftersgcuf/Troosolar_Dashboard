@@ -115,7 +115,10 @@ const OrderSummary = ({ order, onBack }) => {
             orderNumber: data.order_number,
             orderStatus: data.order_status,
             paymentStatus: data.payment_status,
-            productName: data.items?.[0]?.item?.title || "Product",
+            productName:
+              data.items?.[0]?.item?.title ||
+              data.items?.[0]?.item?.name ||
+              "Purchase",
             price: `₦${parseFloat(data.total_price).toLocaleString()}`,
             deliveryDate: new Date(data.created_at).toLocaleDateString(
               "en-GB",
@@ -152,7 +155,12 @@ const OrderSummary = ({ order, onBack }) => {
           setOrderData(transformedData);
           
           // Fetch existing review for this product
-          await fetchExistingReview(data.items?.[0]?.itemable_id, data.include_user_info);
+          const firstItem = data.items?.[0];
+          const reviewProductId =
+            firstItem?.itemable_type === "product" && firstItem?.itemable_id
+              ? firstItem.itemable_id
+              : firstItem?.item?.id;
+          await fetchExistingReview(reviewProductId, data.include_user_info);
         }
       } catch (err) {
         console.error("Error fetching order details:", err);
@@ -397,7 +405,7 @@ const OrderSummary = ({ order, onBack }) => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="text-sm font-medium text-gray-900 mb-2">
-                        {lineItem?.item?.title || lineItem?.name || `Item ${idx + 1}`}
+                        {lineItem?.item?.title || lineItem?.item?.name || lineItem?.name || "Purchase"}
                       </h4>
                       <div className="flex items-center gap-2 mb-2">
                         <span className="bg-purple-100 text-[#000000] text-xs px-2 py-1 rounded">

@@ -1559,18 +1559,22 @@ const BuyNowFlow = () => {
         }
     };
 
-    const confirmPayment = async (orderId, txId, amount) => {
+    const confirmPayment = async (orderId, txId, amount, installationRequestedDate) => {
         const token = localStorage.getItem('access_token');
         if (!token) return false;
         try {
+            const payload = {
+                amount: String(amount),
+                orderId: Number(orderId),
+                txId: String(txId || ""),
+                type: "direct",
+            };
+            if (installationRequestedDate) {
+                payload.installation_requested_date = installationRequestedDate;
+            }
             const { data } = await axios.post(
                 API.Payment_Confirmation,
-                {
-                    amount: String(amount),
-                    orderId: Number(orderId),
-                    txId: String(txId || ""),
-                    type: "direct",
-                },
+                payload,
                 {
                     headers: {
                         Accept: "application/json",
@@ -1624,10 +1628,16 @@ const BuyNowFlow = () => {
                 },
                 callback: async (response) => {
                     if (response?.status === "successful") {
+                        const slotDate = selectedSlot?.date
+                            ? (typeof selectedSlot.date === 'string'
+                                ? selectedSlot.date.slice(0, 10)
+                                : new Date(selectedSlot.date).toISOString().slice(0, 10))
+                            : undefined;
                         const confirmed = await confirmPayment(
                             orderId,
                             response.transaction_id,
-                            amount
+                            amount,
+                            slotDate
                         );
                         if (confirmed) {
                             setPaymentResult('success');
@@ -3577,17 +3587,6 @@ const BuyNowFlow = () => {
             }
         });
 
-        let materialsTotalCost = 0;
-        pureInstallMaterials.forEach((m) => { materialsTotalCost += m.rate * m.qty; });
-        // Omit dummy "Installation Materials Cost | Lots | Included" when total is 0 (matches admin preview)
-        const materialLine = pureInstallMaterials.length > 0 && materialsTotalCost > 0 ? {
-            description: 'Installation Materials Cost',
-            quantity: 1,
-            unit: 'Lots',
-            quantityApplies: true,
-            rate: materialsTotalCost,
-        } : null;
-
         const OL_PREFIX = '[OL]';
         const serviceRows = [];
         const customOrderItems = [];
@@ -3643,10 +3642,9 @@ const BuyNowFlow = () => {
         }
 
         const orderListItems = customOrderItems.length > 0 ? [...customOrderItems] : [...productRows];
-        if (materialLine) orderListItems.push(materialLine);
         const invoiceItems = [...orderListItems, ...serviceRows];
         const orderListTotal = orderListItems.reduce((s, i) => s + (i.rate * i.quantity), 0);
-        return { orderListItems, invoiceItems, serviceRows, productRows, materialLine, itemsTotal: orderListTotal, hasCustomServiceFeeRows };
+        return { orderListItems, invoiceItems, serviceRows, productRows, itemsTotal: orderListTotal, hasCustomServiceFeeRows };
     };
 
     // Fetch full bundle details (with custom_services) before showing Order Summary

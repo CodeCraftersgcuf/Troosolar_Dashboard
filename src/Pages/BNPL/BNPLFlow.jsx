@@ -3048,17 +3048,6 @@ const BNPLFlow = () => {
             }
         });
 
-        let materialsTotalCost = 0;
-        pureInstallMaterials.forEach((m) => { materialsTotalCost += m.rate * m.qty; });
-
-        const materialLine = pureInstallMaterials.length > 0 ? {
-            description: 'Installation Materials Cost',
-            quantity: 1,
-            unit: 'Lots',
-            quantityApplies: true,
-            rate: materialsTotalCost,
-        } : null;
-
         // 3. Custom services / fees (preferred source)
         const OL_PREFIX = '[OL]';
         const OL_VIS_TROO_PREFIX = '[OL:TROOSOLAR]';
@@ -3107,14 +3096,13 @@ const BNPLFlow = () => {
         const orderListItems = customOrderItems.length > 0
             ? [...customOrderItems]
             : [...productRows];
-        if (materialLine) orderListItems.push(materialLine);
 
         // Build the flat items list for INVOICE (order list items + services/fees)
         const invoiceItems = [...orderListItems, ...serviceRows];
 
         const orderListTotal = orderListItems.reduce((s, i) => s + (i.rate * i.quantity), 0);
 
-        return { items: orderListItems, itemsTotal: orderListTotal, orderListItems, invoiceItems, serviceRows, productRows, materialLine };
+        return { items: orderListItems, itemsTotal: orderListTotal, orderListItems, invoiceItems, serviceRows, productRows };
     };
 
     // Keep BNPL pricing consistent across Invoice and Loan Calculator steps.
