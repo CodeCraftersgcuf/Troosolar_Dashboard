@@ -1,7 +1,15 @@
 import React, { useState } from "react";
 import { X, Star } from "lucide-react";
 
-const ReviewModal = ({ isOpen, onClose, onSubmit, loading = false, error = null, existingReview = null }) => {
+const ReviewModal = ({
+  isOpen,
+  onClose,
+  onSubmit,
+  loading = false,
+  error = null,
+  existingReview = null,
+  productTitle = null,
+}) => {
   const [rating, setRating] = useState(existingReview?.rating || 4);
   const [reviewText, setReviewText] = useState(existingReview?.reviewText || "");
 
@@ -39,17 +47,23 @@ const ReviewModal = ({ isOpen, onClose, onSubmit, loading = false, error = null,
       <div className="hidden sm:block">
         <div className="bg-white rounded-2xl shadow-lg w-[400px] max-w-[90vw] relative">
           {/* Header */}
-          <div className="relative flex items-center justify-center py-2 px-6 border-b border-gray-200">
-            <h2 className="text-md text-gray-900">
-              {existingReview ? "Edit Review" : "Add a review"}
-            </h2>
+          <div className="relative border-b border-gray-200 px-6 py-3">
             <button
+              type="button"
               onClick={handleClose}
               disabled={loading}
-              className="absolute right-6 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+              className="absolute right-4 top-3 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
             >
               <X size={24} />
             </button>
+            <div className="pr-10 text-center">
+              <h2 className="text-md text-gray-900">
+                {existingReview ? "Edit Review" : "Add a review"}
+              </h2>
+              {productTitle ? (
+                <p className="text-xs text-gray-500 mt-1 line-clamp-2">{productTitle}</p>
+              ) : null}
+            </div>
           </div>
 
           {/* Content */}
@@ -75,7 +89,7 @@ const ReviewModal = ({ isOpen, onClose, onSubmit, loading = false, error = null,
                     size={24}
                     className={`${
                       star <= rating
-                        ? "text-[#273e8e] fill-current"
+                        ? "text-amber-400 fill-current"
                         : "text-gray-300"
                     } transition-colors`}
                   />
@@ -83,14 +97,18 @@ const ReviewModal = ({ isOpen, onClose, onSubmit, loading = false, error = null,
               ))}
             </div>
 
-            {/* Review Text */}
+            {/* Review text — optional; stars alone are enough */}
             <div className="mb-6">
+              <label className="block text-xs font-medium text-gray-600 mb-2">
+                Comment <span className="text-gray-400 font-normal"></span>
+              </label>
               <textarea
                 value={reviewText}
                 onChange={(e) => setReviewText(e.target.value)}
-                placeholder="Type here"
+                placeholder="Add a few words"
                 disabled={loading}
-                className="w-full h-32 px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-[#273e8e] focus:border-transparent resize-none text-gray-700 placeholder-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                rows={4}
+                className="w-full min-h-[100px] px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-[#273e8e] focus:border-transparent resize-y text-gray-700 placeholder-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -110,17 +128,23 @@ const ReviewModal = ({ isOpen, onClose, onSubmit, loading = false, error = null,
       <div className="sm:hidden block w-full">
         <div className="bg-white rounded-t-3xl shadow-lg w-full max-h-[80vh] relative animate-slide-up">
           {/* Header */}
-          <div className="relative flex items-center justify-center p-6 border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">
-              {existingReview ? "Edit Review" : "Add a review"}
-            </h2>
+          <div className="relative px-6 pt-6 pb-2 border-gray-200">
             <button
+              type="button"
               onClick={handleClose}
               disabled={loading}
-              className="absolute right-6 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
             >
               <X size={24} />
             </button>
+            <div className="pr-10 text-center">
+              <h2 className="text-lg font-semibold text-gray-900">
+                {existingReview ? "Edit Review" : "Add a review"}
+              </h2>
+              {productTitle ? (
+                <p className="text-xs text-gray-500 mt-1 line-clamp-2">{productTitle}</p>
+              ) : null}
+            </div>
           </div>
 
           {/* Content */}
@@ -146,7 +170,7 @@ const ReviewModal = ({ isOpen, onClose, onSubmit, loading = false, error = null,
                     size={28}
                     className={`${
                       star <= rating
-                        ? "text-[#273e8e] fill-current"
+                        ? "text-amber-400 fill-current"
                         : "text-gray-300"
                     } transition-colors`}
                   />
@@ -154,14 +178,18 @@ const ReviewModal = ({ isOpen, onClose, onSubmit, loading = false, error = null,
               ))}
             </div>
 
-            {/* Review Text */}
+            {/* Review text — optional */}
             <div className="mb-6">
+              <label className="block text-xs font-medium text-gray-600 mb-2">
+                Comment <span className="text-gray-400 font-normal"></span>
+              </label>
               <textarea
                 value={reviewText}
                 onChange={(e) => setReviewText(e.target.value)}
-                placeholder="Type here"
+                placeholder="Add a few words "
                 disabled={loading}
-                className="w-full h-32 px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-[#273e8e] focus:border-transparent resize-none text-gray-700 placeholder-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                rows={4}
+                className="w-full min-h-[100px] px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-[#273e8e] focus:border-transparent resize-y text-gray-700 placeholder-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
 

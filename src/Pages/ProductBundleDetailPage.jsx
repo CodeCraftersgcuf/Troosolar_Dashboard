@@ -8,6 +8,7 @@ import { assets } from "../assets/data";
 import API, { BASE_URL } from "../config/api.config";
 import { ChevronLeft, ShoppingCart } from "lucide-react"; // ← chevron back
 import Loading from "../Component/Loading";
+import ProductPromoBadges from "../Component/ProductPromoBadges";
 
 // Turn BASE_URL (http://localhost:8000/api) into origin (http://localhost:8000)
 const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, "");
@@ -274,6 +275,8 @@ const mapBundleDetail = (b) => {
     itemsIncluded,
     appliances,
     specifications,
+    isRecommended: !!b?.is_most_popular,
+    isTopDeal: !!b?.top_deal,
   };
 };
 
@@ -623,6 +626,13 @@ const ProductBundle = () => {
                     <h2 className="text-xl font-semibold">
                       {productData.bundleTitle}
                     </h2>
+                    <div className="pt-2">
+                      <ProductPromoBadges
+                        layout="row"
+                        isRecommended={productData.isRecommended}
+                        isHotDeal={productData.isTopDeal}
+                      />
+                    </div>
                     {productData.label && (
                       <p className="text-sm text-gray-500 pt-1">
                         {productData.label}
@@ -896,6 +906,13 @@ const ProductBundle = () => {
                   <h2 className="text-[12px] lg:text-[16px] font-semibold text-[#0F172A]">
                     {productData.bundleTitle}
                   </h2>
+                  <div className="mt-1.5">
+                    <ProductPromoBadges
+                      layout="row"
+                      isRecommended={productData.isRecommended}
+                      isHotDeal={productData.isTopDeal}
+                    />
+                  </div>
                   {productData.label && (
                     <p className="text-[12px] text-gray-500 mt-[2px]">{productData.label}</p>
                   )}

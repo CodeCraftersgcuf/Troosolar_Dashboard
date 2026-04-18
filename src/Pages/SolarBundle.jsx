@@ -7,6 +7,7 @@ import SearchBar from "../Component/SearchBar";
 import SolarBundleComponent from "../Component/SolarBundleComponent";
 import API, { BASE_URL } from "../config/api.config";
 import { assets } from "../assets/data";
+import { apiFlagTrue } from "../utils/apiFlags";
 import { ChevronLeft, ChevronRight, Edit } from "lucide-react";
 import Loading from "../Component/Loading";
 
@@ -68,6 +69,8 @@ const mapBundle = (b) => {
     bundleTitle: b?.bundle_type || "",
     inverterRating: b?.inver_rating ?? b?.inverter_rating ?? b?.inverterRating ?? "",
     borderColor: "#273e8e", // theme color frame
+    isHotDeal: apiFlagTrue(b?.top_deal),
+    isRecommended: apiFlagTrue(b?.is_most_popular),
   };
 };
 
@@ -171,6 +174,16 @@ const SolarBundle = () => {
         const aPrice = Number(a?.discount_price || a?.total_price || 0);
         const bPrice = Number(b?.discount_price || b?.total_price || 0);
         return priceSort === "low-high" ? aPrice - bPrice : bPrice - aPrice;
+      });
+    } else {
+      // Same as home featured cards: hot / recommended bundles first when not sorting by price
+      list = [...list].sort((a, b) => {
+        const ah =
+          apiFlagTrue(a?.top_deal) || apiFlagTrue(a?.is_most_popular) ? 1 : 0;
+        const bh =
+          apiFlagTrue(b?.top_deal) || apiFlagTrue(b?.is_most_popular) ? 1 : 0;
+        if (bh !== ah) return bh - ah;
+        return Number(a?.id ?? 0) - Number(b?.id ?? 0);
       });
     }
 
@@ -344,6 +357,8 @@ const SolarBundle = () => {
                 rating={item.rating}
                 bundleTitle={item.bundleTitle}
                 inverterRating={item.inverterRating}
+                isHotDeal={item.isHotDeal}
+                isRecommended={item.isRecommended}
               />
             ))}
 

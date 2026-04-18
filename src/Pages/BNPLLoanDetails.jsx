@@ -144,6 +144,49 @@ const BNPLLoanDetails = () => {
                     console.log('Could not fetch installments with history:', historyErr);
                 }
                 
+                const la = orderDetails.loan_application || orderDetails.application;
+                const snap = la?.loan_plan_snapshot;
+                const mappedFromSnap =
+                    snap && typeof snap === 'object'
+                        ? {
+                              totalAmount: snap.totalAmount,
+                              depositAmount: snap.depositAmount,
+                              baseDepositAmount: snap.baseDepositAmount,
+                              totalLoanAmount: snap.totalLoanAmount ?? snap.principal,
+                              principal: snap.principal,
+                              totalInterestAmount: snap.totalInterestAmount ?? snap.totalInterest,
+                              totalRepaymentAmount: snap.totalRepaymentAmount ?? snap.totalRepayment,
+                              monthlyRepaymentAmount: snap.monthlyRepaymentAmount ?? snap.monthlyRepayment,
+                              depositPercent: snap.depositPercent,
+                              insuranceFee: snap.insuranceFee,
+                              managementFee: snap.managementFee,
+                              legalFee: snap.legalFee,
+                              adminFeesTotal: snap.adminFeesTotal,
+                              tenor: snap.tenor,
+                              interestRate: snap.interestRate ?? snap.interest_rate,
+                          }
+                        : null;
+
+                const mapApiLoanDetails = (apiLd) => {
+                    if (!apiLd || typeof apiLd !== 'object') return null;
+                    const hasCamel =
+                        apiLd.totalAmount != null ||
+                        apiLd.depositAmount != null ||
+                        apiLd.totalLoanAmount != null ||
+                        apiLd.principal != null;
+                    if (hasCamel) return apiLd;
+                    return {
+                        totalAmount: apiLd.total_amount,
+                        depositAmount: apiLd.down_payment,
+                        totalLoanAmount: apiLd.loan_amount,
+                        principal: apiLd.principal ?? apiLd.loan_amount,
+                        tenor: apiLd.tenor ?? apiLd.repayment_duration,
+                        interestRate: apiLd.interestRate ?? apiLd.interest_rate,
+                        repayment_duration: apiLd.repayment_duration,
+                    };
+                };
+                const mappedFromApiLd = mapApiLoanDetails(orderDetails.loan_details);
+
                 // Normalize the order data structure
                 const normalizedOrder = {
                     ...orderDetails,
@@ -151,8 +194,11 @@ const BNPLLoanDetails = () => {
                     status: orderDetails.status || orderDetails.order_status,
                     order_status: orderDetails.order_status || orderDetails.status,
                     // Ensure loan_application is accessible
-                    loan_application: orderDetails.loan_application || orderDetails.application,
+                    loan_application: la,
                     application: orderDetails.application || orderDetails.loan_application,
+                    loan_plan_snapshot: snap || orderDetails.loan_plan_snapshot,
+                    loan_calculation: orderDetails.loan_calculation ?? null,
+                    loan_details: mappedFromSnap || mappedFromApiLd || orderDetails.loan_details,
                     isApplication: false // This is an order, not an application
                 };
                 
@@ -245,6 +291,28 @@ const BNPLLoanDetails = () => {
                     console.log('Could not fetch installments with history:', historyErr);
                 }
                 
+                const snap = appData.loan_plan_snapshot;
+                const mappedLoanDetails =
+                    snap && typeof snap === 'object'
+                        ? {
+                              totalAmount: snap.totalAmount,
+                              depositAmount: snap.depositAmount,
+                              baseDepositAmount: snap.baseDepositAmount,
+                              totalLoanAmount: snap.totalLoanAmount ?? snap.principal,
+                              principal: snap.principal,
+                              totalInterestAmount: snap.totalInterestAmount ?? snap.totalInterest,
+                              totalRepaymentAmount: snap.totalRepaymentAmount ?? snap.totalRepayment,
+                              monthlyRepaymentAmount: snap.monthlyRepaymentAmount ?? snap.monthlyRepayment,
+                              depositPercent: snap.depositPercent,
+                              insuranceFee: snap.insuranceFee,
+                              managementFee: snap.managementFee,
+                              legalFee: snap.legalFee,
+                              adminFeesTotal: snap.adminFeesTotal,
+                              tenor: snap.tenor,
+                              interestRate: snap.interestRate ?? snap.interest_rate,
+                          }
+                        : null;
+
                 setOrderData({
                     ...appData,
                     id: appData.id,
@@ -255,6 +323,8 @@ const BNPLLoanDetails = () => {
                     repayment_schedule: repaymentSchedule,
                     isApplication: true,
                     loan_calculation: appData.loan_calculation,
+                    loan_plan_snapshot: appData.loan_plan_snapshot,
+                    loan_details: mappedLoanDetails,
                     order_id: appData.order_id,
                     order_number: appData.order_number,
                     down_payment_completed: appData.down_payment_completed,
@@ -494,6 +564,9 @@ const BNPLLoanDetails = () => {
                 },
                 callback: async (response) => {
                     if (response?.status === 'successful') {
+                        if (typeof window.closePaymentModal === 'function') {
+                            window.closePaymentModal();
+                        }
                         try {
                             const txId = response?.transaction_id || response?.id || response?.flw_ref || txRef;
                             const result = await confirmDownPayment(applicationId, txId, downPaymentAmount);
@@ -593,7 +666,7 @@ const BNPLLoanDetails = () => {
                         const isApplication = orderData.isApplications || !item.order_id;
                         const itemId = item.id;
                         const itemStatus = item.status;
-                        const loanAmount = item.loan_amount || item.loan_summary?.loan_amount || item.loan_summary?.total_amount;
+                        const loanAmount = item.loan_amount || item.loan_summary?.loan_amount;
                         const repaymentDuration = item.repayment_duration || item.loan_summary?.repayment_duration || item.loan_summary?.duration;
                         const displayId = isApplication ? `Application #${itemId}` : `Order #${itemId}`;
                         
@@ -682,10 +755,22 @@ const BNPLLoanDetails = () => {
     };
 
     // Calculate repayment summary from loan calculation and schedule
-    const calculateRepaymentSummary = (loanCalc, repaymentSchedule, installmentsWithHistory) => {
-        if (!loanCalc) return null;
-        
-        const totalAmount = parseAmount(loanCalc.total_amount || loanCalc.loan_amount);
+    const calculateRepaymentSummary = (loanCalc, repaymentSchedule, installmentsWithHistory, loanDetails) => {
+        if (!loanCalc && !loanDetails) return null;
+
+        const totalFromSnapshot =
+            loanDetails &&
+            (loanDetails.totalRepaymentAmount != null || loanDetails.totalRepayment != null)
+                ? parseAmount(loanDetails.totalRepaymentAmount ?? loanDetails.totalRepayment)
+                : 0;
+        const totalAmount =
+            totalFromSnapshot > 0
+                ? totalFromSnapshot
+                : parseAmount(
+                      loanCalc?.total_repayment ||
+                          loanCalc?.total_amount ||
+                          loanCalc?.loan_amount
+                  );
         
         // Calculate paid amount from installments with history
         let paidAmount = 0;
@@ -780,18 +865,13 @@ const BNPLLoanDetails = () => {
         const isApplication = order.isApplication;
         const loanApp = order.loan_application || order.application || (isApplication ? order : null);
         const loanCalc = order.loan_calculation || loanApp?.loan_calculation;
+        const ld = order.loan_details;
         const repaymentSchedule = order.repayment_schedule || [];
         const repaymentHistory = order.repayment_history || [];
         
         // Get the correct display status
         const displayStatus = getDisplayStatus(order);
-        
-        // Calculate repayment summary if not provided
-        const repaymentSummary = order.repayment_summary || calculateRepaymentSummary(
-            loanCalc, 
-            repaymentSchedule, 
-            installmentsWithHistory
-        );
+
         const toNum = (v) => {
             const n = Number(String(v ?? '').replace(/[^\d.-]/g, ''));
             return Number.isFinite(n) ? n : null;
@@ -815,14 +895,55 @@ const BNPLLoanDetails = () => {
             }
             return '';
         };
-        const displayLoanAmount = pickPositive(
+
+        const computedRepaymentSummary = calculateRepaymentSummary(
+            loanCalc,
+            repaymentSchedule,
+            installmentsWithHistory,
+            ld
+        );
+        let repaymentSummary = {
+            ...(computedRepaymentSummary && typeof computedRepaymentSummary === 'object'
+                ? computedRepaymentSummary
+                : {}),
+            ...(order.repayment_summary && typeof order.repayment_summary === 'object'
+                ? order.repayment_summary
+                : {}),
+        };
+        const totalRepaymentFallback = pickPositive(
+            ld?.totalRepaymentAmount,
+            ld?.totalRepayment,
+            parseAmount(loanCalc?.total_repayment),
             loanApp?.loan_amount,
+            computedRepaymentSummary?.total_amount
+        );
+        const apiTotalNum = toNum(repaymentSummary.total_amount);
+        const paidAmtNum = toNum(repaymentSummary.paid_amount) ?? 0;
+        if (apiTotalNum === null || apiTotalNum <= 0) {
+            const resolved = totalRepaymentFallback ?? 0;
+            repaymentSummary = {
+                ...repaymentSummary,
+                total_amount: resolved,
+                pending_amount: Math.max(resolved - paidAmtNum, 0),
+            };
+        }
+        const displayLoanAmount = pickPositive(
+            ld?.principal,
+            ld?.totalLoanAmount,
+            loanCalc?.principal_amount,
             loanCalc?.loan_amount,
-            order?.loan_details?.loan_amount,
-            order?.loan_amount,
-            order?.total_price
+            loanApp?.loan_amount,
+            order?.loan_amount
+        );
+        const displayTotalRepaymentForDetails = pickPositive(
+            ld?.totalRepaymentAmount,
+            ld?.totalRepayment,
+            parseAmount(loanCalc?.total_repayment),
+            loanApp?.loan_amount,
+            displayLoanAmount
         );
         const displayRepaymentDuration = pickText(
+            ld?.tenor,
             loanApp?.repayment_duration,
             loanCalc?.repayment_duration,
             order?.loan_details?.repayment_duration
@@ -858,7 +979,7 @@ const BNPLLoanDetails = () => {
                     </div>
                 </div>
 
-                {/* Counter Offer Section */}
+                {/* Counter Offer Section — only while offer is pending (hide after acceptance) */}
                 {isApplication && displayStatus?.toLowerCase() === 'counter_offer' && (
                     <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-6">
                         <div className="flex items-center gap-3 mb-4">
@@ -913,7 +1034,7 @@ const BNPLLoanDetails = () => {
                                             )}
                                             {totalAmount && (
                                                 <div className="flex justify-between items-center">
-                                                    <span className="text-gray-600">Total Amount:</span>
+                                                    <span className="text-gray-600">Total Repayment Amount:</span>
                                                     <span className="font-bold text-lg text-gray-800">
                                                         {formatCurrency(totalAmount)}
                                                     </span>
@@ -991,12 +1112,16 @@ const BNPLLoanDetails = () => {
                             <button
                                 type="button"
                                 onClick={() => {
-                                    // Navigate to BNPL flow to re-apply
-                                    navigate('/bnpl');
+                                    const applicationId = String(order?.id || '').trim();
+                                    if (!applicationId) {
+                                        navigate('/bnpl');
+                                        return;
+                                    }
+                                    navigate(`/bnpl?reapply=1&priorApplicationId=${applicationId}&skipCreditCheckFee=1`);
                                 }}
                                 className="w-full border-2 border-gray-300 text-gray-700 py-4 rounded-xl font-bold hover:bg-gray-50 transition-colors"
                             >
-                                Re-apply with Different Terms
+                                Re-apply with Different Terms (No extra credit check fee)
                             </button>
                         </div>
                     </div>
@@ -1320,7 +1445,7 @@ const BNPLLoanDetails = () => {
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div className="bg-white rounded-lg p-4 border border-blue-100">
-                                <p className="text-sm text-gray-500 mb-1">Total Amount</p>
+                                <p className="text-sm text-gray-500 mb-1">Total Repayment Amount</p>
                                 <p className="text-xl font-bold text-gray-800">
                                     {formatCurrency(repaymentSummary.total_amount || repaymentSummary.total || 0)}
                                 </p>
@@ -1347,52 +1472,199 @@ const BNPLLoanDetails = () => {
                     </div>
                 )}
 
-                {/* Loan Calculation / Repayment Breakdown — Naira, 6 items in order */}
-                {loanCalc && (() => {
-                    const totalAmount = parseAmount(loanCalc.total_amount);
-                    const initialDeposit = parseAmount(loanCalc.down_payment);
-                    // Use the backend's loan_amount if available; fallback to totalAmount - initialDeposit
-                    const totalLoanAmount = parseAmount(loanCalc.loan_amount) || (totalAmount - initialDeposit);
-                    const interestRatePercent = typeof loanCalc.interest_rate === 'number' && !Number.isNaN(loanCalc.interest_rate)
-                        ? loanCalc.interest_rate
-                        : DEFAULT_BNPL_INTEREST_RATE_PERCENT;
-                    const tenor = Number(loanCalc.repayment_duration || loanCalc.tenor || 12) || 12;
-                    // Interest = monthly rate × loan amount × number of months
-                    const totalInterestAmount = (interestRatePercent / 100) * totalLoanAmount * tenor;
-                    // Total repayment = loan amount + total interest (down payment already excluded)
-                    const totalRepaymentAmount = totalLoanAmount + totalInterestAmount;
-                    const monthlyRepaymentAmount = tenor > 0 ? totalRepaymentAmount / tenor : 0;
-                    const rows = [
-                        { label: 'Total Amount', value: totalAmount },
-                        { label: 'Initial Deposit', value: initialDeposit },
+                {/* Loan Calculation / Repayment Breakdown — mirror BNPL flow summary */}
+                {(loanCalc || ld) && (() => {
+                    const toNum = (v) => {
+                        if (v === null || v === undefined || v === '') return null;
+                        const n = parseAmount(v);
+                        return Number.isFinite(n) ? n : null;
+                    };
+                    const pickNum = (...vals) => {
+                        for (const v of vals) {
+                            const n = toNum(v);
+                            if (n !== null) return n;
+                        }
+                        return 0;
+                    };
+                    const parseInterestRate = (v) => {
+                        if (v === null || v === undefined || v === '') return null;
+                        const n = parseFloat(String(v).replace(/,/g, ''));
+                        return Number.isFinite(n) ? n : null;
+                    };
+
+                    // Prefer snapshot / loan_details from apply flow, then GET /bnpl/status loan_calculation.
+                    const statusLower = String(displayStatus || '').toLowerCase();
+                    const isCounterOfferAccepted = statusLower === 'counter_offer_accepted';
+                    const acceptedMinDeposit = pickNum(
+                        order?.counter_offer_min_deposit,
+                        order?.counter_offer_details?.down_payment
+                    );
+                    const acceptedMinTenor = pickNum(
+                        order?.counter_offer_min_tenor,
+                        order?.counter_offer_details?.repayment_duration
+                    );
+                    const insurancePct = pickNum(ld?.insurancePct, ld?.insurance_fee_percentage, ld?.feePercentages?.insurance) || 3;
+                    const managementPct = pickNum(ld?.managementPct, ld?.management_fee_percentage, ld?.feePercentages?.management) || 1;
+                    const legalPct = pickNum(ld?.legalPct, ld?.legal_fee_percentage, ld?.feePercentages?.legal) || 1;
+                    const iPct = insurancePct / 100;
+                    const mPct = managementPct / 100;
+                    const lPct = legalPct / 100;
+                    const totalAmount = pickNum(
+                        ld?.totalAmount,
+                        ld?.total_amount,
+                        loanCalc?.total_amount
+                    );
+                    const adminFeesTotal = pickNum(
+                        ld?.adminFeesTotal,
+                        (pickNum(ld?.insuranceFee, 0) + pickNum(ld?.managementFee, 0) + pickNum(ld?.legalFee, 0))
+                    );
+                    const initialDepositWithFees = isCounterOfferAccepted && acceptedMinDeposit > 0
+                        ? acceptedMinDeposit
+                        : pickNum(
+                            ld?.depositAmount,
+                            ld?.down_payment,
+                            loanCalc?.down_payment
+                        );
+                    // Bundle price (before admin fees) — used to derive deposit % when not stored
+                    const baseDepositFromSnap = pickNum(ld?.baseDepositAmount);
+                    const bundlePriceApprox =
+                        pickNum(ld?.principal, ld?.totalLoanAmount) > 0 && baseDepositFromSnap >= 0
+                            ? Math.max(pickNum(ld?.principal, ld?.totalLoanAmount) + baseDepositFromSnap, 0)
+                            : totalAmount > 0 && adminFeesTotal >= 0
+                                ? Math.max(totalAmount - adminFeesTotal, 0)
+                                : 0;
+                    let explicitLoanAmount = pickNum(
+                        ld?.totalLoanAmount,
+                        ld?.principal,
+                        ld?.loan_amount,
+                        loanCalc?.principal_amount
+                    );
+                    const monoLoanAmt = pickNum(loanCalc?.loan_amount);
+                    const monoTotalAmt = pickNum(loanCalc?.total_amount);
+                    const monoPrincipalAmt = pickNum(loanCalc?.principal_amount);
+                    if (explicitLoanAmount <= 0 && monoPrincipalAmt > 0) {
+                        explicitLoanAmount = monoPrincipalAmt;
+                    } else if (explicitLoanAmount <= 0 && monoLoanAmt > 0) {
+                        const looksLikeDuplicatePrincipal =
+                            monoTotalAmt > 0 && Math.abs(monoLoanAmt - monoTotalAmt) < 1;
+                        const looksLikeTotalRepayment =
+                            pickNum(ld?.totalRepaymentAmount, ld?.totalRepayment) > 0 &&
+                            Math.abs(monoLoanAmt - pickNum(ld?.totalRepaymentAmount, ld?.totalRepayment)) < 1;
+                        if (!looksLikeDuplicatePrincipal && !looksLikeTotalRepayment) {
+                            explicitLoanAmount = monoLoanAmt;
+                        }
+                    }
+                    let totalLoanAmount =
+                        explicitLoanAmount > 0
+                            ? explicitLoanAmount
+                            : Math.max(totalAmount - initialDepositWithFees, 0);
+                    const depositPercentRaw = pickNum(ld?.depositPercent);
+                    let depositPercentForLabel = depositPercentRaw;
+                    if (!depositPercentForLabel || depositPercentForLabel <= 0) {
+                        const baseDep = pickNum(ld?.baseDepositAmount);
+                        if (baseDep > 0 && bundlePriceApprox > 0) {
+                            depositPercentForLabel = Math.round((baseDep / bundlePriceApprox) * 100);
+                        } else if (initialDepositWithFees > 0 && bundlePriceApprox > 0) {
+                            const baseOnly = Math.max(initialDepositWithFees - adminFeesTotal, 0);
+                            if (baseOnly > 0) {
+                                depositPercentForLabel = Math.round((baseOnly / bundlePriceApprox) * 100);
+                            }
+                        }
+                    }
+                    const interestRatePercent =
+                        parseInterestRate(ld?.interestRate) ??
+                        parseInterestRate(ld?.interest_rate) ??
+                        parseInterestRate(loanCalc?.interest_rate) ??
+                        DEFAULT_BNPL_INTEREST_RATE_PERCENT;
+                    // Prefer application / snapshot tenor — mono row can be wrong (e.g. default 12)
+                    const tenor = Number(
+                        (isCounterOfferAccepted && acceptedMinTenor > 0 ? acceptedMinTenor : null) ??
+                            ld?.tenor ??
+                            ld?.repayment_duration ??
+                            loanApp?.repayment_duration ??
+                            loanCalc?.repayment_duration ??
+                            loanCalc?.tenor ??
+                            12
+                    ) || 12;
+                    const totalInterestFromApi = pickNum(
+                        ld?.totalInterestAmount,
+                        ld?.totalInterest,
+                        loanCalc?.total_interest_amount
+                    );
+                    let totalInterestAmount =
+                        totalInterestFromApi > 0
+                            ? totalInterestFromApi
+                            : (interestRatePercent / 100) * totalLoanAmount * tenor;
+                    let totalRepaymentAmount = pickNum(
+                        ld?.totalRepaymentAmount,
+                        ld?.totalRepayment,
+                        loanCalc?.total_repayment
+                    ) || (totalLoanAmount + totalInterestAmount);
+                    let monthlyRepaymentAmount = pickNum(
+                        ld?.monthlyRepaymentAmount,
+                        ld?.monthlyRepayment,
+                        loanCalc?.monthly_repayment,
+                        loanCalc?.monthly_payment
+                    ) || (tenor > 0 ? totalRepaymentAmount / tenor : 0);
+
+                    if (isCounterOfferAccepted && acceptedMinDeposit > 0 && bundlePriceApprox > 0) {
+                        const denom = 1 - mPct - lPct;
+                        const baseDeposit =
+                            denom > 0.0001
+                                ? Math.max((acceptedMinDeposit - bundlePriceApprox * (iPct + mPct + lPct)) / denom, 0)
+                                : 0;
+                        const baseLoanAmount = Math.max(bundlePriceApprox - baseDeposit, 0);
+                        totalLoanAmount = baseLoanAmount;
+                        totalInterestAmount = (interestRatePercent / 100) * baseLoanAmount * tenor;
+                        totalRepaymentAmount = baseLoanAmount + totalInterestAmount;
+                        monthlyRepaymentAmount = tenor > 0 ? totalRepaymentAmount / tenor : 0;
+                        depositPercentForLabel =
+                            bundlePriceApprox > 0 ? Math.round((baseDeposit / bundlePriceApprox) * 100) : depositPercentForLabel;
+                    }
+                    const depositLabelPct =
+                        depositPercentForLabel > 0 ? `${depositPercentForLabel}%` : '—';
+                    const summaryRows = [
+                        {
+                            label: `Initial Deposit (${depositLabelPct}) + Total Administrative Fees`,
+                            value: initialDepositWithFees,
+                        },
                         { label: 'Total Loan Amount', value: totalLoanAmount },
                         { label: `Total Interest Amount (${interestRatePercent}% × ${tenor} mo)`, value: totalInterestAmount },
                         { label: 'Total Repayment Amount', value: totalRepaymentAmount },
-                        { label: `Monthly Repayment Amount (${tenor} months)`, value: monthlyRepaymentAmount },
+                        { label: 'Monthly Repayment Amount', value: monthlyRepaymentAmount },
                     ];
                     return (
                     <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl shadow-sm border border-green-200 p-6">
                         <div className="flex items-center gap-3 mb-4">
                             <span className="text-[#273e8e] text-2xl font-bold" aria-hidden="true">₦</span>
-                            <h3 className="text-xl font-semibold text-gray-800">Loan Calculation</h3>
+                            <h3 className="text-xl font-semibold text-gray-800">Loan Summary</h3>
                         </div>
                         <div className="space-y-3">
-                            {rows.map((row, index) => (
-                                <div key={index} className="bg-white rounded-lg p-4 border border-green-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                            {summaryRows.map((row, index) => (
+                                <div key={row.label} className="bg-white rounded-lg p-4 border border-green-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                                     <p className="text-sm font-medium text-gray-800">{row.label}</p>
-                                    <p className={`text-xl font-bold text-gray-800 ${index === 5 ? 'text-[#273e8e]' : ''}`}>
+                                    <p className={`text-xl font-bold ${index === 4 ? 'text-[#273e8e]' : 'text-gray-800'}`}>
                                         {formatCurrency(row.value)}
                                     </p>
                                 </div>
                             ))}
+                            <div className="border-t border-green-200 pt-3 mt-1">
+                                <div className="bg-white rounded-lg p-4 border border-green-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                                    <p className="text-sm font-medium text-gray-800">Loan Tenor</p>
+                                    <p className="text-xl font-bold text-[#273e8e]">
+                                        {tenor} {tenor === 1 ? 'month' : 'months'}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                         {/* Pay Down Payment – show when approved, down payment not yet paid, and no order yet */}
                         {isApplication &&
                             (displayStatus?.toLowerCase() === 'approved' || displayStatus?.toLowerCase() === 'counter_offer_accepted') &&
                             !order.order_id &&
                             !order.down_payment_completed &&
-                            loanCalc.down_payment &&
-                            parseAmount(repaymentSummary?.paid_amount ?? 0) < parseAmount(loanCalc.down_payment) && (
+                            (loanCalc?.down_payment || ld?.depositAmount) &&
+                            parseAmount(repaymentSummary?.paid_amount ?? 0) <
+                                parseAmount(loanCalc?.down_payment ?? ld?.depositAmount) && (
                             <div className="mt-4 bg-white rounded-lg p-4 border-2 border-[#273e8e]">
                                 <p className="text-sm text-gray-600 mb-2">
                                     Pay your down payment to proceed with your order.
@@ -1408,7 +1680,7 @@ const BNPLLoanDetails = () => {
                                     ) : (
                                         <>
                                             <CreditCard size={20} />
-                                            Pay Down Payment ({formatCurrency(loanCalc.down_payment)})
+                                            Pay Down Payment ({formatCurrency(loanCalc?.down_payment ?? ld?.depositAmount)})
                                         </>
                                     )}
                                 </button>
@@ -1492,7 +1764,7 @@ const BNPLLoanDetails = () => {
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-3 mb-2">
                                                     <span className="text-sm font-semibold text-gray-700">
-                                                        Installment #{installment.installment_number || 'N/A'}
+                                                        Installment #{installment.installment_number ?? installment.sequence ?? installment.id ?? index + 1}
                                                     </span>
                                                     <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadge(installment.status || installment.computed_status)}`}>
                                                         {(installment.status || installment.computed_status)?.toUpperCase() || 'PENDING'}
@@ -1664,9 +1936,11 @@ const BNPLLoanDetails = () => {
                                     <p className="font-semibold text-gray-800">#{loanApp.id}</p>
                                 </div>
                                 <div>
-                                    <p className="text-sm text-gray-500 mb-1">Loan Amount</p>
+                                    <p className="text-sm text-gray-500 mb-1">Total repayment amount</p>
                                     <p className="font-semibold text-gray-800">
-                                        {displayLoanAmount != null ? formatCurrency(displayLoanAmount) : 'N/A'}
+                                        {displayTotalRepaymentForDetails != null
+                                            ? formatCurrency(displayTotalRepaymentForDetails)
+                                            : 'N/A'}
                                     </p>
                                 </div>
                                 <div>

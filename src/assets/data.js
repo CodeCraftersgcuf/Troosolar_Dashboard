@@ -101,7 +101,7 @@ export const Sidebar_links = [
   { name: "Solar Store", link: "/homePage", icon: assets.ShopMgt, sublinks: [] },
   { name: "Buy Solar Bundles", link: "/solar-bundles", icon: assets.Loanmgt, sublinks: [] },
   { name: "Buy Now, Pay Later", link: "/bnpl", icon: assets.creditMgt, sublinks: [] },
-  { name: "BNPL Loans", link: "/bnpl-loans", icon: assets.Loanmgt, sublinks: [] },
+  { name: "My BNPL Loans", link: "/bnpl-loans", icon: assets.Loanmgt, sublinks: [] },
   { name: "Solar Calculators", link: "/tools", icon: assets.settings, sublinks: [] },
   { name: "Cart", link: "/cart", icon: assets.cart, sublinks: [] },
   { name: "More", link: "/more", icon: assets.userGear, sublinks: [] },

@@ -89,8 +89,35 @@ const parseAddressFromResponse = (resp) => {
   const d = resp ?? {};
   if (d.data && typeof d.data === "object" && !Array.isArray(d.data))
     return d.data;
-  if (d.message && typeof d.message === "object") return d.message;
+  if (
+    d.message &&
+    typeof d.message === "object" &&
+    !Array.isArray(d.message)
+  )
+    return d.message;
   return null;
+};
+
+/** Normalized list from GET /delivery-address/index (fixes legacy responses). */
+const parseAddressListFromResponse = (resp) => {
+  if (!resp) return [];
+  if (Array.isArray(resp.data)) return resp.data;
+  // Legacy bug: addresses were returned under `message`
+  if (Array.isArray(resp.message)) return resp.message;
+  return [];
+};
+
+const ADDR_INDEX =
+  API.Get_All_Addresses || `${BASE_URL}/delivery-address/index`;
+const BNPL_MIN_FALLBACK = 1_500_000;
+
+const minInstallationDateStr = () => {
+  const t = new Date();
+  t.setDate(t.getDate() + 1);
+  const y = t.getFullYear();
+  const m = String(t.getMonth() + 1).padStart(2, "0");
+  const d = String(t.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 };
 
 // Fallbacks if not present in api.config.js
@@ -99,6 +126,9 @@ const CHECKOUT_SUMMARY_URL =
 const ORDERS_URL = API.ORDERS || `${BASE_URL}/orders`;
 const PAYMENT_CONFIRMATION_URL =
   API.Payment_Confirmation || `${BASE_URL}/order/payment-confirmation`;
+
+/** Cart checkout uses Flutterwave only (API expects flutterwave_transaction_id on POST /orders). */
+const CART_PAYMENT_METHOD = "direct";
 
 // Flutterwave integration
 const ensureFlutterwave = () =>
@@ -149,6 +179,7 @@ const Cart = () => {
   const [savingNew, setSavingNew] = useState(false);
   const [newForm, setNewForm] = useState({
     title: "",
+    contact_name: "",
     address: "",
     state: "",
     phone_number: "",
@@ -157,6 +188,7 @@ const Cart = () => {
   const [editingId, setEditingId] = useState(null);
   const [editingForm, setEditingForm] = useState({
     title: "",
+    contact_name: "",
     address: "",
     state: "",
     phone_number: "",
@@ -165,11 +197,23 @@ const Cart = () => {
 
   // checkout summary states
   const [summaryLoading, setSummaryLoading] = useState(false);
-  const [serverItemsTotal, setServerItemsTotal] = useState(0);
-  const [serverItemsCount, setServerItemsCount] = useState(0);
+  /** null = checkout summary not loaded yet (avoid falsy 0 vs real ₦0). */
+  const [serverItemsTotal, setServerItemsTotal] = useState(null);
+  const [serverItemsCount, setServerItemsCount] = useState(null);
   const [serverDeliveryPrice, setServerDeliveryPrice] = useState(0);
   const [serverInstallPrice, setServerInstallPrice] = useState(0);
-  const [_serverGrandTotal, setServerGrandTotal] = useState(0);
+  const [serverInsurancePrice, setServerInsurancePrice] = useState(0);
+  const [bnplMinimumAmount, setBnplMinimumAmount] = useState(BNPL_MIN_FALLBACK);
+  const [deliveryEstimateLabel, setDeliveryEstimateLabel] = useState(
+    "7–10 working days"
+  );
+  const [serverGrandTotal, setServerGrandTotal] = useState(null);
+  const [serverVatAmount, setServerVatAmount] = useState(0);
+  const [serverVatPct, setServerVatPct] = useState(0);
+  const [serverInsurancePct, setServerInsurancePct] = useState(0);
+  /** From checkout-summary cart lines when referral outright % applies (direct checkout). */
+  const [serverReferralOutrightPct, setServerReferralOutrightPct] = useState(0);
+  const [installationNotice, setInstallationNotice] = useState("");
   const [type, setType] = useState("product");
   const [typeByRefId, setTypeByRefId] = useState(new Map());
 
@@ -181,6 +225,8 @@ const Cart = () => {
   // Add installation toggle state
   const [includeInstallation, setIncludeInstallation] = useState(false);
   const [serverInstallEstimatedDate, setServerInstallEstimatedDate] = useState("");
+  /** YYYY-MM-DD when user opts in to Troosolar installation (sent on payment confirm). */
+  const [installationRequestedDate, setInstallationRequestedDate] = useState("");
 
   const token =
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
@@ -219,40 +265,32 @@ const Cart = () => {
       }
 
       setLines(mapped);
+      // Invalidate server checkout totals — next summary fetch will match new lines.
+      setServerItemsTotal(null);
+      setServerItemsCount(null);
+      setServerGrandTotal(null);
+      setServerReferralOutrightPct(0);
     } catch (e) {
       setErr(
         e?.response?.data?.message || e?.message || "Failed to load cart."
       );
       setLines([]);
+      setServerItemsTotal(null);
+      setServerItemsCount(null);
+      setServerGrandTotal(null);
+      setServerReferralOutrightPct(0);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadCart();
-    // restore cached addresses
-    try {
-      const raw = localStorage.getItem(ADDR_CACHE_KEY);
-      const arr = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(arr)) setAddresses(arr);
-    } catch {}
-    // restore selected id & try SHOW/:id
-    try {
-      const selId = localStorage.getItem(ADDR_SELECTED_KEY);
-      if (selId) {
-        setSelectedAddressId(selId);
-        void fetchAndSelect(selId);
-      }
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const persistAddresses = (arr) => {
     setAddresses(arr);
     try {
       localStorage.setItem(ADDR_CACHE_KEY, JSON.stringify(arr));
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   };
 
   const setSelected = (id, addr) => {
@@ -260,8 +298,95 @@ const Cart = () => {
     setSelectedAddress(addr);
     try {
       if (id) localStorage.setItem(ADDR_SELECTED_KEY, String(id));
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   };
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    axios
+      .get(API.CONFIG_LOAN_CONFIGURATION, {
+        headers: {
+          Accept: "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      })
+      .then((res) => {
+        if (cancelled) return;
+        const m = res?.data?.data?.minimum_loan_amount;
+        if (m != null && Number(m) > 0) {
+          setBnplMinimumAmount(Number(m));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    loadCart();
+    const syncAddresses = async () => {
+      if (!token) {
+        try {
+          const raw = localStorage.getItem(ADDR_CACHE_KEY);
+          const arr = raw ? JSON.parse(raw) : [];
+          if (Array.isArray(arr)) setAddresses(arr);
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      try {
+        const { data } = await axios.get(ADDR_INDEX, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const list = parseAddressListFromResponse(data);
+        if (list.length) {
+          persistAddresses(list);
+          const selId = localStorage.getItem(ADDR_SELECTED_KEY);
+          const match = selId
+            ? list.find((a) => String(a.id) === String(selId))
+            : null;
+          if (match) {
+            setSelected(String(match.id), match);
+          } else {
+            try {
+              localStorage.removeItem(ADDR_SELECTED_KEY);
+            } catch {
+              /* ignore */
+            }
+            setSelectedAddressId(null);
+            setSelectedAddress(null);
+          }
+        } else {
+          persistAddresses([]);
+          try {
+            localStorage.removeItem(ADDR_SELECTED_KEY);
+          } catch {
+            /* ignore */
+          }
+          setSelectedAddressId(null);
+          setSelectedAddress(null);
+        }
+      } catch {
+        try {
+          const raw = localStorage.getItem(ADDR_CACHE_KEY);
+          const arr = raw ? JSON.parse(raw) : [];
+          if (Array.isArray(arr)) setAddresses(arr);
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+    void syncAddresses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchAndSelect = async (id) => {
     if (!token || !id) return;
@@ -284,8 +409,17 @@ const Cart = () => {
         persistAddresses(updated);
         setSelected(String(addr.id), addr);
       }
-    } catch {
-      /* ignore */
+    } catch (e) {
+      const st = e?.response?.status;
+      if (st === 404 || st === 400) {
+        try {
+          localStorage.removeItem(ADDR_SELECTED_KEY);
+        } catch {
+          /* ignore */
+        }
+        setSelectedAddressId(null);
+        setSelectedAddress(null);
+      }
     }
   };
   const normalizeTypeForOrder = (t) => {
@@ -327,7 +461,13 @@ const Cart = () => {
         persistAddresses(updated);
         setSelected(String(addr.id), addr);
         setAddingNew(false);
-        setNewForm({ title: "", address: "", state: "", phone_number: "" });
+        setNewForm({
+          title: "",
+          contact_name: "",
+          address: "",
+          state: "",
+          phone_number: "",
+        });
       } else {
         alert("Address saved, but could not parse response.");
       }
@@ -350,6 +490,7 @@ const Cart = () => {
     setEditingId(a.id);
     setEditingForm({
       title: a.title || "",
+      contact_name: a.contact_name || "",
       address: a.address || "",
       state: a.state || "",
       phone_number: a.phone_number || "",
@@ -389,6 +530,20 @@ const Cart = () => {
       }
       setEditingId(null);
     } catch (e) {
+      const st = e?.response?.status;
+      if (st === 404 || st === 400) {
+        try {
+          localStorage.removeItem(ADDR_SELECTED_KEY);
+        } catch {
+          /* ignore */
+        }
+        setSelectedAddressId(null);
+        setSelectedAddress(null);
+        setEditingId(null);
+        persistAddresses(
+          addresses.filter((a) => String(a.id) !== String(editingId))
+        );
+      }
       alert(
         e?.response?.data?.message || e?.message || "Failed to update address"
       );
@@ -462,11 +617,6 @@ const Cart = () => {
       await loadCart();
     }
   };
-  const itemType = useMemo(() => {
-    return lines.map((l) => l.type);
-  }, [lines]);
-  console.log("The itemType is", itemType);
-
   // Totals (local)
   const itemCount = useMemo(
     () => lines.reduce((s, l) => s + l.qty, 0),
@@ -484,27 +634,80 @@ const Cart = () => {
     [lines]
   );
 
-  // Prefer server items_total if we have it (after pressing Checkout)
-  const itemsTotalToShow = serverItemsTotal || amountTotal;
-  // Always trust backend checkout-summary for fees.
+  // Prefer server items_total once checkout-summary has been fetched (matches admin VAT/delivery/insurance rules).
+  const itemsTotalToShow =
+    serverItemsTotal != null && !Number.isNaN(Number(serverItemsTotal))
+      ? Number(serverItemsTotal)
+      : amountTotal;
+  /** Sum of cart line prices (matches product cards). */
+  const itemsCatalogSubtotal = amountTotal;
+  /** Amount used for fees/VAT (after referral discount when direct). */
+  const itemsChargedSubtotal = itemsTotalToShow;
+  let outrightDiscountAmount = 0;
+  if (
+    serverItemsTotal != null &&
+    !Number.isNaN(Number(serverItemsTotal))
+  ) {
+    const cat = Number(amountTotal);
+    const ch = Number(serverItemsTotal);
+    if (ch < cat - 0.5) {
+      outrightDiscountAmount = Math.round((cat - ch) * 100) / 100;
+    }
+  }
+  const showOutrightDiscountRow = outrightDiscountAmount > 0.5;
+  const outrightDiscountLabel =
+    serverReferralOutrightPct > 0
+      ? `Online checkout discount (${Number(serverReferralOutrightPct)}%)`
+      : "Online checkout discount";
+
   const installationToShow = serverInstallPrice || 0;
+  const insuranceToShow = serverInsurancePrice || 0;
   const deliveryToShow = serverDeliveryPrice || 0;
-  // Only include installation cost if the checkbox is checked
-  const grandTotal =
-    itemsTotalToShow +
-    deliveryToShow +
-    (includeInstallation ? installationToShow : 0);
+  /** Backend includes VAT in grand_total; fallback sums pre-VAT when summary not loaded */
+  const grandTotal = useMemo(() => {
+    if (
+      serverGrandTotal != null &&
+      !Number.isNaN(Number(serverGrandTotal))
+    ) {
+      return Number(serverGrandTotal);
+    }
+    const preVat =
+      itemsTotalToShow +
+      deliveryToShow +
+      (includeInstallation ? installationToShow + insuranceToShow : 0);
+    const vat =
+      serverVatAmount != null && !Number.isNaN(Number(serverVatAmount))
+        ? Number(serverVatAmount)
+        : 0;
+    return preVat + vat;
+  }, [
+    serverGrandTotal,
+    itemsTotalToShow,
+    deliveryToShow,
+    includeInstallation,
+    installationToShow,
+    insuranceToShow,
+    serverVatAmount,
+  ]);
 
   const firstLine = lines[0];
 
   // ─────────────────────────────
   // Checkout summary
   // ─────────────────────────────
-  const fetchCheckoutSummary = async () => {
+  const fetchCheckoutSummary = async (includeInstallOverride) => {
     if (!token) return;
+    const includeFlag =
+      typeof includeInstallOverride === "boolean"
+        ? includeInstallOverride
+        : includeInstallation;
     setSummaryLoading(true);
     try {
       const res = await axios.get(CHECKOUT_SUMMARY_URL, {
+        params: {
+          include_installation: includeFlag ? 1 : 0,
+          payment_method: CART_PAYMENT_METHOD,
+        },
         headers: {
           Accept: "application/json",
           Authorization: `Bearer ${token}`,
@@ -517,17 +720,38 @@ const Cart = () => {
         : [];
       const delivery = payload.delivery || {};
       const installation = payload.installation || {};
+      const totals = payload.totals || {};
 
       setServerItemsTotal(toNumber(cart.items_total));
       setServerItemsCount(toNumber(cart.items_count));
+      {
+        let pct = 0;
+        if (Array.isArray(cart.items)) {
+          const hit = cart.items.find(
+            (i) => toNumber(i.referral_outright_discount_percent) > 0
+          );
+          if (hit) {
+            pct = toNumber(hit.referral_outright_discount_percent);
+          }
+        }
+        setServerReferralOutrightPct(pct);
+      }
       setServerDeliveryPrice(toNumber(delivery.price));
       setServerInstallPrice(toNumber(installation.price));
+      setServerInsurancePrice(toNumber(installation.insurance_price));
+      setDeliveryEstimateLabel(
+        delivery.estimate_label || "7–10 working days"
+      );
       setServerInstallEstimatedDate(installation.estimated_date || "");
-      setServerGrandTotal(toNumber(payload.grand_total));
+      const g = toNumber(totals.grand_total ?? payload.grand_total);
+      setServerGrandTotal(g);
+      setServerVatAmount(toNumber(totals.vat_amount));
+      setServerVatPct(toNumber(totals.vat_percentage));
+      setServerInsurancePct(toNumber(totals.insurance_fee_percentage));
+      setInstallationNotice(
+        String(installation.description || "").trim()
+      );
       setType(cart.type);
-      console.log("The type is", cart.type);
-      console.log("The type is", type);
-      console.log("The Cart of the Checkout summary", cart);
 
       // Build type mapping from checkout summary items
       const newTypeMap = new Map();
@@ -539,7 +763,6 @@ const Cart = () => {
         });
       }
       setTypeByRefId(newTypeMap);
-      console.log("Type mapping built:", newTypeMap);
 
       if (addressesArr.length) {
         const merged = (() => {
@@ -550,43 +773,117 @@ const Cart = () => {
           return Array.from(byId.values());
         })();
         persistAddresses(merged);
-        if (!selectedAddressId && merged[0]?.id) {
+        const sel = selectedAddressId;
+        let effectiveSel = sel;
+        if (sel && !merged.some((a) => String(a.id) === String(sel))) {
+          try {
+            localStorage.removeItem(ADDR_SELECTED_KEY);
+          } catch {
+            /* ignore */
+          }
+          setSelectedAddressId(null);
+          setSelectedAddress(null);
+          effectiveSel = null;
+        }
+        if (!effectiveSel && merged[0]?.id) {
           setSelected(String(merged[0].id), merged[0]);
+        } else if (
+          effectiveSel &&
+          merged.some((a) => String(a.id) === String(effectiveSel))
+        ) {
+          const addr = merged.find(
+            (a) => String(a.id) === String(effectiveSel)
+          );
+          if (addr) setSelected(String(effectiveSel), addr);
         }
       }
     } catch (e) {
       console.error("Checkout summary failed:", e?.response?.data || e);
+      setServerItemsTotal(null);
+      setServerItemsCount(null);
+      setServerGrandTotal(null);
+      setServerReferralOutrightPct(0);
     } finally {
       setSummaryLoading(false);
     }
   };
 
-  const handleCheckoutClick = async () => {
-    setCheckOut(false); // desktop: go to delivery column
-    await fetchCheckoutSummary();
+  const handleCheckoutClick = () => {
+    setCheckOut(false); // desktop: delivery column — summary refetched via effect below
   };
+
+  // Keep checkout-summary in sync with cart lines, payment method, installation toggle, and desktop/mobile checkout steps.
+  useEffect(() => {
+    if (!token || !lines.length) return;
+    const desktopCheckoutOpen = !checkout;
+    const mobilePastCart =
+      mobileStep === "delivery" || mobileStep === "summary";
+    if (!desktopCheckoutOpen && !mobilePastCart) return;
+    void fetchCheckoutSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchCheckoutSummary closes over latest flags
+  }, [
+    lines,
+    checkout,
+    mobileStep,
+    includeInstallation,
+    token,
+  ]);
+
+  const installationDateOk = () => {
+    if (!includeInstallation) return true;
+    if (!installationRequestedDate) {
+      alert("Please choose a preferred installation date.");
+      return false;
+    }
+    return true;
+  };
+
+  /** Shared payload for POST /orders (cart checkout). */
+  const buildCartOrderBody = () => ({
+    delivery_address_id: Number(selectedAddressId),
+    payment_method: CART_PAYMENT_METHOD,
+    items: lines.map((l) => {
+      const typeForOrder =
+        typeByRefId.get(String(l.refId)) || normalizeTypeForOrder(l.type);
+      return {
+        itemable_type: typeForOrder,
+        itemable_id: Number(l.refId),
+        quantity: Number(l.qty) || 1,
+      };
+    }),
+    include_installation: includeInstallation,
+    ...(includeInstallation && installationRequestedDate
+      ? { installation_requested_date: installationRequestedDate }
+      : {}),
+  });
 
   // ─────────────────────────────
   // Payment Confirmation
   // ─────────────────────────────
-  const confirmPayment = async (orderId, txId, amount, type = "direct") => {
+  const confirmPayment = async (
+    orderId,
+    txId,
+    amount,
+    type = "direct",
+    installDate = null
+  ) => {
     if (!token) return false;
     try {
-      const { data } = await axios.post(
-        PAYMENT_CONFIRMATION_URL,
-        {
-          amount: String(amount),
-          orderId: Number(orderId),
-          txId: String(txId || ""), // can be blank; server generates for wallet
-          type, // <<< IMPORTANT: pass wallet/direct
+      const body = {
+        amount: String(amount),
+        orderId: Number(orderId),
+        txId: String(txId ?? ""),
+        type,
+      };
+      if (installDate && /^\d{4}-\d{2}-\d{2}$/.test(installDate)) {
+        body.installation_requested_date = installDate;
+      }
+      const { data } = await axios.post(PAYMENT_CONFIRMATION_URL, body, {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
         },
-        {
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      });
       return data?.status === "success";
     } catch (e) {
       console.error("Payment confirmation failed:", e);
@@ -600,7 +897,17 @@ const Cart = () => {
   // ─────────────────────────────
   // Flutterwave Payment (fixed to ALWAYS show mobile result page)
   // ─────────────────────────────
-  const startFlutterwavePayment = async (amount, orderId) => {
+  /**
+   * Flutterwave first; order is created only after successful charge (direct checkout).
+   * @param options.onSuccessfulCharge — required for cart: POST /orders with flutterwave_transaction_id
+   * @param options.legacyOrderId — optional: old flow (order already exists) + paymentConfirmation
+   */
+  const startFlutterwavePayment = async (amount, options = {}) => {
+    const { onSuccessfulCharge, legacyOrderId } = options;
+    const installDate =
+      includeInstallation && installationRequestedDate
+        ? installationRequestedDate
+        : null;
     try {
       setProcessingPayment(true);
       await ensureFlutterwave();
@@ -610,11 +917,8 @@ const Cart = () => {
         window.matchMedia("(max-width: 639px)").matches;
 
       const goToResult = (status /* 'success' | 'failed' */) => {
-        // Always set the mobile result page state
         setPaymentResult(status);
         setMobileStep("result");
-
-        // Show desktop modal only on larger screens
         if (!isSmallScreen) {
           setCheckOutPayment(true);
         }
@@ -622,44 +926,76 @@ const Cart = () => {
 
       const txRef = "txref_" + Date.now();
 
-      window.FlutterwaveCheckout({
-        public_key: "FLWPUBK_TEST-dd1514f7562b1d623c4e63fb58b6aedb-X",
-        tx_ref: txRef,
-        amount,
-        currency: "NGN",
-        payment_options: "card,ussd",
-        customer: { email: "test@example.com", name: "Test User" },
-        callback: async (response) => {
-          if (response?.status === "successful") {
-            const confirmed = await confirmPayment(
-              orderId,
-              response.transaction_id,
-              amount
-            );
-            if (confirmed) {
-              fetchCartCount(); // Refresh cart count after successful payment
-              goToResult("success");
-            } else {
-              // Payment confirmation failed - show error and don't clear cart
-              console.error("Payment confirmation failed for order:", orderId);
+      await new Promise((resolve) => {
+        window.FlutterwaveCheckout({
+          public_key: "FLWPUBK_TEST-dd1514f7562b1d623c4e63fb58b6aedb-X",
+          tx_ref: txRef,
+          amount,
+          currency: "NGN",
+          payment_options: "card,ussd,banktransfer",
+          customer: { email: "test@example.com", name: "Test User" },
+          callback: async (response) => {
+            try {
+              if (response?.status === "successful") {
+                if (typeof window.closePaymentModal === "function") {
+                  window.closePaymentModal();
+                }
+                if (typeof onSuccessfulCharge === "function") {
+                  await onSuccessfulCharge(response);
+                  fetchCartCount();
+                  goToResult("success");
+                } else if (legacyOrderId) {
+                  const confirmed = await confirmPayment(
+                    legacyOrderId,
+                    response.transaction_id,
+                    amount,
+                    "direct",
+                    installDate
+                  );
+                  if (confirmed) {
+                    fetchCartCount();
+                    goToResult("success");
+                  } else {
+                    console.error(
+                      "Payment confirmation failed for order:",
+                      legacyOrderId
+                    );
+                    alert(
+                      "Payment verification failed. Please contact support if amount was debited."
+                    );
+                    goToResult("failed");
+                  }
+                } else {
+                  goToResult("failed");
+                }
+              } else {
+                console.error("Flutterwave payment failed:", response);
+                goToResult("failed");
+              }
+            } catch (err) {
+              console.error(err);
               alert(
-                "Payment verification failed. Please contact support if amount was debited."
+                err?.message ||
+                  "Something went wrong after payment. If you were charged, contact support with your reference."
               );
               goToResult("failed");
+            } finally {
+              setProcessingPayment(false);
+              resolve();
             }
-          } else {
-            // Flutterwave payment itself failed
-            console.error("Flutterwave payment failed:", response);
-            goToResult("failed");
-          }
-          setProcessingPayment(false);
-        },
-        onclose: () => setProcessingPayment(false),
-        customizations: {
-          title: "Troosolar Payment",
-          description: `Order ID: ${orderData?.order_number || orderId}`,
-          logo: "https://yourdomain.com/logo.png",
-        },
+          },
+          onclose: () => {
+            setProcessingPayment(false);
+            resolve();
+          },
+          customizations: {
+            title: "Troosolar Payment",
+            description: legacyOrderId
+              ? `Order ID: ${orderData?.order_number || legacyOrderId}`
+              : "Complete your purchase",
+            logo: "https://yourdomain.com/logo.png",
+          },
+        });
       });
     } catch (e) {
       console.error("Payment init failed:", e);
@@ -668,125 +1004,31 @@ const Cart = () => {
     }
   };
 
-  // ─────────────────────────────
-  // Buy By Loan (create order -> confirm with wallet)
-  // ─────────────────────────────
-  // ─────────────────────────────
-  // Buy By Loan (precheck wallet -> create order -> confirm wallet payment)
-  // ─────────────────────────────
-  const handleBuyByLoan = async () => {
-    if (!token) return alert("Please log in first.");
-    if (!selectedAddressId) {
-      setOpenPicker(true);
+  /** BNPL: full flow lives under /bnpl — open invoice (6.75) then loan calculator. */
+  const handleBuyByLoan = () => {
+    if (!token) {
+      alert("Please log in first.");
+      navigate(
+        `/login?return=${encodeURIComponent("/bnpl?fromCart=1&step=6.75")}`
+      );
+      return;
+    }
+    const total = Number(grandTotal) || 0;
+    if (total < bnplMinimumAmount) {
       alert(
-        "Please select or add a delivery address before placing the order."
+        `Buy Now, Pay Later is only available for orders from ₦${bnplMinimumAmount.toLocaleString()}. Your cart total is ₦${total.toLocaleString()}. Add more items or proceed to checkout.`
       );
       return;
     }
-    if (lines.length === 0) return alert("Your cart is empty.");
-
-    const itemsPayload = lines.map((l) => {
-      const typeForOrder =
-        typeByRefId.get(String(l.refId)) || normalizeTypeForOrder(l.type);
-      return {
-        itemable_type: typeForOrder, // "Product" or "Bundles"
-        itemable_id: Number(l.refId),
-        quantity: Number(l.qty) || 1,
-      };
-    });
-
-    // --- 0) PRECHECK WALLET BALANCE (do NOT create order if not enough) ---
-    try {
-      const walletResp = await axios.get(WALLET_URL, {
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const wb =
-        walletResp?.data?.data?.loan_balance ??
-        walletResp?.data?.loan_balance ??
-        0;
-      const loanBalance = Number(wb) || 0;
-      const estimatedTotal = Number(grandTotal) || 0;
-
-      if (estimatedTotal > loanBalance) {
-        // mirror your backend error message
-        alert("you don't have that much loan");
-        // optionally reflect failed state in UI
-        setPaymentResult("failed");
-        setMobileStep("result");
-        setCheckOutPayment(true);
-        return;
-      }
-    } catch (e) {
-      console.error("Wallet precheck failed:", e);
-      alert("Unable to verify loan balance. Please try again.");
+    if (lines.length === 0) {
+      alert("Your cart is empty.");
       return;
     }
-
-    setPlacingOrder(true);
-    try {
-      // 1) Create order (only after precheck passes)
-      const { data } = await axios.post(
-        ORDERS_URL,
-        {
-          delivery_address_id: Number(selectedAddressId),
-          // optional: mark intent; backend may ignore but clearer for logs
-          payment_method: "wallet",
-          items: itemsPayload,
-        },
-        {
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (data?.status !== "success" || !data?.data) {
-        alert("Order could not be prepared. Please try again.");
-        return;
-      }
-
-      // 2) Confirm payment via wallet
-      const createdOrder = data.data;
-      const amount = Number(createdOrder.total_price) || grandTotal;
-
-      const ok = await confirmPayment(createdOrder.id, "", amount, "wallet");
-      if (!ok) {
-        // Backend may still reject (e.g., race condition) — show the exact error UX
-        console.error(
-          "Wallet payment confirmation failed for order:",
-          createdOrder.id
-        );
-        alert("you don't have that much loan");
-        setPaymentResult("failed");
-        setMobileStep("result");
-        setCheckOutPayment(true);
-        return;
-      }
-
-      // Success UI
-      setOrderData(createdOrder);
-      setPaymentResult("success");
-      setMobileStep("result");
-      setCheckOutPayment(true);
-
-      // refresh cart count since order is paid
-      fetchCartCount();
-    } catch (e) {
-      const msg =
-        e?.response?.data?.message || e?.message || "Failed to place order.";
-      console.error("Buy by loan error:", e);
-      alert(msg);
-      setPaymentResult("failed");
-      setMobileStep("result");
-      setCheckOutPayment(true);
-    } finally {
-      setPlacingOrder(false);
-    }
+    navigate("/bnpl?fromCart=1&step=6.75");
   };
+
+  const showBnplButton =
+    lines.length > 0 && Number(grandTotal) >= bnplMinimumAmount;
 
   // ─────────────────────────────
   // Place Order (desktop: submit + pay)
@@ -800,44 +1042,46 @@ const Cart = () => {
       );
       return;
     }
+    if (!installationDateOk()) return;
     if (lines.length === 0) return alert("Your cart is empty.");
 
-    const itemsPayload = lines.map((l) => {
-      const typeForOrder =
-        typeByRefId.get(String(l.refId)) || normalizeTypeForOrder(l.type);
-      return {
-        itemable_type: typeForOrder, // <-- "Product" or "Bundles"
-        itemable_id: Number(l.refId),
-        quantity: Number(l.qty) || 1,
-      };
-    });
-    console.log("itemsPayload →", itemsPayload);
+    const orderBody = buildCartOrderBody();
+    console.log("itemsPayload →", orderBody.items);
 
-    console.log("The itemsPayload is", itemsPayload);
+    const headers = {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+
     setPlacingOrder(true);
     try {
-      const { data } = await axios.post(
-        ORDERS_URL,
-        {
-          delivery_address_id: Number(selectedAddressId),
-          payment_method: "direct",
-          items: itemsPayload,
-        },
-        {
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (data?.status === "success" && data?.data) {
-        setOrderData(data.data);
-        const amount = Number(data.data.total_price) || grandTotal;
-        await startFlutterwavePayment(amount, data.data.id);
-      } else {
-        alert("Order placed but payment initialization failed.");
+      const payAmount = Number(grandTotal) || 0;
+      if (payAmount <= 0) {
+        alert("Invalid order total. Refresh checkout and try again.");
+        return;
       }
+      await startFlutterwavePayment(payAmount, {
+        onSuccessfulCharge: async (fwResponse) => {
+          const txId = String(
+            fwResponse.transaction_id ?? fwResponse.id ?? ""
+          ).trim();
+          if (!txId) {
+            throw new Error("Missing payment reference from gateway.");
+          }
+          const { data } = await axios.post(
+            ORDERS_URL,
+            { ...orderBody, flutterwave_transaction_id: txId },
+            { headers }
+          );
+          if (data?.status !== "success" || !data?.data) {
+            throw new Error(
+              data?.message ||
+                "Could not create your order after payment. Contact support with your transaction reference."
+            );
+          }
+          setOrderData(data.data);
+        },
+      });
     } catch (e) {
       const msg =
         e?.response?.data?.message || e?.message || "Failed to place order.";
@@ -850,7 +1094,7 @@ const Cart = () => {
   // ─────────────────────────────
   // Place Order (MOBILE: create only → go to Summary)
   // ─────────────────────────────
-  const handleCreateOrderMobile = async () => {
+  const handleCreateOrderMobile = () => {
     if (!token) {
       alert("Please log in first.");
       return;
@@ -860,50 +1104,12 @@ const Cart = () => {
       alert("Please select or add a delivery address.");
       return;
     }
+    if (!installationDateOk()) return;
     if (lines.length === 0) {
       alert("Your cart is empty.");
       return;
     }
-
-    const itemsPayload = lines.map((l) => {
-      const typeForOrder =
-        typeByRefId.get(String(l.refId)) || normalizeTypeForOrder(l.type);
-      return {
-        itemable_type: typeForOrder, // <-- "Product" or "Bundles"
-        itemable_id: Number(l.refId),
-        quantity: Number(l.qty) || 1,
-      };
-    });
-
-    setPlacingOrder(true);
-    try {
-      const { data } = await axios.post(
-        ORDERS_URL,
-        {
-          delivery_address_id: Number(selectedAddressId),
-          payment_method: "direct",
-          items: itemsPayload,
-        },
-        {
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      if (data?.status === "success" && data?.data) {
-        setOrderData(data.data);
-        setMobileStep("summary"); // move to final summary screen
-      } else {
-        alert("Order could not be prepared. Please try again.");
-      }
-    } catch (e) {
-      const msg =
-        e?.response?.data?.message || e?.message || "Failed to prepare order.";
-      alert(msg);
-    } finally {
-      setPlacingOrder(false);
-    }
+    setMobileStep("summary");
   };
 
   /* =========================
@@ -1043,6 +1249,9 @@ const Cart = () => {
                                 />
                                 <div className="flex-1">
                                   <div className="text-sm font-medium">
+                                    {a.contact_name || a.title}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
                                     {a.title}
                                   </div>
                                   <div className="text-xs text-gray-600">
@@ -1071,6 +1280,17 @@ const Cart = () => {
                                       setEditingForm((f) => ({
                                         ...f,
                                         title: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                  <input
+                                    className="border rounded px-2 py-1 text-sm"
+                                    placeholder="Contact name"
+                                    value={editingForm.contact_name}
+                                    onChange={(e) =>
+                                      setEditingForm((f) => ({
+                                        ...f,
+                                        contact_name: e.target.value,
                                       }))
                                     }
                                   />
@@ -1158,6 +1378,17 @@ const Cart = () => {
                           />
                           <input
                             className="border rounded px-2 py-1 text-sm"
+                            placeholder="Contact name"
+                            value={newForm.contact_name}
+                            onChange={(e) =>
+                              setNewForm((f) => ({
+                                ...f,
+                                contact_name: e.target.value,
+                              }))
+                            }
+                          />
+                          <input
+                            className="border rounded px-2 py-1 text-sm"
                             placeholder="State"
                             value={newForm.state}
                             onChange={(e) =>
@@ -1204,6 +1435,7 @@ const Cart = () => {
                                 setAddingNew(false);
                                 setNewForm({
                                   title: "",
+                                  contact_name: "",
                                   address: "",
                                   state: "",
                                   phone_number: "",
@@ -1226,6 +1458,14 @@ const Cart = () => {
                     </div>
                     <div className="w-full bg-[#ededed] rounded-xl p-4 space-y-3">
                       <div>
+                        <p className="text-sm text-gray-500">Contact name</p>
+                        <p className="text-sm">
+                          {selectedAddress?.contact_name ||
+                            selectedAddress?.title ||
+                            "—"}
+                        </p>
+                      </div>
+                      <div>
                         <p className="text-sm text-gray-500">Address</p>
                         <p className="text-sm">
                           {selectedAddress?.address || "—"}
@@ -1241,16 +1481,41 @@ const Cart = () => {
                   </div>
 
                   <div className="flex justify-between text-gray-600 text-sm">
-                    <span>Estimated Time</span>
+                    <span>Delivery estimate</span>
                     <span className="text-gray-900 font-medium">
-                      July 3, 2025
+                      {deliveryEstimateLabel}
                     </span>
                   </div>
                   <hr className="border-gray-300" />
                   <div className="flex justify-between text-[#00000080] text-sm">
-                    <span>Price</span>
+                    <span>Items subtotal</span>
                     <span className="text-[#273E8E]">
-                      ₦{itemsTotalToShow.toLocaleString()}
+                      ₦{itemsCatalogSubtotal.toLocaleString()}
+                    </span>
+                  </div>
+                  {showOutrightDiscountRow && (
+                    <>
+                      <div className="flex justify-between text-[#00000080] text-sm">
+                        <span>{outrightDiscountLabel}</span>
+                        <span className="text-emerald-700">
+                          −₦
+                          {Math.round(outrightDiscountAmount).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-[#00000080] text-sm font-medium">
+                        <span>Items after discount</span>
+                        <span className="text-[#273E8E]">
+                          ₦{itemsChargedSubtotal.toLocaleString()}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-between text-[#00000080] text-sm">
+                    <span>Delivery fee</span>
+                    <span className="text-[#273E8E]">
+                      {deliveryToShow
+                        ? `₦${deliveryToShow.toLocaleString()}`
+                        : "Free"}
                     </span>
                   </div>
                 </div>
@@ -1265,9 +1530,9 @@ const Cart = () => {
                       <input
                         type="checkbox"
                         checked={includeInstallation}
-                        onChange={(e) =>
-                          setIncludeInstallation(e.target.checked)
-                        }
+                        onChange={(e) => {
+                          setIncludeInstallation(e.target.checked);
+                        }}
                         className="h-3 w-3 rounded accent-[#273e8e] cursor-pointer"
                       />
                     </div>
@@ -1280,19 +1545,35 @@ const Cart = () => {
                     >
                       <div className="bg-yellow-50 border-2 border-yellow-400 rounded-lg py-2 px-2">
                         <p className="text-yellow-600">
-                          Installation will be carried out by one of our skilled
-                          technicians. You can choose not to use our installers.
+                          {installationNotice ||
+                            "Optional: include only if you need Troosolar installation. When included, insurance is added to your order."}
                         </p>
                       </div>
                       <div className="flex justify-between text-gray-600 text-sm">
-                        <span>Estimated Time</span>
+                        <span>Estimated window</span>
                         <span className="text-gray-900 font-medium">
                           {formatDateLabel(serverInstallEstimatedDate)}
                         </span>
                       </div>
+                      {includeInstallation && (
+                        <div className="flex flex-col gap-1 pt-1">
+                          <label className="text-xs text-gray-600">
+                            Preferred installation date
+                          </label>
+                          <input
+                            type="date"
+                            min={minInstallationDateStr()}
+                            value={installationRequestedDate}
+                            onChange={(e) =>
+                              setInstallationRequestedDate(e.target.value)
+                            }
+                            className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-full max-w-[220px]"
+                          />
+                        </div>
+                      )}
                       <hr className="border-gray-300" />
                       <div className="flex justify-between text-[#00000080] text-sm">
-                        <span>Price</span>
+                        <span>Installation</span>
                         <span
                           className={`text-[#273E8E] ${
                             !includeInstallation
@@ -1303,52 +1584,175 @@ const Cart = () => {
                           ₦{installationToShow.toLocaleString()}
                         </span>
                       </div>
+                      {includeInstallation && insuranceToShow > 0 && (
+                        <div className="flex justify-between text-[#00000080] text-sm">
+                          <span>
+                            Insurance (
+                            {serverInsurancePct > 0
+                              ? `${Number(serverInsurancePct).toLocaleString()}%`
+                              : "of items + installation"}
+                            )
+                          </span>
+                          <span className="text-[#273E8E]">
+                            ₦{insuranceToShow.toLocaleString()}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* Summary Breakdown */}
+                {/* Order totals — line order: items → installation → delivery → insurance → VAT → total */}
                 <div className="border-[1px] border-gray-300 p-4 rounded-xl space-y-3 bg-white">
-                  <div className="flex justify-between">
-                    <p>Items</p>
-                    <p>{serverItemsCount || itemCount}</p>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-700">Items (Qty)</span>
+                    <span className="font-medium text-gray-900">
+                      {serverItemsCount != null ? serverItemsCount : itemCount}
+                    </span>
                   </div>
-                  <hr className="border-gray-300" />
-                  <div className="flex justify-between">
-                    <p>Payment Method</p>
-                    <p>Direct</p>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-700">Items subtotal</span>
+                    <span className="text-[#273e8e] font-medium">
+                      ₦{itemsCatalogSubtotal.toLocaleString()}
+                    </span>
                   </div>
-                  <hr className="border-gray-300" />
-                  <div className="flex justify-between">
-                    <p>Charge</p>
-                    <p>
+                  {showOutrightDiscountRow && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-700">
+                          {outrightDiscountLabel}
+                        </span>
+                        <span className="text-emerald-700 font-medium">
+                          −₦
+                          {Math.round(outrightDiscountAmount).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm border-t border-dashed border-gray-200 pt-2">
+                        <span className="text-gray-700">Items after discount</span>
+                        <span className="text-[#273e8e] font-medium">
+                          ₦{itemsChargedSubtotal.toLocaleString()}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-700">Installation</span>
+                    <span
+                      className={
+                        includeInstallation
+                          ? "text-[#273e8e] font-medium"
+                          : "text-gray-400"
+                      }
+                    >
+                      {includeInstallation
+                        ? `₦${installationToShow.toLocaleString()}`
+                        : "—"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-700">Delivery</span>
+                    <span className="text-[#273e8e] font-medium">
                       {deliveryToShow
                         ? `₦${deliveryToShow.toLocaleString()}`
                         : "Free"}
-                    </p>
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-700 text-right max-w-[70%] leading-snug">
+                      Insurance
+                      {includeInstallation ? (
+                        <>
+                          {" "}
+                          (
+                          {Number.isFinite(Number(serverInsurancePct))
+                            ? `${Number(serverInsurancePct)}%`
+                            : "—"}{" "}
+                          of items + installation)
+                        </>
+                      ) : (
+                        <span className="text-gray-500">
+                          {" "}
+                          (when installation is included)
+                        </span>
+                      )}
+                    </span>
+                    <span
+                      className={
+                        includeInstallation && insuranceToShow > 0
+                          ? "text-[#273e8e] font-medium"
+                          : "text-gray-500"
+                      }
+                    >
+                      ₦
+                      {(includeInstallation ? insuranceToShow : 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-700">
+                      VAT
+                      {serverVatPct > 0
+                        ? ` (${Number(serverVatPct).toLocaleString()}%)`
+                        : ""}
+                    </span>
+                    <span className="text-[#273e8e] font-medium">
+                      ₦{Number(serverVatAmount || 0).toLocaleString()}
+                    </span>
                   </div>
                   <hr className="border-gray-300" />
-                  <div className="flex justify-between font-bold text-[#273e8e]">
-                    <p>Total</p>
-                    <p>₦{grandTotal.toLocaleString()}</p>
+                  <div className="flex justify-between font-bold text-[#273e8e] text-base">
+                    <span>Total</span>
+                    <span>₦{grandTotal.toLocaleString()}</span>
                   </div>
+                  <p className="text-xs text-gray-500">
+                    Total includes VAT where applicable.
+                  </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={handleBuyByLoan}
-                    className="py-3 border border-gray-300 rounded-full text-sm hover:bg-gray-100 transition disabled:opacity-60"
-                    disabled={
-                      lines.length === 0 ||
-                      summaryLoading ||
-                      placingOrder ||
-                      processingPayment
-                    }
-                  >
-                    {placingOrder ? "Processing…" : "Buy By Loan"}
-                  </button>
+                {/* Flutterwave checkout only (no alternate payment-method UI) */}
+                <div className="border border-gray-300 rounded-xl p-4 bg-white space-y-3">
+                  <p className="text-sm font-semibold text-[#1F2348]">
+                    Flutterwave
+                  </p>
+                  <p className="text-xs text-gray-600 leading-relaxed">
+                    Pay with card, USSD, or bank in the Flutterwave window after
+                    you click Checkout. Your order is created only when payment
+                    succeeds.
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Total (incl. VAT):{" "}
+                    <span className="font-semibold text-[#273e8e]">
+                      ₦{grandTotal.toLocaleString()}
+                    </span>
+                  </p>
+                </div>
+
+                {lines.length > 0 &&
+                  Number(grandTotal) < bnplMinimumAmount && (
+                    <p className="text-xs text-gray-500">
+                      Buy Now, Pay Later is only available for orders from ₦
+                      {bnplMinimumAmount.toLocaleString()} — add more items to
+                      cart or proceed to checkout.
+                    </p>
+                  )}
+
+                <div
+                  className={`grid gap-3 ${
+                    showBnplButton ? "grid-cols-2" : "grid-cols-1"
+                  }`}
+                >
+                  {showBnplButton && (
+                    <button
+                      type="button"
+                      onClick={handleBuyByLoan}
+                      className="py-3 border border-gray-300 rounded-full text-sm hover:bg-gray-100 transition disabled:opacity-60"
+                      disabled={summaryLoading || processingPayment}
+                    >
+                      Buy By Loan
+                    </button>
+                  )}
 
                   <button
+                    type="button"
                     onClick={handlePlaceOrder}
                     className="py-3 bg-[#273e8e] text-white rounded-full text-sm hover:bg-[#1f2f6e] transition disabled:opacity-60"
                     disabled={
@@ -1397,9 +1801,20 @@ const Cart = () => {
                       </span>
                     ) : (
                       <span>
-                        <strong>Congratulations</strong> your order has been
-                        placed successfully, Expect delivery from Mon, July 3rd
-                        - Wed July 7th
+                        <strong>Congratulations</strong> — your order has been
+                        placed successfully. We&apos;ve sent a confirmation email
+                        to your registered email address. Our team will contact you
+                        with delivery updates.
+                        {orderData?.payment_method === "bank_transfer" ? (
+                          <>
+                            <br />
+                            <br />
+                            <span className="text-gray-700">
+                              Complete your payment by bank transfer using your
+                              order number as the payment reference.
+                            </span>
+                          </>
+                        ) : null}
                       </span>
                     )}
                   </p>
@@ -1433,18 +1848,27 @@ const Cart = () => {
               </div>
 
               <div className="flex flex-col gap-2 mt-4">
-                <button
-                  onClick={() => setCheckOutPayment(false)}
-                  className="border border-[#273e8e] py-4 text-sm rounded-full text-[#273e8e] hover:bg-[#273e8e]/10 transition"
-                >
-                  Leave a review
-                </button>
-                <Link
-                  to="/homePage"
-                  className="py-4 text-sm text-center rounded-full bg-[#273e8e] text-white hover:bg-[#1f2f6e] transition"
-                >
-                  Continue Shopping
-                </Link>
+                {checkout ? (
+                  <Link
+                    to="/homePage"
+                    onClick={() => setCheckOutPayment(false)}
+                    className="py-4 text-sm text-center rounded-full bg-[#273e8e] text-white hover:bg-[#1f2f6e] transition"
+                  >
+                    Continue Shopping
+                  </Link>
+                ) : (
+                  <Link
+                    to={
+                      orderData?.id
+                        ? `/more?section=myOrders&orderId=${orderData.id}`
+                        : "/more?section=myOrders"
+                    }
+                    onClick={() => setCheckOutPayment(false)}
+                    className="py-4 text-sm text-center rounded-full bg-[#273e8e] text-white hover:bg-[#1f2f6e] transition"
+                  >
+                    See Order Details
+                  </Link>
+                )}
               </div>
             </div>
           </div>
@@ -1531,8 +1955,7 @@ const Cart = () => {
                     <button
                       className="px-25 py-4 rounded-full text-[12px] bg-[#273e8e] text-white disabled:opacity-60 ml-[25px]"
                       disabled={lines.length === 0}
-                      onClick={async () => {
-                        await fetchCheckoutSummary();
+                      onClick={() => {
                         setMobileStep("delivery");
                       }}
                     >
@@ -1595,8 +2018,9 @@ const Cart = () => {
                             />
                             <div className="flex-1">
                               <div className="text-sm font-medium text-gray-900">
-                                {a.title}
+                                {a.contact_name || a.title}
                               </div>
+                              <div className="text-xs text-gray-500">{a.title}</div>
                               <div className="text-xs text-gray-600">
                                 {a.address}
                               </div>
@@ -1637,6 +2061,17 @@ const Cart = () => {
                               setNewForm((f) => ({
                                 ...f,
                                 title: e.target.value,
+                              }))
+                            }
+                          />
+                          <input
+                            className="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#273e8e]/20 focus:border-[#273e8e]"
+                            placeholder="Contact name"
+                            value={newForm.contact_name}
+                            onChange={(e) =>
+                              setNewForm((f) => ({
+                                ...f,
+                                contact_name: e.target.value,
                               }))
                             }
                           />
@@ -1688,6 +2123,7 @@ const Cart = () => {
                                 setAddingNew(false);
                                 setNewForm({
                                   title: "",
+                                  contact_name: "",
                                   address: "",
                                   state: "",
                                   phone_number: "",
@@ -1706,6 +2142,14 @@ const Cart = () => {
                   {/* Selected address preview box */}
                   <div className="w-full rounded-2xl bg-[#F7F8FA] p-4 ring-1 ring-gray-100">
                     <div className="space-y-1">
+                      <p className="text-[11px] text-gray-500">Contact name</p>
+                      <p className="text-sm text-gray-900">
+                        {selectedAddress?.contact_name ||
+                          selectedAddress?.title ||
+                          "—"}
+                      </p>
+                    </div>
+                    <div className="space-y-1 mt-3">
                       <p className="text-[11px] text-gray-500">Address</p>
                       <p className="text-sm text-gray-900">
                         {selectedAddress?.address || "—"}
@@ -1721,16 +2165,43 @@ const Cart = () => {
 
                   {/* Rows */}
                   <div className="flex justify-between items-center py-3 border-t border-gray-200 text-xs">
-                    <span className="text-gray-600">Estimated time</span>
+                    <span className="text-gray-600">Delivery estimate</span>
                     <span className="text-gray-900 font-medium">
-                      {formatDateLabel(serverInstallEstimatedDate)}
+                      {deliveryEstimateLabel}
                     </span>
                   </div>
 
                   <div className="flex justify-between items-center py-3 border-t border-gray-200 text-xs">
-                    <span className="text-gray-500">Price</span>
+                    <span className="text-gray-500">Items subtotal</span>
                     <span className="text-[#273e8e] font-semibold">
-                      ₦{itemsTotalToShow.toLocaleString()}
+                      ₦{itemsCatalogSubtotal.toLocaleString()}
+                    </span>
+                  </div>
+                  {showOutrightDiscountRow && (
+                    <>
+                      <div className="flex justify-between items-center py-3 border-t border-gray-200 text-xs">
+                        <span className="text-gray-500">
+                          {outrightDiscountLabel}
+                        </span>
+                        <span className="text-emerald-700 font-semibold">
+                          −₦
+                          {Math.round(outrightDiscountAmount).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center py-3 border-t border-gray-200 text-xs font-semibold">
+                        <span className="text-gray-600">Items after discount</span>
+                        <span className="text-[#273e8e]">
+                          ₦{itemsChargedSubtotal.toLocaleString()}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-between items-center py-3 border-t border-gray-200 text-xs">
+                    <span className="text-gray-500">Delivery fee</span>
+                    <span className="text-[#273e8e] font-semibold">
+                      {deliveryToShow
+                        ? `₦${deliveryToShow.toLocaleString()}`
+                        : "Free"}
                     </span>
                   </div>
                 </div>
@@ -1743,24 +2214,43 @@ const Cart = () => {
                     <input
                       type="checkbox"
                       checked={includeInstallation}
-                      onChange={(e) => setIncludeInstallation(e.target.checked)}
+                      onChange={(e) => {
+                        setIncludeInstallation(e.target.checked);
+                      }}
                       className="h-4 w-4 rounded accent-[#273e8e] cursor-pointer"
                     />
                     <span className="text-sm font-medium text-gray-700">
-                      Include installation service
+                      Include installation &amp; insurance
                     </span>
                   </div>
                   <div className="rounded-lg border-2 border-yellow-400 bg-yellow-50 p-3 text-[12px] text-yellow-700">
-                    Installation will be carried one of our skilled technician
+                    {installationNotice ||
+                      "Optional: tick only if you want Troosolar installation. Insurance applies when installation is included."}
                   </div>
                   <div className="flex justify-between text-gray-600 text-sm">
-                    <span>Estimated time</span>
+                    <span>Estimated window</span>
                     <span className="text-gray-900 font-medium">
-                      July 2 - 7, 2025
+                      {formatDateLabel(serverInstallEstimatedDate)}
                     </span>
                   </div>
+                  {includeInstallation && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-gray-600">
+                        Preferred installation date
+                      </label>
+                      <input
+                        type="date"
+                        min={minInstallationDateStr()}
+                        value={installationRequestedDate}
+                        onChange={(e) =>
+                          setInstallationRequestedDate(e.target.value)
+                        }
+                        className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-full"
+                      />
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm">
-                    <span className="text-[#00000080]">Price</span>
+                    <span className="text-[#00000080]">Installation</span>
                     <span
                       className={`text-[#273e8e] ${
                         !includeInstallation ? "line-through opacity-50" : ""
@@ -1769,12 +2259,44 @@ const Cart = () => {
                       ₦{installationToShow.toLocaleString()}
                     </span>
                   </div>
+                  {includeInstallation && insuranceToShow > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-[#00000080]">
+                        Insurance (
+                        {serverInsurancePct > 0
+                          ? `${Number(serverInsurancePct).toLocaleString()}%`
+                          : ""}
+                        )
+                      </span>
+                      <span className="text-[#273e8e]">
+                        ₦{insuranceToShow.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Flutterwave only — same as desktop (no payment-method tabs) */}
+                <div className="border border-gray-300 rounded-2xl p-4 bg-white space-y-3">
+                  <p className="text-sm font-semibold text-[#1F2348]">
+                    Flutterwave
+                  </p>
+                  <p className="text-[11px] text-gray-600 leading-relaxed">
+                    Pay with card, USSD, or bank in the Flutterwave window on the
+                    next step. Your order is created only when payment
+                    succeeds.
+                  </p>
+                  <p className="text-[11px] text-gray-500">
+                    Total (incl. VAT):{" "}
+                    <span className="font-semibold text-[#273e8e]">
+                      ₦{grandTotal.toLocaleString()}
+                    </span>
+                  </p>
                 </div>
 
                 {/* Total + Button */}
                 <div className="rounded-2xl p-4 space-y-2 flex justify-around ">
                   <div>
-                    <p className="text-sm text-gray-700">Total</p>
+                    <p className="text-sm text-gray-700">Total (incl. VAT)</p>
                     <p className="mt-1 font-[500] text-[18px] text-[#273e8e]">
                       ₦{grandTotal.toLocaleString()}
                     </p>
@@ -1786,7 +2308,7 @@ const Cart = () => {
                       lines.length === 0 || summaryLoading || placingOrder
                     }
                   >
-                    {placingOrder ? "Preparing…" : "Checkout"}
+                    {placingOrder ? "Preparing…" : "Continue"}
                   </button>
                 </div>
               </>
@@ -1834,7 +2356,13 @@ const Cart = () => {
                     </button>
                   </div>
                   <div className="rounded-lg bg-[#ededed] p-3 text-sm">
-                    <div className="text-gray-500 text-xs">Address</div>
+                    <div className="text-gray-500 text-xs">Contact name</div>
+                    <div>
+                      {selectedAddress?.contact_name ||
+                        selectedAddress?.title ||
+                        "—"}
+                    </div>
+                    <div className="mt-2 text-gray-500 text-xs">Address</div>
                     <div>{selectedAddress?.address || "—"}</div>
                     <div className="mt-2 text-gray-500 text-xs">
                       Phone Number
@@ -1842,15 +2370,42 @@ const Cart = () => {
                     <div>{selectedAddress?.phone_number || "—"}</div>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span>Estimated time</span>
+                    <span>Delivery estimate</span>
                     <span className="text-gray-900 font-medium">
-                      July 2 - 7, 2025
+                      {deliveryEstimateLabel}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-[#00000080]">Price</span>
+                    <span className="text-[#00000080]">Items subtotal</span>
                     <span className="text-[#273e8e]">
-                      ₦{itemsTotalToShow.toLocaleString()}
+                      ₦{itemsCatalogSubtotal.toLocaleString()}
+                    </span>
+                  </div>
+                  {showOutrightDiscountRow && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-[#00000080]">
+                          {outrightDiscountLabel}
+                        </span>
+                        <span className="text-emerald-700">
+                          −₦
+                          {Math.round(outrightDiscountAmount).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm font-medium">
+                        <span className="text-gray-700">Items after discount</span>
+                        <span className="text-[#273e8e]">
+                          ₦{itemsChargedSubtotal.toLocaleString()}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#00000080]">Delivery fee</span>
+                    <span className="text-[#273e8e]">
+                      {deliveryToShow
+                        ? `₦${deliveryToShow.toLocaleString()}`
+                        : "Free"}
                     </span>
                   </div>
                 </div>
@@ -1861,25 +2416,43 @@ const Cart = () => {
                     <input
                       type="checkbox"
                       checked={includeInstallation}
-                      onChange={(e) => setIncludeInstallation(e.target.checked)}
+                      onChange={(e) => {
+                        setIncludeInstallation(e.target.checked);
+                      }}
                       className="h-4 w-4 rounded accent-[#273e8e] cursor-pointer"
                     />
                     <span className="text-xs font-medium text-gray-700">
-                      Include installation service
+                      Include installation &amp; insurance
                     </span>
                   </div>
                   <div className="rounded-lg border-2 border-yellow-400 bg-yellow-50 p-3 text-[12px] text-yellow-700">
-                    Installation will be carried one of our skilled
-                    techniciasssn
+                    {installationNotice ||
+                      "Optional: include only if you need Troosolar installation. Insurance applies when installation is included."}
                   </div>
                   <div className="flex justify-between text-xs">
-                    <span>Estimated time</span>
+                    <span>Estimated window</span>
                     <span className="text-gray-900 font-sm">
                       {formatDateLabel(serverInstallEstimatedDate)}
                     </span>
                   </div>
+                  {includeInstallation && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-gray-600">
+                        Preferred installation date
+                      </label>
+                      <input
+                        type="date"
+                        min={minInstallationDateStr()}
+                        value={installationRequestedDate}
+                        onChange={(e) =>
+                          setInstallationRequestedDate(e.target.value)
+                        }
+                        className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-full"
+                      />
+                    </div>
+                  )}
                   <div className="flex justify-between text-xs">
-                    <span className="text-[#00000080]">Price</span>
+                    <span className="text-[#00000080]">Installation</span>
                     <span
                       className={`text-[#273e8e] ${
                         !includeInstallation ? "line-through opacity-50" : ""
@@ -1888,18 +2461,31 @@ const Cart = () => {
                       ₦{installationToShow.toLocaleString()}
                     </span>
                   </div>
+                  {includeInstallation && insuranceToShow > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#00000080]">
+                        Insurance (
+                        {serverInsurancePct > 0
+                          ? `${Number(serverInsurancePct).toLocaleString()}%`
+                          : ""}
+                        )
+                      </span>
+                      <span className="text-[#273e8e]">
+                        ₦{insuranceToShow.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <SectionHeading>Payment</SectionHeading>
                 <div className="bg-white border border-gray-400 rounded-2xl p-4 space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-xs">Payment method</span>
-                    <span className="text-xs">Direct</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-xs">Charge</span>
-                    <span className="text-xs">Free</span>
-                  </div>
+                  <p className="text-xs font-semibold text-[#1F2348]">
+                    Flutterwave
+                  </p>
+                  <p className="text-[11px] text-gray-600 leading-relaxed">
+                    Card, USSD, or bank — complete payment in the Flutterwave
+                    window when you tap Proceed to Pay.
+                  </p>
                 </div>
 
                 {/* Total + Proceed */}
@@ -1913,13 +2499,49 @@ const Cart = () => {
 
                   <button
                     className="w-full mt-3 py-4 rounded-full bg-[#273e8e] text-white text-[12px] disabled:opacity-60 ml-[10px]"
-                    onClick={() =>
-                      startFlutterwavePayment(
-                        Number(orderData?.total_price || grandTotal),
-                        orderData?.id
-                      )
-                    }
-                    disabled={!orderData || processingPayment}
+                    onClick={async () => {
+                      if (!installationDateOk()) return;
+                      if (!token) {
+                        alert("Please log in first.");
+                        return;
+                      }
+                      const payAmount = Number(grandTotal) || 0;
+                      if (payAmount <= 0) {
+                        alert("Invalid order total. Go back and refresh checkout.");
+                        return;
+                      }
+                      await startFlutterwavePayment(payAmount, {
+                        onSuccessfulCharge: async (fwResponse) => {
+                          const txId = String(
+                            fwResponse.transaction_id ?? fwResponse.id ?? ""
+                          ).trim();
+                          if (!txId) {
+                            throw new Error("Missing payment reference from gateway.");
+                          }
+                          const { data } = await axios.post(
+                            ORDERS_URL,
+                            {
+                              ...buildCartOrderBody(),
+                              flutterwave_transaction_id: txId,
+                            },
+                            {
+                              headers: {
+                                Accept: "application/json",
+                                Authorization: `Bearer ${token}`,
+                              },
+                            }
+                          );
+                          if (data?.status !== "success" || !data?.data) {
+                            throw new Error(
+                              data?.message ||
+                                "Could not create your order after payment. Contact support with your transaction reference."
+                            );
+                          }
+                          setOrderData(data.data);
+                        },
+                      });
+                    }}
+                    disabled={processingPayment || lines.length === 0}
                   >
                     {processingPayment ? "Processing…" : "Proceed to Pay"}
                   </button>
@@ -1948,9 +2570,18 @@ const Cart = () => {
 
                     {paymentResult === "success" ? (
                       <p className="text-sm text-[#1F2348] leading-6">
-                        <strong>Congratulations</strong> your order has been
-                        placed successfully, Expect delivery from Mon, <br />
-                        July 3rd – Wed July 7th
+                        <strong>Congratulations</strong> — your order has been
+                        placed successfully. We&apos;ve sent a confirmation email
+                        to your registered email address. Our team will contact you
+                        with delivery updates.
+                        {orderData?.payment_method === "bank_transfer" ? (
+                          <>
+                            <br />
+                            <br />
+                            Use your order number as the reference when you complete
+                            your bank transfer.
+                          </>
+                        ) : null}
                       </p>
                     ) : (
                       <p className="text-sm text-[#1F2348] leading-6">
@@ -1998,17 +2629,27 @@ const Cart = () => {
                       )}
                     </div>
 
-                    <button className="w-full border rounded-full py-3 text-sm bg-[#F5F7FF]">
-                      Leave a review
-                    </button>
                   </div>
                 </div>
 
                 <button
+                  type="button"
                   className="w-full rounded-full bg-[#273e8e] text-white py-4"
-                  onClick={() => navigate("/homePage")}
+                  onClick={() => {
+                    if (paymentResult === "success") {
+                      navigate(
+                        orderData?.id
+                          ? `/more?section=myOrders&orderId=${orderData.id}`
+                          : "/more?section=myOrders"
+                      );
+                    } else {
+                      navigate("/homePage");
+                    }
+                  }}
                 >
-                  Continue Shopping
+                  {paymentResult === "success"
+                    ? "See Order Details"
+                    : "Continue Shopping"}
                 </button>
               </div>
             )}

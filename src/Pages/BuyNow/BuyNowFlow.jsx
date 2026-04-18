@@ -3,6 +3,8 @@ import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader, CheckCircle2, XCircle, AlertCircle, CreditCard, Minus, Plus, X, Info, ChevronDown, User, MapPin, Phone } from 'lucide-react';
 import axios from 'axios';
 import API, { BASE_URL } from '../../config/api.config';
+import ProductPromoBadges from '../../Component/ProductPromoBadges';
+import { apiFlagTrue } from '../../utils/apiFlags';
 
 // Helper function to convert storage paths to absolute URLs (same as SolarBundle.jsx)
 const toAbsolute = (path) => {
@@ -78,8 +80,19 @@ const getBundleImage = (bundle) => {
 
 // Helper to format price (moved to component level for modal access)
 const formatPrice = (price) => {
-    return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(price);
+    return new Intl.NumberFormat('en-NG', {
+        style: 'currency',
+        currency: 'NGN',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    }).format(Number(price || 0));
 };
+
+const formatAmount = (value) =>
+    Number(value || 0).toLocaleString('en-NG', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
 
 // Label map for bundle specifications (matches sheet "Bundle Specification" column)
 const SPEC_LABELS = {
@@ -224,6 +237,7 @@ const BuyNowFlow = () => {
     const [auditRequestId, setAuditRequestId] = useState(null);
     const [auditRequests, setAuditRequests] = useState([]);
     const [auditRequestStatus, setAuditRequestStatus] = useState(null);
+    const [checkingAuditStatus, setCheckingAuditStatus] = useState(false);
     
     // Enriched bundle details (full API data with custom_services / bundle_items)
     const [enrichedBundles, setEnrichedBundles] = useState({});
@@ -242,6 +256,13 @@ const BuyNowFlow = () => {
         productCategory: '', // 'full-kit', 'inverter-battery', 'battery-only', 'inverter-only', 'panels-only'
         optionType: '', // 'choose-system', 'build-system', 'audit'
         auditType: '', // 'home-office', 'commercial'
+        auditSubtype: '',
+        companyName: '',
+        facilityDescription: '',
+        buildingType: '',
+        commercialAddress: '',
+        officeAddress: '',
+        officeSpaces: '',
         selectedProductPrice: 0,
         selectedBundleId: null,
         selectedBundle: null,
@@ -617,7 +638,20 @@ const BuyNowFlow = () => {
     // --- Handlers ---
 
     const handleCustomerTypeSelect = (type) => {
-        setFormData({ ...formData, customerType: type });
+        if (type === 'commercial') {
+            setInvoiceDetails(null); // avoid stale checkout state leaking into audit-only UI
+            setFormData((prev) => ({
+                ...prev,
+                customerType: 'commercial',
+                optionType: 'audit',
+                auditType: 'commercial',
+                auditSubtype: '',
+                productCategory: prev.productCategory || 'full-kit',
+            }));
+            setStep(5); // Commercial/Industrial audit form — skip 5 category options & method step
+            return;
+        }
+        setFormData((prev) => ({ ...prev, customerType: type }));
         setStep(2); // Go to Solar Solution Selection (5 options)
     };
 
@@ -900,74 +934,13 @@ const BuyNowFlow = () => {
     }, []);
 
     // Audit handlers (same as BNPL)
-    const handleAuditTypeSelect = async (type) => {
-        setFormData({ ...formData, auditType: type });
-        if (type === 'commercial') {
-            // Submit commercial audit request immediately
-            await submitCommercialAuditRequest();
-        } else {
-            setStep(5); // Home/Office Details Form
-        }
+    const handleAuditTypeSelect = (subtype) => {
+        setInvoiceDetails(null);
+        setFormData({ ...formData, auditType: 'home-office', auditSubtype: subtype });
+        setStep(5);
     };
 
-    const submitCommercialAuditRequest = async () => {
-        setLoading(true);
-        try {
-            const token = localStorage.getItem('access_token');
-            if (!token) {
-                alert("Please login to continue");
-                navigate('/login');
-                return;
-            }
-
-            // Submit commercial audit request (all fields optional for commercial)
-            const auditRequestPayload = {
-                audit_type: 'commercial',
-                customer_type: formData.customerType || 'commercial',
-                // All property fields are optional for commercial audits
-                property_state: null,
-                property_address: null,
-            };
-
-            // Add cart token if this is a custom order flow
-            const cartToken = searchParams.get('cart_token');
-            if (cartToken) {
-                auditRequestPayload.cart_token = cartToken;
-            }
-
-            const auditRequestResponse = await axios.post(API.AUDIT_REQUEST, auditRequestPayload, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json'
-                }
-            });
-
-            if (auditRequestResponse.data.status === 'success') {
-                const newAuditRequestId = auditRequestResponse.data.data.id;
-                setAuditRequestId(newAuditRequestId);
-                setFormData(prev => ({ ...prev, auditRequestId: newAuditRequestId }));
-                
-                // Fetch audit requests to check status
-                await fetchAuditRequests();
-                
-                // Navigate to commercial notification
-                setStep(6);
-            } else {
-                alert("Failed to submit commercial audit request. Please try again.");
-            }
-        } catch (error) {
-            console.error("Commercial audit request submission error:", error);
-            const errorMessage = error.response?.data?.message || 
-                                (error.response?.data?.errors ? JSON.stringify(error.response.data.errors) : null) ||
-                                "Failed to submit commercial audit request. Please try again.";
-            alert(errorMessage);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchAuditRequests = async () => {
+    const fetchAuditRequests = async (forRequestId) => {
         try {
             const token = localStorage.getItem('access_token');
             if (!token) return;
@@ -983,9 +956,9 @@ const BuyNowFlow = () => {
                 const requests = Array.isArray(response.data.data) ? response.data.data : [];
                 setAuditRequests(requests);
                 
-                // Find the current audit request and set its status
-                if (auditRequestId) {
-                    const currentRequest = requests.find(req => req.id === auditRequestId);
+                const idToMatch = forRequestId ?? auditRequestId;
+                if (idToMatch) {
+                    const currentRequest = requests.find(req => req.id === idToMatch);
                     if (currentRequest) {
                         setAuditRequestStatus(currentRequest.status || currentRequest.audit_status);
                     }
@@ -993,6 +966,50 @@ const BuyNowFlow = () => {
             }
         } catch (error) {
             console.error("Error fetching audit requests:", error);
+        }
+    };
+
+    const handleCheckAuditRequestStatus = async (requestIdFromUI) => {
+        const requestId = requestIdFromUI || auditRequestId || formData.auditRequestId;
+        if (!requestId) {
+            alert('Request ID is not available on this screen yet. Opening Audit requests so you can track your submissions.');
+            navigate('/more?section=auditRequests');
+            return;
+        }
+
+        setCheckingAuditStatus(true);
+        let openAuditTab = true;
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                alert('Please log in to check audit request status.');
+                navigate('/login');
+                openAuditTab = false;
+                return;
+            }
+
+            const response = await axios.get(API.AUDIT_REQUEST_BY_ID(requestId), {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+
+            if (response.data?.status === 'success') {
+                const status = response.data?.data?.status || 'pending';
+                alert(
+                    status === 'approved'
+                        ? 'Your audit request has been approved. Opening Audit requests for details.'
+                        : `Your audit request is currently ${status}. Opening Audit requests for details.`
+                );
+            } else {
+                alert('Could not fetch status right now. Opening Audit requests.');
+            }
+        } catch (error) {
+            console.error('Failed to check audit status:', error);
+            alert('Failed to fetch audit request status right now. Opening Audit requests.');
+        } finally {
+            setCheckingAuditStatus(false);
+        }
+        if (openAuditTab) {
+            navigate(`/more?section=auditRequests&auditRequestId=${encodeURIComponent(requestId)}`);
         }
     };
 
@@ -1008,27 +1025,51 @@ const BuyNowFlow = () => {
                 return;
             }
 
-            // Submit audit request before proceeding
-            // Build full address from components
-            const fullAddress = [
-                formData.houseNo,
-                formData.streetName,
-                formData.landmark
-            ].filter(Boolean).join(', ');
-            
+            const isCommercial = formData.auditType === 'commercial';
+            const isOffice = formData.auditType === 'home-office' && formData.auditSubtype === 'office';
+            const isHome = formData.auditType === 'home-office' && !isOffice;
+
+            let fullAddress = '';
+            if (isCommercial) {
+                fullAddress = (formData.commercialAddress || '').trim();
+            } else if (isOffice) {
+                fullAddress = (formData.officeAddress || '').trim();
+            } else {
+                fullAddress = [formData.houseNo, formData.streetName].filter(Boolean).join(', ');
+            }
+
             const auditRequestPayload = {
                 audit_type: formData.auditType,
                 customer_type: formData.customerType,
+                source: 'buy_now',
                 property_state: formData.state,
-                property_address: fullAddress || formData.address, // Use full address or fallback to address field
+                property_address: fullAddress || formData.address,
                 property_landmark: formData.landmark || '',
-                property_floors: formData.floors ? Number(formData.floors) : null,
-                property_rooms: formData.rooms ? Number(formData.rooms) : null,
-                is_gated_estate: formData.isGatedEstate,
+                property_floors: isCommercial ? null : (formData.floors ? Number(formData.floors) : null),
+                property_rooms: isCommercial
+                    ? null
+                    : isOffice
+                        ? (formData.officeSpaces ? Number(formData.officeSpaces) : null)
+                        : (formData.rooms ? Number(formData.rooms) : null),
+                contact_name: (formData.fullName || '').trim(),
+                contact_phone: (formData.phone || '').trim(),
+                is_gated_estate: isHome ? formData.isGatedEstate : false,
             };
 
-            // Add estate fields if gated estate
-            if (formData.isGatedEstate) {
+            if (formData.auditType === 'home-office') {
+                auditRequestPayload.audit_subtype = isOffice ? 'office' : 'home';
+            }
+            if (isCommercial || isOffice) {
+                auditRequestPayload.company_name = (formData.companyName || '').trim();
+            }
+            if (isCommercial) {
+                auditRequestPayload.facility_description = (formData.facilityDescription || '').trim();
+            }
+            if (isOffice || isHome) {
+                auditRequestPayload.building_type = (formData.buildingType || '').trim();
+            }
+
+            if (isHome && formData.isGatedEstate) {
                 auditRequestPayload.estate_name = formData.estateName;
                 auditRequestPayload.estate_address = formData.estateAddress;
             }
@@ -1049,49 +1090,10 @@ const BuyNowFlow = () => {
             if (auditRequestResponse.data.status === 'success') {
                 const auditRequestId = auditRequestResponse.data.data.id;
                 setAuditRequestId(auditRequestId);
-                setFormData(prev => ({ ...prev, auditRequestId }));
-                
-                // For commercial audits, show notification and wait for admin approval
-                if (formData.auditType === 'commercial') {
-                    setStep(6); // Commercial Notification
-                } else {
-                    // For home-office audits, proceed to checkout to get invoice
-                    // Call checkout API to get invoice details
-                    try {
-                        const checkoutPayload = {
-                            customer_type: formData.customerType,
-                            product_category: 'audit',
-                            audit_request_id: auditRequestId,
-                            amount: 0 // Will be calculated by backend
-                        };
-
-                        // Add cart token if this is a custom order flow
-                        if (cartToken) {
-                            checkoutPayload.cart_token = cartToken;
-                        }
-
-                        const checkoutResponse = await axios.post(API.BUY_NOW_CHECKOUT, checkoutPayload, {
-                            headers: { 
-                                Authorization: `Bearer ${token}`,
-                                'Content-Type': 'application/json',
-                                Accept: 'application/json'
-                            }
-                        });
-
-                        if (checkoutResponse.data.status === 'success') {
-                            setInvoiceDetails(checkoutResponse.data.data);
-                            setOrderId(checkoutResponse.data.data.order_id);
-                            setStep(8); // Go to Order Summary with details, then invoice
-                        } else {
-                            // If checkout fails, still show order summary
-                            setStep(7); // Order Summary (for audit) before invoice
-                        }
-                    } catch (checkoutError) {
-                        console.error("Checkout Error for audit:", checkoutError);
-                        // If checkout fails, still show order summary
-                        setStep(7); // Order Summary (for audit) before invoice
-                    }
-                }
+                setFormData((prev) => ({ ...prev, auditRequestId }));
+                await fetchAuditRequests(auditRequestId);
+                // Same confirmation screen for home, office, and commercial audit requests
+                setStep(6);
             } else {
                 alert("Failed to submit audit request. Please try again.");
             }
@@ -1211,8 +1213,19 @@ const BuyNowFlow = () => {
                 setMaterialsLoading(false);
             }
         } else if (option === 'audit') {
-            // Go to Audit Type Selection (same as BNPL)
-            setStep(4); // Audit Type Selection
+            setInvoiceDetails(null); // audit path never uses bundle checkout invoice
+            if (formData.customerType === 'commercial') {
+                setFormData((prev) => ({
+                    ...prev,
+                    optionType: 'audit',
+                    auditType: 'commercial',
+                    auditSubtype: '',
+                }));
+                setStep(5);
+            } else {
+                setFormData((prev) => ({ ...prev, optionType: 'audit' }));
+                setStep(4);
+            }
         }
     };
 
@@ -1479,11 +1492,20 @@ const BuyNowFlow = () => {
             if (formData.floors) payload.property_floors = Number(formData.floors) || null;
             if (formData.rooms) payload.property_rooms = Number(formData.rooms) || null;
 
-            // For pre-packaged bundles: send bundle_id and amount (so backend has correct price even if bundle record is stale)
-            if (formData.selectedBundleId && formData.optionType === 'choose-system') {
-                payload.bundle_id = formData.selectedBundleId;
+            // Bundles in cart: always send bundle_id + line total (fixes orders with amount-only and null bundle_id)
+            if (formData.selectedBundles?.length > 0) {
+                const primary = formData.selectedBundles[0];
+                const bundleDbId = primary?.id ?? primary?.bundle?.id ?? formData.selectedBundleId;
+                if (bundleDbId) payload.bundle_id = Number(bundleDbId);
                 const bundleTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
                 if (bundleTotal > 0) payload.amount = bundleTotal;
+            } else if (formData.selectedBundleId && formData.optionType === 'choose-system') {
+                payload.bundle_id = formData.selectedBundleId;
+                const bundleTotal = formData.selectedBundles?.length
+                    ? formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0)
+                    : 0;
+                if (bundleTotal > 0) payload.amount = bundleTotal;
+                else if (formData.selectedProductPrice > 0) payload.amount = formData.selectedProductPrice;
             }
             // For custom bundles (build-system): send amount and custom_materials
             else if (formData.optionType === 'build-system' && formData.selectedProducts.length > 0) {
@@ -1628,6 +1650,9 @@ const BuyNowFlow = () => {
                 },
                 callback: async (response) => {
                     if (response?.status === "successful") {
+                        if (typeof window.closePaymentModal === 'function') {
+                            window.closePaymentModal();
+                        }
                         const slotDate = selectedSlot?.date
                             ? (typeof selectedSlot.date === 'string'
                                 ? selectedSlot.date.slice(0, 10)
@@ -1740,17 +1765,16 @@ const BuyNowFlow = () => {
 
 
     // Fetch bundles when step 3.5 is reached (only once)
-    // Fetch audit requests when on step 6 (commercial audit notification)
+    // Refresh audit request when on success step (all audit types)
     useEffect(() => {
-        if (step === 6 && formData.optionType === 'audit' && formData.auditType === 'commercial' && auditRequestId) {
-            fetchAuditRequests();
-            // Poll for status updates every 30 seconds
+        if (step === 6 && formData.optionType === 'audit' && auditRequestId) {
+            fetchAuditRequests(auditRequestId);
             const interval = setInterval(() => {
-                fetchAuditRequests();
+                fetchAuditRequests(auditRequestId);
             }, 30000);
             return () => clearInterval(interval);
         }
-    }, [step, auditRequestId, formData.optionType, formData.auditType]);
+    }, [step, auditRequestId, formData.optionType]);
 
     const normalizeBundleType = (value) =>
         String(value || '')
@@ -2209,6 +2233,8 @@ const BuyNowFlow = () => {
                                     : 0;
                                 // Check if product is selected
                                 const isSelected = formData.selectedProducts.some(p => p.id === product.id);
+                                const isRec = apiFlagTrue(product.is_most_popular);
+                                const isHot = apiFlagTrue(product.top_deal);
                                 
                                 return (
                                     <div
@@ -2216,6 +2242,8 @@ const BuyNowFlow = () => {
                                         className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 cursor-pointer ${
                                             isSelected 
                                                 ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
+                                                : isRec
+                                                ? 'border-emerald-200 ring-2 ring-emerald-500 shadow-md hover:border-emerald-300'
                                                 : 'border-gray-100 hover:border-[#273e8e]'
                                         }`}
                                         onClick={() => {
@@ -2238,6 +2266,12 @@ const BuyNowFlow = () => {
                                                         }
                                                     }}
                                                 />
+                                                <div className="absolute top-2 left-2 z-[5] pointer-events-none">
+                                                    <ProductPromoBadges
+                                                        isRecommended={isRec}
+                                                        isHotDeal={isHot}
+                                                    />
+                                                </div>
                                                 {isSelected && (
                                                     <div className="absolute top-2 right-2 bg-[#273e8e] text-white rounded-full p-2">
                                                         <CheckCircle size={20} />
@@ -2387,6 +2421,8 @@ const BuyNowFlow = () => {
                                 ? selectedMaterials.find(m => m.material_id === item.id)
                                 : null;
                             const quantity = selectedMaterial?.quantity || 1;
+                            const isRec = apiFlagTrue(item.is_most_popular);
+                            const isHot = apiFlagTrue(item.top_deal);
                             
                             return (
                                 <div
@@ -2394,6 +2430,8 @@ const BuyNowFlow = () => {
                                     className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 cursor-pointer ${
                                         isSelected 
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
+                                            : isRec
+                                            ? 'border-emerald-200 ring-2 ring-emerald-500 shadow-md hover:border-emerald-300'
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
                                     onClick={() => {
@@ -2416,6 +2454,12 @@ const BuyNowFlow = () => {
                                                     }
                                                 }}
                                             />
+                                            <div className="absolute top-2 left-2 z-[5] pointer-events-none">
+                                                <ProductPromoBadges
+                                                    isRecommended={isRec}
+                                                    isHotDeal={isHot}
+                                                />
+                                            </div>
                                             {isSelected && (
                                                 <div className="absolute top-2 right-2 bg-[#273e8e] text-white rounded-full p-2">
                                                     <CheckCircle size={20} />
@@ -2630,7 +2674,7 @@ const BuyNowFlow = () => {
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <FileText size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Request Professional Audit (Paid)</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Request Professional Load Audit (paid)</h3>
                 </button>
             </div>
         </div>
@@ -3258,31 +3302,38 @@ const BuyNowFlow = () => {
         // If audit flow, show audit type selection (same as BNPL)
         if (formData.optionType === 'audit') {
             return (
-                <div className="animate-fade-in">
-                    <button onClick={() => setStep(3)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
-                        <ArrowLeft size={16} className="mr-2" /> Back
-                    </button>
-                    <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
-                        Select Audit Type
-                    </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-                        {(auditTypes.length > 0 ? auditTypes : [
-                            { id: 'home-office', label: 'Home / Office' },
-                            { id: 'commercial', label: 'Commercial / Industrial' }
-                        ]).map((type) => (
-                            <button
-                                key={type.id}
-                                onClick={() => handleAuditTypeSelect(type.id)}
-                                className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center"
-                            >
-                                <div className="bg-blue-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
-                                    <FileText size={40} className="text-[#273e8e]" />
-                                </div>
-                                <h3 className="text-xl font-bold mb-2 text-gray-800">{type.label}</h3>
-                            </button>
-                        ))}
+                <>
+                    <div className="animate-fade-in">
+                        <button onClick={() => setStep(3)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                            <ArrowLeft size={16} className="mr-2" /> Back
+                        </button>
+                        <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
+                            Where is the audit for?
+                        </h2>
                     </div>
-                </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto animate-fade-in">
+                        <button
+                            type="button"
+                            onClick={() => handleAuditTypeSelect('home')}
+                            className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center"
+                        >
+                            <div className="bg-blue-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
+                                <Home size={40} className="text-[#273e8e]" />
+                            </div>
+                            <h3 className="text-xl font-bold mb-2 text-gray-800">Home</h3>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleAuditTypeSelect('office')}
+                            className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center"
+                        >
+                            <div className="bg-blue-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
+                                <Building2 size={40} className="text-[#273e8e]" />
+                            </div>
+                            <h3 className="text-xl font-bold mb-2 text-gray-800">Office</h3>
+                        </button>
+                    </div>
+                </>
             );
         }
 
@@ -3404,7 +3455,7 @@ const BuyNowFlow = () => {
                                     <span className="font-bold text-[#273e8e] ml-4">
                                         {addon.calculation_type === 'percentage' 
                                             ? `${addon.calculation_value}%`
-                                            : `₦${Number(addon.price || 0).toLocaleString()}`
+                                            : `₦${formatAmount(addon.price || 0)}`
                                         }
                                     </span>
                                 </div>
@@ -3684,106 +3735,55 @@ const BuyNowFlow = () => {
         }
     };
 
-    const renderStep7 = () => {
-        // If audit flow, show audit order summary
-        if (formData.optionType === 'audit') {
-            return (
-                <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-                    <button onClick={() => setStep(5)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
-                        <ArrowLeft size={16} className="mr-2" /> Back
-                    </button>
-                    <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary</h2>
-                    
-                    <div className="space-y-4 mb-6">
-                        <div className="flex justify-between items-center">
-                            <div className="flex items-center">
-                                <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                    <FileText size={24} className="text-gray-600" />
-                                </div>
-                                <div>
-                                    <p className="font-bold text-gray-800">Professional Energy Audit</p>
-                                    <p className="text-sm text-gray-500">
-                                        {formData.auditType === 'home-office' ? 'Home / Office Audit' : 'Commercial / Industrial Audit'}
-                                    </p>
-                                </div>
-                            </div>
-                            <span className="font-bold">Price will be calculated</span>
-                        </div>
+    /** Shown after any audit request (home / office / commercial) — no order summary or invoice. */
+    const renderAuditFlowSuccessScreen = () => {
+        const auditKindLabel =
+            formData.auditType === 'commercial'
+                ? 'commercial / industrial'
+                : formData.auditSubtype === 'office'
+                    ? 'office'
+                    : 'home';
+        const reqId = auditRequestId || formData.auditRequestId;
 
-                        <div className="text-sm text-gray-600 pl-14 space-y-1">
-                            <p><strong>Property Location:</strong> {formData.state}</p>
-                            {formData.houseNo && formData.streetName && (
-                                <p><strong>Address:</strong> {formData.houseNo}, {formData.streetName}</p>
-                            )}
-                            {formData.floors && <p><strong>Floors:</strong> {formData.floors}</p>}
-                            {formData.rooms && <p><strong>Rooms:</strong> {formData.rooms}</p>}
-                        </div>
+        return (
+            <div className="animate-fade-in max-w-lg w-full mx-auto text-center px-2">
+                <div className="bg-[#FFFDF8] border border-amber-100/80 shadow-sm p-8 md:p-10 rounded-2xl">
+                    <div className="w-16 h-16 rounded-full bg-amber-100/90 flex items-center justify-center mx-auto mb-6 ring-4 ring-amber-50">
+                        <AlertCircle className="w-9 h-9 text-amber-800/90" strokeWidth={2.25} />
                     </div>
-
-                    <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6">
-                        <p className="text-sm text-blue-700">
-                            <strong>Note:</strong> Detailed invoice with all fees will be shown next.
-                        </p>
+                    <h2 className="text-2xl font-bold mb-4 text-[#1e3a5f]">Audit Request Submitted</h2>
+                    <p className="text-gray-600 mb-3 text-[15px] leading-relaxed">
+                        Your {auditKindLabel} audit request has been submitted successfully{' '}
+                        <span className="whitespace-nowrap">(Request ID: #{reqId})</span>.
+                    </p>
+                    <p className="text-gray-600 mb-8 text-[15px] leading-relaxed">
+                        Our team will contact you within 24 - 72 hours to discuss your energy audit.
+                    </p>
+                    <div className="space-y-3">
+                        <button
+                            type="button"
+                            onClick={() => navigate('/')}
+                            className="w-full bg-[#273e8e] text-white px-8 py-3.5 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors shadow-sm"
+                        >
+                            Return to Dashboard
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleCheckAuditRequestStatus(reqId)}
+                            disabled={checkingAuditStatus}
+                            className="w-full border-2 border-gray-300 bg-white text-[#273e8e] px-8 py-3.5 rounded-xl font-bold hover:bg-gray-50 transition-colors"
+                        >
+                            {checkingAuditStatus ? 'Checking...' : 'Check Audit Request Status'}
+                        </button>
                     </div>
-
-                    <button
-                        onClick={async () => {
-                            // Proceed to checkout to get invoice
-                            setLoading(true);
-                            try {
-                                const token = localStorage.getItem('access_token');
-                                if (!token) {
-                                    alert("Please login to continue");
-                                    navigate('/login');
-                                    return;
-                                }
-
-                                const checkoutPayload = {
-                                    customer_type: formData.customerType,
-                                    product_category: 'audit',
-                                    audit_request_id: auditRequestId,
-                                    amount: 0 // Will be calculated by backend
-                                };
-
-                                const checkoutResponse = await axios.post(API.BUY_NOW_CHECKOUT, checkoutPayload, {
-                                    headers: { 
-                                        Authorization: `Bearer ${token}`,
-                                        'Content-Type': 'application/json',
-                                        Accept: 'application/json'
-                                    }
-                                });
-
-                                if (checkoutResponse.data.status === 'success') {
-                                    setInvoiceDetails(checkoutResponse.data.data);
-                                    setOrderId(checkoutResponse.data.data.order_id);
-                                    setStep(8); // Go to Order Summary with details
-                                } else {
-                                    alert("Failed to process checkout. Please try again.");
-                                }
-                            } catch (error) {
-                                console.error("Checkout Error:", error);
-                                const errorMessage = error.response?.data?.message || 
-                                                    (error.response?.data?.errors ? JSON.stringify(error.response.data.errors) : null) ||
-                                                    "Failed to process checkout. Please try again.";
-                                alert(errorMessage);
-                            } finally {
-                                setLoading(false);
-                            }
-                        }}
-                        disabled={loading}
-                        className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
-                    >
-                        {loading ? (
-                            <span className="flex items-center justify-center">
-                                <Loader className="animate-spin mr-2" size={20} />
-                                Processing...
-                            </span>
-                        ) : (
-                            'Proceed to Invoice'
-                        )}
-                    </button>
                 </div>
-            );
+            </div>
+        );
+    };
+
+    const renderStep7 = () => {
+        if (formData.optionType === 'audit') {
+            return renderAuditFlowSuccessScreen();
         }
 
         // ── STEP 7: ORDER SUMMARY ONLY (mirrors BNPL renderStep6_5 exactly) ──
@@ -3854,7 +3854,16 @@ const BuyNowFlow = () => {
                 <h2 className="text-2xl font-bold mb-4 text-[#273e8e] border-b pb-4">Order Summary</h2>
 
                 <div className="mb-6 p-4 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
-                    <strong>Next step:</strong> On the invoice screen you will enter your <strong>phone number</strong> and full <strong>installation address</strong> before confirming the order and paying.
+                    <strong>Next step:</strong>{' '}
+                    {formData.installerChoice === 'own' ? (
+                        <>
+                            On the invoice screen, you will enter your contact information and delivery address before confirming the order and making payment.
+                        </>
+                    ) : (
+                        <>
+                            On the invoice screen, you will enter your contact information and address before confirming the order and making payment.
+                        </>
+                    )}
                 </div>
 
                 {enrichingBundles && (
@@ -3885,15 +3894,15 @@ const BuyNowFlow = () => {
                                             <td className="py-3 px-2 text-gray-800">{row.description}</td>
                                             <td className="py-3 px-2 text-center">{row.quantity}</td>
                                             <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
-                                            <td className="py-3 px-2 text-right text-gray-600">{row.rate > 0 ? `₦${Number(row.rate).toLocaleString()}` : <span className="italic text-gray-400">Included</span>}</td>
-                                            <td className="py-3 px-2 text-right font-semibold">{row.totalCost > 0 ? `₦${Number(row.totalCost).toLocaleString()}` : <span className="italic text-gray-400">Included</span>}</td>
+                                            <td className="py-3 px-2 text-right text-gray-600">{row.rate > 0 ? `₦${formatAmount(row.rate)}` : <span className="italic text-gray-400">Included</span>}</td>
+                                            <td className="py-3 px-2 text-right font-semibold">{row.totalCost > 0 ? `₦${formatAmount(row.totalCost)}` : <span className="italic text-gray-400">Included</span>}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                                 <tfoot>
                                     <tr className="border-t-2 border-gray-300">
                                         <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Sub-Total</td>
-                                        <td className="py-3 px-2 text-right font-bold text-lg">₦{Number(section.subTotal).toLocaleString()}</td>
+                                        <td className="py-3 px-2 text-right font-bold text-lg">₦{formatAmount(section.subTotal)}</td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -3925,15 +3934,15 @@ const BuyNowFlow = () => {
                                             <td className="py-3 px-2 text-gray-800">{row.description}</td>
                                             <td className="py-3 px-2 text-center">{row.quantity}</td>
                                             <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
-                                            <td className="py-3 px-2 text-right">₦{Number(row.rate).toLocaleString()}</td>
-                                            <td className="py-3 px-2 text-right font-semibold">₦{Number(row.totalCost).toLocaleString()}</td>
+                                            <td className="py-3 px-2 text-right">₦{formatAmount(row.rate)}</td>
+                                            <td className="py-3 px-2 text-right font-semibold">₦{formatAmount(row.totalCost)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                                 <tfoot>
                                     <tr className="border-t-2 border-gray-300">
                                         <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Sub-Total</td>
-                                        <td className="py-3 px-2 text-right font-bold text-lg">₦{Number(productRows.reduce((s, r) => s + r.totalCost, 0)).toLocaleString()}</td>
+                                        <td className="py-3 px-2 text-right font-bold text-lg">₦{formatAmount(productRows.reduce((s, r) => s + r.totalCost, 0))}</td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -3944,7 +3953,7 @@ const BuyNowFlow = () => {
                 {(bundleSections.length + (productRows.length > 0 ? 1 : 0)) > 1 && (
                     <div className="border-t-2 border-[#273e8e] pt-3 mb-6 flex justify-between items-center">
                         <span className="font-bold text-lg text-gray-800">Overall Sub-Total</span>
-                        <span className="font-bold text-xl text-[#273e8e]">₦{Number(overallSubTotal || basePrice || 0).toLocaleString()}</span>
+                        <span className="font-bold text-xl text-[#273e8e]">₦{formatAmount(overallSubTotal || basePrice || 0)}</span>
                     </div>
                 )}
 
@@ -3965,6 +3974,10 @@ const BuyNowFlow = () => {
     };
 
     const renderStep7_5 = () => {
+        if (formData.optionType === 'audit') {
+            return renderAuditFlowSuccessScreen();
+        }
+
         // Invoice step (mirrors BNPL renderStep6_75 exactly)
         const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
         const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
@@ -4074,11 +4087,9 @@ const BuyNowFlow = () => {
                 <div className="mb-8 p-5 rounded-xl border border-[#273e8e]/25 bg-[#f8faff]">
                     <h3 className="text-lg font-bold text-[#273e8e] mb-1 flex items-center gap-2">
                         <User size={22} className="shrink-0" />
-                        Contact & installation site
+                        Contact Information
                     </h3>
-                    <p className="text-sm text-gray-600 mb-4">
-                        We use this to reach you and to plan installation. It will appear on your order before you pay.
-                    </p>
+                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Full name *</label>
@@ -4245,15 +4256,15 @@ const BuyNowFlow = () => {
                                             <td className={`py-3 px-2 ${row.isBold ? 'font-semibold text-gray-900' : row.isDetail ? 'text-gray-500 text-xs' : 'text-gray-800'}`}>{row.description}</td>
                                             <td className="py-3 px-2 text-center">{row.quantity}</td>
                                             <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
-                                            <td className="py-3 px-2 text-right">{row.isDetail ? <span className="text-gray-400 text-xs">Included</span> : (row.rate > 0 ? `₦${Number(row.rate).toLocaleString()}` : '—')}</td>
-                                            <td className="py-3 px-2 text-right font-semibold">{row.isDetail ? '' : (row.totalCost > 0 ? `₦${Number(row.totalCost).toLocaleString()}` : '—')}</td>
+                                            <td className="py-3 px-2 text-right">{row.isDetail ? <span className="text-gray-400 text-xs">Included</span> : (row.rate > 0 ? `₦${formatAmount(row.rate)}` : '—')}</td>
+                                            <td className="py-3 px-2 text-right font-semibold">{row.isDetail ? '' : (row.totalCost > 0 ? `₦${formatAmount(row.totalCost)}` : '—')}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                                 <tfoot>
                                     <tr className="border-t-2 border-gray-300">
                                         <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Net-Total</td>
-                                        <td className="py-3 px-2 text-right font-bold">₦{Number(section.netTotal).toLocaleString()}</td>
+                                        <td className="py-3 px-2 text-right font-bold">₦{formatAmount(section.netTotal)}</td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -4285,8 +4296,8 @@ const BuyNowFlow = () => {
                                             <td className="py-3 px-2 text-gray-800">{row.description}</td>
                                             <td className="py-3 px-2 text-center">{row.quantity}</td>
                                             <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
-                                            <td className="py-3 px-2 text-right">₦{Number(row.rate).toLocaleString()}</td>
-                                            <td className="py-3 px-2 text-right font-semibold">₦{Number(row.totalCost).toLocaleString()}</td>
+                                            <td className="py-3 px-2 text-right">₦{formatAmount(row.rate)}</td>
+                                            <td className="py-3 px-2 text-right font-semibold">₦{formatAmount(row.totalCost)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -4297,22 +4308,22 @@ const BuyNowFlow = () => {
 
                 {insuranceFee > 0 && (
                     <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg text-sm text-yellow-800 mb-4">
-                        Insurance Fee (3%): ₦{Number(insuranceFee).toLocaleString()} (included in overall total)
+                        Insurance Fee (3%): ₦{formatAmount(insuranceFee)} (included in overall total)
                     </div>
                 )}
 
                 <div className="bg-[#273e8e]/5 border border-[#273e8e]/20 rounded-lg p-4 mb-6">
                     <div className="flex justify-between items-center text-sm text-gray-700 mb-1">
                         <span>Overall Net-Total</span>
-                        <span className="font-semibold">₦{Number(overallNetTotal).toLocaleString()}</span>
+                        <span className="font-semibold">₦{formatAmount(overallNetTotal)}</span>
                     </div>
                     <div className="flex justify-between items-center text-sm text-gray-700 mb-2">
                         <span>VAT ({vatPercent}%)</span>
-                        <span className="font-semibold">₦{Number(overallVat).toLocaleString()}</span>
+                        <span className="font-semibold">₦{formatAmount(overallVat)}</span>
                     </div>
                     <div className="flex justify-between items-center border-t border-[#273e8e]/20 pt-2">
                         <span className="font-bold text-lg text-[#273e8e]">Overall Grand-Total</span>
-                        <span className="font-bold text-xl text-[#273e8e]">₦{Number(overallGrandTotal).toLocaleString()}</span>
+                        <span className="font-bold text-xl text-[#273e8e]">₦{formatAmount(overallGrandTotal)}</span>
                     </div>
                 </div>
 
@@ -4347,55 +4358,8 @@ const BuyNowFlow = () => {
             );
         }
 
-        // If audit flow, show audit order summary
         if (formData.optionType === 'audit') {
-            return (
-                <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-                    <button onClick={() => setStep(7)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
-                        <ArrowLeft size={16} className="mr-2" /> Back
-                    </button>
-                    <h2 className="text-2xl font-bold mb-6 text-[#273e8e] border-b pb-4">Order Summary</h2>
-                    
-                    <div className="space-y-4 mb-6">
-                        <div className="flex justify-between items-center">
-                            <div className="flex items-center">
-                                <div className="bg-gray-100 p-2 rounded-lg mr-4">
-                                    <FileText size={24} className="text-gray-600" />
-                                </div>
-                                <div>
-                                    <p className="font-bold text-gray-800">Professional Energy Audit</p>
-                                    <p className="text-sm text-gray-500">
-                                        {formData.auditType === 'home-office' ? 'Home / Office Audit' : 'Commercial / Industrial Audit'}
-                                    </p>
-                                </div>
-                            </div>
-                            <span className="font-bold">₦{Number(invoiceDetails.product_price || invoiceDetails.total || 0).toLocaleString()}</span>
-                        </div>
-
-                        <div className="text-sm text-gray-600 pl-14 space-y-1">
-                            <p><strong>Property Location:</strong> {formData.state}</p>
-                            {formData.houseNo && formData.streetName && (
-                                <p><strong>Address:</strong> {formData.houseNo}, {formData.streetName}</p>
-                            )}
-                            {formData.floors && <p><strong>Floors:</strong> {formData.floors}</p>}
-                            {formData.rooms && <p><strong>Rooms:</strong> {formData.rooms}</p>}
-                        </div>
-                    </div>
-
-                    <div className="bg-green-50 border border-green-200 p-4 rounded-lg mb-6">
-                        <p className="text-sm text-green-700">
-                            <strong>✓ Order confirmed!</strong> Please review the detailed invoice below and proceed to payment.
-                        </p>
-                    </div>
-
-                    <button
-                        onClick={() => setStep(5)}
-                        className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
-                    >
-                        View Detailed Invoice
-                    </button>
-                </div>
-            );
+            return renderAuditFlowSuccessScreen();
         }
 
         // Non-audit: order confirmed — skip to payment (step 5).
@@ -4412,16 +4376,107 @@ const BuyNowFlow = () => {
     };
 
     const renderStep5 = () => {
-        // If audit flow and home-office, show property details form ONLY if invoiceDetails is not set
-        // If invoiceDetails exists, it means we've already submitted the form and should show invoice
-        if (formData.optionType === 'audit' && formData.auditType === 'home-office' && !invoiceDetails) {
+        // Audit: facility/property form — always on step 5 until submit (never gated by stale invoiceDetails)
+        if (
+            formData.optionType === 'audit' &&
+            (formData.auditType === 'commercial' || formData.auditType === 'home-office')
+        ) {
+            const isCommercial = formData.auditType === 'commercial';
+            const isOffice = formData.auditType === 'home-office' && formData.auditSubtype === 'office';
+            const isHome = formData.auditType === 'home-office' && !isOffice;
+            const auditBackStep = isCommercial ? 1 : 4;
+            const formTitle = isCommercial
+                ? 'Commercial/Industrial Details'
+                : isOffice
+                    ? 'Office Details'
+                    : 'Property Details';
+
+            const stateBlockBn = (
+                <>
+                    {states.length > 0 ? (
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
+                            <select
+                                required
+                                className="w-full p-3 border rounded-lg"
+                                value={formData.stateId ?? ''}
+                                onChange={(e) => {
+                                    const stateId = e.target.value ? Number(e.target.value) : null;
+                                    const selectedState = states.find((s) => s.id === stateId);
+                                    setFormData({ ...formData, state: selectedState?.name || '', stateId });
+                                }}
+                            >
+                                <option value="">Select State</option>
+                                {states.filter((s) => s.is_active).map((state) => (
+                                    <option key={state.id} value={state.id}>
+                                        {state.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    ) : (
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
+                            <input
+                                type="text"
+                                placeholder="State"
+                                required
+                                className="w-full p-3 border rounded-lg"
+                                value={formData.state}
+                                onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                            />
+                        </div>
+                    )}
+                </>
+            );
+
+            const homeInvalidBn =
+                loading ||
+                !formData.fullName ||
+                !formData.phone ||
+                !formData.state ||
+                !formData.houseNo ||
+                !formData.streetName ||
+                !formData.buildingType?.trim() ||
+                !formData.landmark?.trim() ||
+                !formData.floors ||
+                !formData.rooms ||
+                (formData.isGatedEstate && (!formData.estateName || !formData.estateAddress));
+
+            const officeInvalidBn =
+                loading ||
+                !formData.companyName?.trim() ||
+                !formData.fullName?.trim() ||
+                !formData.phone?.trim() ||
+                !formData.state ||
+                !formData.officeAddress?.trim() ||
+                !formData.landmark?.trim() ||
+                !formData.buildingType?.trim() ||
+                !formData.floors ||
+                !formData.officeSpaces;
+
+            const commercialInvalidBn =
+                loading ||
+                !formData.companyName?.trim() ||
+                !formData.fullName?.trim() ||
+                !formData.phone?.trim() ||
+                !formData.state ||
+                !formData.commercialAddress?.trim() ||
+                !formData.landmark?.trim() ||
+                !formData.facilityDescription?.trim();
+
+            const submitDisabledBn = isCommercial ? commercialInvalidBn : isOffice ? officeInvalidBn : homeInvalidBn;
+
             return (
                 <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-                    <button onClick={() => setStep(4)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
+                    <button
+                        type="button"
+                        onClick={() => setStep(auditBackStep)}
+                        className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]"
+                    >
                         <ArrowLeft size={16} className="mr-2" /> Back
                     </button>
-                    
-                    {/* Custom Order Flow Indicator */}
+
                     {cartToken && cartItems.length > 0 && (
                         <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
                             <div className="flex items-start">
@@ -4429,7 +4484,8 @@ const BuyNowFlow = () => {
                                 <div className="flex-1">
                                     <h3 className="font-semibold text-blue-800 mb-2">Custom Order Items Loaded</h3>
                                     <p className="text-sm text-blue-700 mb-3">
-                                        Your cart contains {cartItems.length} item{cartItems.length !== 1 ? 's' : ''} prepared by admin.
+                                        Your cart contains {cartItems.length} item{cartItems.length !== 1 ? 's' : ''} prepared by
+                                        admin.
                                     </p>
                                     <div className="space-y-2">
                                         {cartItems.map((item, idx) => (
@@ -4437,9 +4493,7 @@ const BuyNowFlow = () => {
                                                 <span className="font-medium">
                                                     {item.itemable?.title || item.itemable?.name || `Item #${item.itemable_id}`}
                                                 </span>
-                                                <span className="ml-2">
-                                                    (₦{Number(item.unit_price || 0).toLocaleString()})
-                                                </span>
+                                                <span className="ml-2">(₦{formatAmount(item.unit_price || 0)})</span>
                                             </div>
                                         ))}
                                     </div>
@@ -4447,7 +4501,7 @@ const BuyNowFlow = () => {
                             </div>
                         </div>
                     )}
-                    
+
                     {cartLoading && (
                         <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                             <div className="flex items-center">
@@ -4456,7 +4510,7 @@ const BuyNowFlow = () => {
                             </div>
                         </div>
                     )}
-                    
+
                     {cartError && (
                         <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
                             <div className="flex items-center">
@@ -4465,143 +4519,307 @@ const BuyNowFlow = () => {
                             </div>
                         </div>
                     )}
-                    
-                    <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Property Details</h2>
+
+                    <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">{formTitle}</h2>
                     <form onSubmit={handleAuditAddressSubmit} className="space-y-4">
-                        {states.length > 0 ? (
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
-                                <select
-                                    required
-                                    className="w-full p-3 border rounded-lg"
-                                    onChange={e => {
-                                        const stateId = e.target.value ? Number(e.target.value) : null;
-                                        const selectedState = states.find(s => s.id === stateId);
-                                        setFormData({ ...formData, state: selectedState?.name || '', stateId });
-                                    }}
-                                >
-                                    <option value="">Select State</option>
-                                    {states.filter(s => s.is_active).map((state) => (
-                                        <option key={state.id} value={state.id}>{state.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        ) : (
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
-                                <input type="text" placeholder="State" required className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, state: e.target.value })} />
-                            </div>
+                        {isCommercial && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Company Name *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.companyName}
+                                        onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                                    />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Contact Person Name *</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            className="w-full p-3 border rounded-lg"
+                                            value={formData.fullName}
+                                            onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Contact Phone Number *</label>
+                                        <input
+                                            type="tel"
+                                            required
+                                            className="w-full p-3 border rounded-lg"
+                                            value={formData.phone}
+                                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                                {stateBlockBn}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Address *</label>
+                                    <textarea
+                                        required
+                                        rows={3}
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.commercialAddress}
+                                        onChange={(e) => setFormData({ ...formData, commercialAddress: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full p-3 border rounded-lg"
+                                        placeholder="e.g. grid, diesel generator, inverter"
+                                        value={formData.landmark}
+                                        onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Description of facility *</label>
+                                    <textarea
+                                        required
+                                        rows={4}
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.facilityDescription}
+                                        onChange={(e) => setFormData({ ...formData, facilityDescription: e.target.value })}
+                                    />
+                                </div>
+                            </>
                         )}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">House No *</label>
-                            <input 
-                                type="text" 
-                                placeholder="House Number" 
-                                required 
-                                className="w-full p-3 border rounded-lg" 
-                                value={formData.houseNo}
-                                onChange={e => setFormData({ ...formData, houseNo: e.target.value })} 
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Street Name *</label>
-                            <input 
-                                type="text" 
-                                placeholder="Street Name" 
-                                required 
-                                className="w-full p-3 border rounded-lg" 
-                                value={formData.streetName}
-                                onChange={e => setFormData({ ...formData, streetName: e.target.value })} 
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Landmark (Optional)</label>
-                            <input 
-                                type="text" 
-                                placeholder="Landmark" 
-                                className="w-full p-3 border rounded-lg" 
-                                value={formData.landmark}
-                                onChange={e => setFormData({ ...formData, landmark: e.target.value })} 
-                            />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Number of Floors *</label>
-                                <input 
-                                    type="number" 
-                                    placeholder="Floors" 
-                                    required
-                                    min="0"
-                                    className="w-full p-3 border rounded-lg" 
-                                    value={formData.floors}
-                                    onChange={e => setFormData({ ...formData, floors: e.target.value })} 
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Number of Rooms *</label>
-                                <input 
-                                    type="number" 
-                                    placeholder="Rooms" 
-                                    required
-                                    min="0"
-                                    className="w-full p-3 border rounded-lg" 
-                                    value={formData.rooms}
-                                    onChange={e => setFormData({ ...formData, rooms: e.target.value })} 
-                                />
-                            </div>
-                        </div>
-                        
-                        {/* Gated Estate Section */}
-                        <div className="mt-4">
-                            <label className="flex items-center space-x-2 cursor-pointer">
-                                <input 
-                                    type="checkbox" 
-                                    checked={formData.isGatedEstate} 
-                                    onChange={e => setFormData({ ...formData, isGatedEstate: e.target.checked })} 
-                                    className="h-5 w-5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded"
-                                />
-                                <span className="text-gray-700">Is this property in a gated estate?</span>
-                            </label>
-                        </div>
-                        
-                        {formData.isGatedEstate && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                                <input 
-                                    type="text" 
-                                    placeholder="Estate Name *" 
-                                    required={formData.isGatedEstate}
-                                    className="p-3 border rounded-lg" 
-                                    onChange={e => setFormData({ ...formData, estateName: e.target.value })} 
-                                />
-                                <input 
-                                    type="text" 
-                                    placeholder="Estate Address *" 
-                                    required={formData.isGatedEstate}
-                                    className="p-3 border rounded-lg" 
-                                    onChange={e => setFormData({ ...formData, estateAddress: e.target.value })} 
-                                />
-                            </div>
+
+                        {isOffice && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Company Name *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.companyName}
+                                        onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                                    />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Contact Person Name *</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            className="w-full p-3 border rounded-lg"
+                                            value={formData.fullName}
+                                            onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Contact Phone Number *</label>
+                                        <input
+                                            type="tel"
+                                            required
+                                            className="w-full p-3 border rounded-lg"
+                                            value={formData.phone}
+                                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                                {stateBlockBn}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Address *</label>
+                                    <textarea
+                                        required
+                                        rows={3}
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.officeAddress}
+                                        onChange={(e) => setFormData({ ...formData, officeAddress: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full p-3 border rounded-lg"
+                                        placeholder="e.g. grid, diesel generator, inverter"
+                                        value={formData.landmark}
+                                        onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Type of building *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.buildingType}
+                                        onChange={(e) => setFormData({ ...formData, buildingType: e.target.value })}
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">No. of floors *</label>
+                                        <input
+                                            type="number"
+                                            required
+                                            min="0"
+                                            className="w-full p-3 border rounded-lg"
+                                            value={formData.floors}
+                                            onChange={(e) => setFormData({ ...formData, floors: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">No. of office spaces *</label>
+                                        <input
+                                            type="number"
+                                            required
+                                            min="0"
+                                            className="w-full p-3 border rounded-lg"
+                                            value={formData.officeSpaces}
+                                            onChange={(e) => setFormData({ ...formData, officeSpaces: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                            </>
                         )}
-                        
-                        <button 
-                            type="submit" 
-                            disabled={
-                                loading || 
-                                !formData.state || 
-                                !formData.houseNo || 
-                                !formData.streetName || 
-                                !formData.floors || 
-                                !formData.rooms ||
-                                (formData.isGatedEstate && (!formData.estateName || !formData.estateAddress))
-                            }
+
+                        {isHome && (
+                            <>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Contact Name *</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Full Name"
+                                            required
+                                            className="w-full p-3 border rounded-lg"
+                                            value={formData.fullName}
+                                            onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Contact Phone *</label>
+                                        <input
+                                            type="tel"
+                                            placeholder="Phone Number"
+                                            required
+                                            className="w-full p-3 border rounded-lg"
+                                            value={formData.phone}
+                                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                                {stateBlockBn}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">House No *</label>
+                                    <input
+                                        type="text"
+                                        placeholder="House Number"
+                                        required
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.houseNo}
+                                        onChange={(e) => setFormData({ ...formData, houseNo: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Street Name *</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Street Name"
+                                        required
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.streetName}
+                                        onChange={(e) => setFormData({ ...formData, streetName: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Type of building *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        placeholder="e.g. Bungalow, duplex, detached"
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.buildingType}
+                                        onChange={(e) => setFormData({ ...formData, buildingType: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        placeholder="e.g. grid, diesel generator, inverter"
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.landmark}
+                                        onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Number of Floors *</label>
+                                        <input
+                                            type="number"
+                                            placeholder="Floors"
+                                            required
+                                            min="0"
+                                            className="w-full p-3 border rounded-lg"
+                                            value={formData.floors}
+                                            onChange={(e) => setFormData({ ...formData, floors: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Number of Rooms *</label>
+                                        <input
+                                            type="number"
+                                            placeholder="Rooms"
+                                            required
+                                            min="0"
+                                            className="w-full p-3 border rounded-lg"
+                                            value={formData.rooms}
+                                            onChange={(e) => setFormData({ ...formData, rooms: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                                <div className="mt-4">
+                                    <label className="flex items-center space-x-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.isGatedEstate}
+                                            onChange={(e) => setFormData({ ...formData, isGatedEstate: e.target.checked })}
+                                            className="h-5 w-5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded"
+                                        />
+                                        <span className="text-gray-700">Is this property in a gated estate?</span>
+                                    </label>
+                                </div>
+                                {formData.isGatedEstate && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                        <input
+                                            type="text"
+                                            placeholder="Estate Name *"
+                                            required={formData.isGatedEstate}
+                                            className="p-3 border rounded-lg"
+                                            value={formData.estateName}
+                                            onChange={(e) => setFormData({ ...formData, estateName: e.target.value })}
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder="Estate Address *"
+                                            required={formData.isGatedEstate}
+                                            className="p-3 border rounded-lg"
+                                            value={formData.estateAddress}
+                                            onChange={(e) => setFormData({ ...formData, estateAddress: e.target.value })}
+                                        />
+                                    </div>
+                                )}
+                            </>
+                        )}
+
+                        <button
+                            type="submit"
+                            disabled={submitDisabledBn}
                             className={`w-full py-4 rounded-xl font-bold transition-colors ${
-                                loading || 
-                                !formData.state || 
-                                !formData.houseNo || 
-                                !formData.streetName || 
-                                !formData.floors || 
-                                !formData.rooms ||
-                                (formData.isGatedEstate && (!formData.estateName || !formData.estateAddress))
+                                submitDisabledBn
                                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                                     : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
                             }`}
@@ -4615,6 +4833,9 @@ const BuyNowFlow = () => {
                                 'Continue'
                             )}
                         </button>
+                        {submitDisabledBn && !loading && (
+                            <p className="text-sm text-red-600 text-center">Please fill in all required fields.</p>
+                        )}
                     </form>
                 </div>
             );
@@ -4706,11 +4927,22 @@ const BuyNowFlow = () => {
             });
         }
 
-        const allItemsNetTotal = bundleInvoiceSections5.reduce((s, sec) => s + sec.netTotal, 0) + (apiInsurance > 0 ? apiInsurance : 0);
-        const vatAmount = (allItemsNetTotal * vatPercent) / 100;
-        const grandTotal = allItemsNetTotal + vatAmount;
-        const apiTotal = invoiceDetails?.total != null ? Number(invoiceDetails.total) : null;
-        const finalTotal = (apiTotal != null && apiTotal > grandTotal) ? apiTotal : grandTotal;
+        const subTotalBeforeDiscount = bundleInvoiceSections5.reduce((s, sec) => s + sec.netTotal, 0);
+        const insuranceAmount = apiInsurance > 0 ? apiInsurance : 0;
+        const discountableBase = Math.max(subTotalBeforeDiscount, 0);
+        const computedDiscountFromPct = outrightDiscountPct > 0 ? (discountableBase * outrightDiscountPct) / 100 : 0;
+        // Insurance is never discountable; if percentage exists, compute from non-insurance base.
+        const effectiveOutrightDiscount = outrightDiscountPct > 0
+            ? computedDiscountFromPct
+            : outrightDiscount;
+        const discountedSubTotal = Math.max(subTotalBeforeDiscount - effectiveOutrightDiscount, 0);
+        // Insurance is added after discount (it is not discountable).
+        const netTotal = discountedSubTotal + insuranceAmount;
+        const vatAmount = (netTotal * vatPercent) / 100;
+        const grandTotal = netTotal + vatAmount;
+        // Keep totals internally consistent in this summary card:
+        // Grand-Total must equal Net-Total + VAT.
+        const finalTotal = grandTotal;
 
         return (
         <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
@@ -4731,7 +4963,7 @@ const BuyNowFlow = () => {
                     <div className="mb-6 p-4 rounded-xl border border-gray-200 bg-gray-50">
                         <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
                             <MapPin size={18} className="text-[#273e8e] shrink-0" />
-                            Customer & installation details
+                            Customer details
                         </h3>
                         <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
                             <div>
@@ -4749,7 +4981,7 @@ const BuyNowFlow = () => {
                                 </div>
                             ) : null}
                             <div className="md:col-span-2">
-                                <dt className="text-gray-500">Installation site address</dt>
+                                <dt className="text-gray-500">Address</dt>
                                 <dd className="font-medium text-gray-900">{addr || '—'}</dd>
                             </div>
                         </dl>
@@ -4779,15 +5011,15 @@ const BuyNowFlow = () => {
                                         <td className="py-3 px-2 text-gray-800">{row.description}</td>
                                         <td className="py-3 px-2 text-center">{row.quantity}</td>
                                         <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
-                                        <td className="py-3 px-2 text-right">{row.rate > 0 ? `₦${Number(row.rate).toLocaleString()}` : '—'}</td>
-                                        <td className="py-3 px-2 text-right font-semibold">{row.totalCost > 0 ? `₦${Number(row.totalCost).toLocaleString()}` : '—'}</td>
+                                        <td className="py-3 px-2 text-right">{row.rate > 0 ? `₦${formatAmount(row.rate)}` : '—'}</td>
+                                        <td className="py-3 px-2 text-right font-semibold">{row.totalCost > 0 ? `₦${formatAmount(row.totalCost)}` : '—'}</td>
                                     </tr>
                                 ))}
                             </tbody>
                             <tfoot>
                                 <tr className="border-t-2 border-gray-300">
                                     <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Net-Total</td>
-                                    <td className="py-3 px-2 text-right font-bold">₦{Number(section.netTotal).toLocaleString()}</td>
+                                    <td className="py-3 px-2 text-right font-bold">₦{formatAmount(section.netTotal)}</td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -4797,27 +5029,49 @@ const BuyNowFlow = () => {
 
             {apiInsurance > 0 && (
                 <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg text-sm text-yellow-800 mb-4">
-                    Insurance Fee: ₦{Number(apiInsurance).toLocaleString()} (included in total)
+                    Insurance Fee: ₦{formatAmount(apiInsurance)} (not discounted; added after discount in the summary below)
                 </div>
             )}
-            {outrightDiscount > 0 && (
+            {effectiveOutrightDiscount > 0 && (
                 <div className="bg-green-50 border border-green-200 p-3 rounded-lg text-sm text-green-800 mb-4">
-                    Outright purchase discount applied: {outrightDiscountPct}% (−₦{Number(outrightDiscount).toLocaleString()})
+                    Outright purchase discount applied: {outrightDiscountPct || 10}% (−₦{formatAmount(effectiveOutrightDiscount)})
                 </div>
             )}
 
             <div className="bg-[#273e8e]/5 border border-[#273e8e]/20 rounded-lg p-4 mb-6">
                 <div className="flex justify-between items-center text-sm text-gray-700 mb-1">
-                    <span>Net-Total</span>
-                    <span className="font-semibold">₦{Number(allItemsNetTotal).toLocaleString()}</span>
+                    <span>Sub-Total</span>
+                    <span className="font-semibold">₦{formatAmount(subTotalBeforeDiscount)}</span>
+                </div>
+                {effectiveOutrightDiscount > 0 && (
+                    <div className="flex justify-between items-center text-sm text-green-700 mb-1">
+                        <span>Outright discount ({outrightDiscountPct || 10}%)</span>
+                        <span className="font-semibold">-₦{formatAmount(effectiveOutrightDiscount)}</span>
+                    </div>
+                )}
+                {effectiveOutrightDiscount > 0 && (
+                    <div className="flex justify-between items-center text-sm text-gray-600 mb-1 pl-1 border-b border-[#273e8e]/10 pb-2">
+                        <span>Sub-Total after discount</span>
+                        <span className="font-semibold text-gray-800">₦{formatAmount(discountedSubTotal)}</span>
+                    </div>
+                )}
+                {insuranceAmount > 0 && (
+                    <div className="flex justify-between items-center text-sm text-gray-700 mb-1 mt-2">
+                        <span>Insurance fee</span>
+                        <span className="font-semibold">+₦{formatAmount(insuranceAmount)}</span>
+                    </div>
+                )}
+                <div className="flex justify-between items-center text-sm text-gray-800 mb-1 mt-1 font-medium">
+                    <span>Net-Total (before VAT)</span>
+                    <span className="font-semibold">₦{formatAmount(netTotal)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm text-gray-700 mb-2">
                     <span>VAT ({vatPercent}%)</span>
-                    <span className="font-semibold">₦{Number(vatAmount).toLocaleString()}</span>
+                    <span className="font-semibold">₦{formatAmount(vatAmount)}</span>
                 </div>
                 <div className="flex justify-between items-center border-t border-[#273e8e]/20 pt-2">
                     <span className="font-bold text-lg text-[#273e8e]">Grand-Total</span>
-                    <span className="font-bold text-xl text-[#273e8e]">₦{Number(finalTotal).toLocaleString()}</span>
+                    <span className="font-bold text-xl text-[#273e8e]">₦{formatAmount(finalTotal)}</span>
                 </div>
             </div>
             
@@ -4834,18 +5088,33 @@ const BuyNowFlow = () => {
                     }
                 });
 
+                const ownInstaller = formData.installerChoice === 'own';
+
                 return (
                     <div className="mb-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
                         <h3 className="font-bold text-[#273e8e] mb-3 flex items-center">
                             <Calendar size={20} className="mr-2" />
-                            Available Installation Dates
+                            {ownInstaller ? 'Available Delivery Dates' : 'Available Installation Dates'}
                         </h3>
-                        <p className="text-sm text-gray-600 mb-3">
-                            <strong>Estimated dates:</strong> these calendar options are typical availability windows. Final installation date and time are confirmed after payment and a quick site coordination call.
-                        </p>
-                        <p className="text-sm text-gray-600 mb-3">
-                            Slots usually open from 72 hours after payment confirmation. Pick your preferred day below (exact time is scheduled with our team):
-                        </p>
+                        {ownInstaller ? (
+                            <>
+                                <p className="text-sm text-gray-600 mb-3">
+                                    <strong>Estimated dates:</strong> These calendar options are typical availability windows. Final delivery date and time are confirmed after payment and scheduled by our team.
+                                </p>
+                                <p className="text-sm text-gray-600 mb-3">
+                                    Pick your preferred delivery date below:
+                                </p>
+                            </>
+                        ) : (
+                            <>
+                                <p className="text-sm text-gray-600 mb-3">
+                                    <strong>Estimated dates:</strong> these calendar options are typical availability windows. Final installation date and time are confirmed after payment and a quick site coordination call.
+                                </p>
+                                <p className="text-sm text-gray-600 mb-3">
+                                    Slots usually open from 72 hours after payment confirmation. Pick your preferred day below (exact time is scheduled with our team):
+                                </p>
+                            </>
+                        )}
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                             {uniqueDates.slice(0, 9).map((slot, idx) => {
                                 const dateStr = new Date(slot.date).toLocaleDateString('en-NG', { 
@@ -4853,7 +5122,9 @@ const BuyNowFlow = () => {
                                     month: 'short', 
                                     day: 'numeric' 
                                 });
-                                const isSelected = selectedSlot?.date === slot.date;
+                                const slotDayKey = String(slot.date).slice(0, 10);
+                                const selectedDayKey = selectedSlot?.date ? String(selectedSlot.date).slice(0, 10) : '';
+                                const isSelected = selectedDayKey === slotDayKey;
                                 
                                 return (
                                     <button
@@ -4883,6 +5154,16 @@ const BuyNowFlow = () => {
                                 );
                             })}
                         </div>
+                        {selectedSlot?.date && (
+                            <p className="mt-3 text-sm text-[#273e8e] font-medium">
+                                Selected {ownInstaller ? 'delivery' : 'installation'} date:{' '}
+                                {new Date(selectedSlot.date).toLocaleDateString('en-NG', {
+                                    weekday: 'long',
+                                    month: 'long',
+                                    day: 'numeric'
+                                })}
+                            </p>
+                        )}
                     </div>
                 );
             })()}
@@ -4912,52 +5193,8 @@ const BuyNowFlow = () => {
     };
 
     const renderStep6 = () => {
-        // If audit flow and commercial, show commercial notification (same as BNPL)
-        if (formData.optionType === 'audit' && formData.auditType === 'commercial') {
-
-            return (
-                <div className="animate-fade-in max-w-3xl mx-auto text-center">
-                    <div className="bg-yellow-50 border border-yellow-200 p-8 rounded-2xl">
-                        <AlertCircle size={64} className="text-yellow-600 mx-auto mb-6" />
-                        <h2 className="text-3xl font-bold mb-4 text-yellow-800">Commercial Audit Request</h2>
-                        <p className="text-gray-700 mb-6 text-lg">
-                            Your commercial audit request has been submitted successfully.
-                        </p>
-                        {auditRequestId && (
-                            <div className="bg-white p-4 rounded-lg border border-yellow-300 mb-4">
-                                <p className="text-sm text-gray-700">
-                                    <strong>Request ID:</strong> #{auditRequestId}
-                                </p>
-                                {auditRequestStatus && (
-                                    <p className="text-sm text-gray-700 mt-2">
-                                        <strong>Status:</strong> <span className="capitalize">{auditRequestStatus}</span>
-                                    </p>
-                                )}
-                            </div>
-                        )}
-                        <p className="text-gray-600 mb-8">
-                            Our team will review your request and contact you within 24-48 hours with a customized quote.
-                            Commercial audits require manual review to ensure accurate pricing based on your specific requirements.
-                        </p>
-                        <div className="bg-white p-6 rounded-lg border border-yellow-300 mb-6">
-                            <p className="text-sm text-gray-700">
-                                <strong>What happens next?</strong>
-                            </p>
-                            <ul className="text-left mt-3 space-y-2 text-sm text-gray-600">
-                                <li>✓ Our audit team will review your property details</li>
-                                <li>✓ We'll calculate a custom quote based on your requirements</li>
-                                <li>✓ You'll receive an email with the quote and next steps</li>
-                            </ul>
-                        </div>
-                        {/* <button
-                            onClick={() => setStep(7)}
-                            className="w-full bg-[#273e8e] text-white py-4 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
-                        >
-                            View Order Summary
-                        </button> */}
-                    </div>
-                </div>
-            );
+        if (formData.optionType === 'audit') {
+            return renderAuditFlowSuccessScreen();
         }
 
         // Otherwise, show payment result (OLD BEHAVIOR)

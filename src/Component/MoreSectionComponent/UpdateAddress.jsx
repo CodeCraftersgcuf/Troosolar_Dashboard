@@ -4,6 +4,14 @@ import { ChevronLeft, Edit, Trash2 } from "lucide-react";
 import API from "../../config/api.config";
 import axios from "axios";
 
+/** GET /delivery-address/index: { status, data: Address[], message: string } */
+const parseAddressListPayload = (body) => {
+  if (!body || (body.status !== "success" && body.status !== true)) return null;
+  if (Array.isArray(body.data)) return body.data;
+  if (Array.isArray(body.message)) return body.message;
+  return [];
+};
+
 const UpdateAddress = () => {
   const [addresses, setAddresses] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -36,8 +44,9 @@ const UpdateAddress = () => {
         },
       });
       
-      if (response.data.status === "success" && Array.isArray(response.data.message)) {
-        setAddresses(response.data.message);
+      const list = parseAddressListPayload(response.data);
+      if (list !== null) {
+        setAddresses(list);
       } else {
         setError("Failed to load addresses.");
       }

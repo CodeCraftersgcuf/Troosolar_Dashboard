@@ -14,6 +14,8 @@ import ServiceCards from "../Component/ServiceCards";
 import HrLine from "../Component/MobileSectionResponsive/HrLine";
 import API, { BASE_URL } from "../config/api.config";
 import Loading from "../Component/Loading";
+import { getSiteBanners } from "../utils/siteBanners";
+import { apiFlagTrue } from "../utils/apiFlags";
 
 /* ---------------- helpers ---------------- */
 
@@ -91,7 +93,8 @@ const mapApiProductToCard = (p) => {
     ratingAvg,
     ratingCount: reviews.length,
     categoryId: p?.category_id,
-    isHotDeal: !!p?.top_deal,
+    isHotDeal: apiFlagTrue(p?.top_deal),
+    isRecommended: apiFlagTrue(p?.is_most_popular),
   };
 };
 
@@ -121,6 +124,8 @@ const mapBundle = (b) => {
     rating: assets?.fiveStars || assets?.rating || "",
     bundleTitle: b?.bundle_type || "",
     borderColor: "#273e8e",
+    isHotDeal: apiFlagTrue(b?.top_deal),
+    isRecommended: apiFlagTrue(b?.is_most_popular),
   };
 };
 
@@ -359,20 +364,12 @@ const Home = () => {
     fetchProducts();
   }, []);
 
-  // fetch home promo banner (public)
+  // Home promo banner (public API; URL resolved to API origin in utils)
   useEffect(() => {
-    const fetchBanner = async () => {
-      try {
-        const { data } = await axios.get(API.SITE_BANNER, {
-          headers: { Accept: "application/json" },
-        });
-        const url = data?.data?.url ?? data?.url ?? null;
-        setBannerUrl(url || null);
-      } catch {
-        setBannerUrl(null);
-      }
-    };
-    fetchBanner();
+    (async () => {
+      const { homeUrl } = await getSiteBanners();
+      setBannerUrl(homeUrl || null);
+    })();
   }, []);
 
   const catMap = useMemo(() => {
@@ -580,6 +577,8 @@ const Home = () => {
                         rating={item.rating}
                         borderColor={item.borderColor}
                         bundleTitle={item.bundleTitle}
+                        isHotDeal={item.isHotDeal}
+                        isRecommended={item.isRecommended}
                       />
                     ) : (
                       <Link to={item.link}>
@@ -594,6 +593,7 @@ const Home = () => {
                           ratingCount={item.ratingCount}
                           categoryName={item.categoryName}
                           isHotDeal={item.isHotDeal}
+                          isRecommended={item.isRecommended}
                         />
                       </Link>
                     )}
@@ -657,6 +657,8 @@ const Home = () => {
                           rating={item.rating}
                           borderColor={item.borderColor}
                           bundleTitle={item.bundleTitle}
+                          isHotDeal={item.isHotDeal}
+                          isRecommended={item.isRecommended}
                         />
                       ) : (
                         <Link to={item.link} className="w-full h-full">
@@ -671,6 +673,7 @@ const Home = () => {
                             ratingCount={item.ratingCount}
                             categoryName={item.categoryName}
                             isHotDeal={item.isHotDeal}
+                            isRecommended={item.isRecommended}
                           />
                         </Link>
                       )}

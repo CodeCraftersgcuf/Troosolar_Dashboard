@@ -62,6 +62,9 @@ const RepayModal = ({ id, isOpen, onClose }) => {
           const txId = String(txIdRaw || ""); // enforce string
 
           if (response?.status === "successful") {
+            if (typeof window.closePaymentModal === "function") {
+              window.closePaymentModal();
+            }
             try {
               const token = localStorage.getItem("access_token");
               if (!token) {

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { ContextApi } from "../Context/AppContext";
 import API from "../config/api.config";
+import ProductPromoBadges from "../Component/ProductPromoBadges";
 
 /* ---------------- helpers ---------------- */
 const formatNGN = (n) => {
@@ -84,6 +85,21 @@ const avgRating = (list) => {
   const sum = list.reduce((s, r) => s + toNum(r.rating), 0);
   return +(sum / list.length).toFixed(1);
 };
+const normalizeReview = (r) => ({
+  id: r?.id,
+  product_id: r?.product_id,
+  user_id: r?.user_id,
+  name:
+    r?.name ||
+    r?.user?.name ||
+    [r?.user?.first_name, r?.user?.sur_name].filter(Boolean).join(" ") ||
+    "User",
+  rating: toNum(r?.rating, 0),
+  review: r?.review || r?.comment || "",
+  created_at: r?.created_at,
+  admin_reply: (r?.admin_reply && String(r.admin_reply).trim()) ? String(r.admin_reply).trim() : "",
+  admin_replied_at: r?.admin_replied_at || null,
+});
 const initials = (name = "") => {
   const parts = String(name).trim().split(/\s+/);
   return [(parts[0] || "U")[0], (parts[1] || "")[0]].join("").toUpperCase();
@@ -110,7 +126,7 @@ const Stars = ({ value = 0, size = 20 }) => {
             key={i}
             size={size}
             className={
-              filled ? "fill-[#273e8e] text-[#273e8e]" : "text-gray-300"
+              filled ? "fill-amber-400 text-amber-400" : "text-gray-300"
             }
           />
         );
@@ -234,6 +250,7 @@ const mapApiProductToDetails = (p) => {
     stockQty: current,
     stockPct,
     topDeal: !!p?.top_deal,
+    isRecommended: !!p?.is_most_popular,
   };
 };
 
@@ -305,15 +322,7 @@ export default function ProductDetails() {
           if (!mapped?.id) setErr("Product not found.");
           else setProduct(mapped);
 
-          const serverReviews = safeArray(raw?.reviews).map((r) => ({
-            id: r.id,
-            product_id: r.product_id,
-            user_id: r.user_id,
-            name: r.user?.name || r.user?.first_name || "User",
-            rating: toNum(r.rating, 0),
-            review: r.review || "",
-            created_at: r.created_at,
-          }));
+          const serverReviews = safeArray(raw?.reviews).map(normalizeReview);
           setReviews(serverReviews);
         }
       } catch (e) {
@@ -331,6 +340,32 @@ export default function ProductDetails() {
       on = false;
     };
   }, [id, registerProducts]);
+
+  // Fetch product reviews directly so reviews are always available even
+  // when the product payload doesn't embed review relations.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!id) return;
+      try {
+        const token = localStorage.getItem("access_token");
+        const { data } = await axios.get(API.PRODUCT_REVIEWS, {
+          headers: {
+            Accept: "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          params: { product_id: id },
+        });
+        const list = safeArray(data?.data).map(normalizeReview);
+        if (active) setReviews(list);
+      } catch {
+        // Keep fallback reviews from product details response.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [id]);
 
   const qtyInCart = useMemo(() => {
     if (!product?.id) return 0;
@@ -575,15 +610,24 @@ export default function ProductDetails() {
             <div className="flex flex-col lg:flex-row gap-6">
               {/* Left */}
               <div className="w-full lg:w-1/2">
-                <ImageSwiper
-                  images={
-                    product.gallery?.length
-                      ? product.gallery.map((img) => ({ image: img }))
-                      : [{ image: product.image }]
-                  }
-                  productTitle={product.heading}
-                  baseUrl="https://troosolar.hmstech.org"
-                />
+                <div className="relative">
+                  <div className="absolute top-3 left-3 z-10 pointer-events-none">
+                    <ProductPromoBadges
+                      size="large"
+                      isRecommended={product.isRecommended}
+                      isHotDeal={product.topDeal}
+                    />
+                  </div>
+                  <ImageSwiper
+                    images={
+                      product.gallery?.length
+                        ? product.gallery.map((img) => ({ image: img }))
+                        : [{ image: product.image }]
+                    }
+                    productTitle={product.heading}
+                    baseUrl="https://troosolar.hmstech.org"
+                  />
+                </div>
 
                 <div className="mt-6 space-y-4">
                   <div className="grid grid-cols-2 gap-4">
@@ -626,6 +670,14 @@ export default function ProductDetails() {
                   <h1 className="text-lg sm:text-xl font-medium">
                     {product.heading}
                   </h1>
+                  <div className="mt-2">
+                    <ProductPromoBadges
+                      layout="row"
+                      size="large"
+                      isRecommended={product.isRecommended}
+                      isHotDeal={product.topDeal}
+                    />
+                  </div>
 
                   <div className="mt-3">
                     <h2 className="text-xl sm:text-2xl text-[#273e8e] font-bold">
@@ -764,6 +816,12 @@ export default function ProductDetails() {
                           </span>
                           <span>{totalReviews} Reviews</span>
                         </div>
+                        <p className="mt-3 text-xs text-gray-500">
+                          Want to leave a review? Complete an order first, then open that order in{" "}
+                          <Link to="/more?section=orders" className="text-[#273e8e] underline">
+                            More &gt; Orders
+                          </Link>.
+                        </p>
                       </div>
 
                       <div className="rounded-2xl border border-gray-300 bg-white">
@@ -799,6 +857,21 @@ export default function ProductDetails() {
                               <p className="mt-3 text-sm sm:text-base text-gray-800">
                                 {r.review}
                               </p>
+                              {r.admin_reply ? (
+                                <div className="mt-3 rounded-xl border border-[#273e8e]/25 bg-[#f5f7ff] p-3 sm:p-4">
+                                  <p className="text-xs font-semibold text-[#273e8e] mb-1">
+                                    Troosolar
+                                  </p>
+                                  <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                                    {r.admin_reply}
+                                  </p>
+                                  {r.admin_replied_at ? (
+                                    <p className="text-xs text-gray-500 mt-2">
+                                      {fmtDate(r.admin_replied_at)}
+                                    </p>
+                                  ) : null}
+                                </div>
+                              ) : null}
                               {idx < reviews.length - 1 && (
                                 <div className="h-px bg-gray-200 mt-4 mx-2" />
                               )}
@@ -893,6 +966,14 @@ export default function ProductDetails() {
           <div className="px-4 mt-4">
             <div className="border-2 border-[#273e8e] bg-white p-4 rounded-xl">
               <h1 className="text-base font-medium">{product.heading}</h1>
+              <div className="mt-2">
+                <ProductPromoBadges
+                  layout="row"
+                  size="large"
+                  isRecommended={product.isRecommended}
+                  isHotDeal={product.topDeal}
+                />
+              </div>
 
               <div className="mt-2 flex items-start justify-between">
                 <div>
@@ -1014,6 +1095,12 @@ export default function ProductDetails() {
                       </span>
                       <span>{totalReviews} Reviews</span>
                     </div>
+                    <p className="mt-3 text-xs text-gray-500">
+                      To leave a review, complete an order and open it in{" "}
+                      <Link to="/more?section=orders" className="text-[#273e8e] underline">
+                        More &gt; Orders
+                      </Link>.
+                    </p>
                   </div>
                   <div className="rounded-2xl border border-gray-300 bg-white">
                     {reviews.length ? (
@@ -1043,6 +1130,21 @@ export default function ProductDetails() {
                           <p className="mt-3 text-sm text-gray-800">
                             {r.review}
                           </p>
+                          {r.admin_reply ? (
+                            <div className="mt-3 rounded-xl border border-[#273e8e]/25 bg-[#f5f7ff] p-3">
+                              <p className="text-xs font-semibold text-[#273e8e] mb-1">
+                                Troosolar
+                              </p>
+                              <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                                {r.admin_reply}
+                              </p>
+                              {r.admin_replied_at ? (
+                                <p className="text-xs text-gray-500 mt-2">
+                                  {fmtDate(r.admin_replied_at)}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
                           {idx < reviews.length - 1 && (
                             <div className="h-px bg-gray-200 mt-4 mx-2" />
                           )}

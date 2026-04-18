@@ -8,6 +8,7 @@ import { ContextApi } from "../Context/AppContext";
 import { ShoppingCart, ArrowLeft } from "lucide-react";
 import API from "../config/api.config";
 import { assets } from "../assets/data";
+import { apiFlagTrue } from "../utils/apiFlags";
 
 // ₦ formatter
 const formatNGN = (n) => {
@@ -87,7 +88,8 @@ const mapApiProductToCard = (p) => {
         ratingCount: reviews.length,
         categoryId: p?.category_id,
         stock: stockQty,
-        isHotDeal: !!p?.top_deal,
+        isHotDeal: apiFlagTrue(p?.top_deal),
+        isRecommended: apiFlagTrue(p?.is_most_popular),
     };
 };
 
@@ -190,12 +192,17 @@ const SolarShop = () => {
         }));
     }, [filteredResults, apiProducts, catMap, isFiltering]);
 
-    // Most Popular (Mock logic: take first 4 items)
     const mostPopular = useMemo(() => {
-        return apiProducts.slice(0, 4).map((p) => ({
+        const withCat = (p) => ({
             ...p,
             categoryName: catMap[p.categoryId] || "Solar Product",
-        }));
+        });
+        const flagged = apiProducts.filter((p) => p.isRecommended || p.isHotDeal);
+        const picked = flagged.slice(0, 4);
+        if (picked.length >= 4) return picked.map(withCat);
+        const idSet = new Set(picked.map((p) => p.id));
+        const rest = apiProducts.filter((p) => !idSet.has(p.id)).slice(0, 4 - picked.length);
+        return [...picked, ...rest].map(withCat);
     }, [apiProducts, catMap]);
 
     return (

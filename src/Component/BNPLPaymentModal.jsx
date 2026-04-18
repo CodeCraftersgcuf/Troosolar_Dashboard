@@ -184,6 +184,9 @@ const BNPLPaymentModal = ({ installment, isOpen, onClose, onSuccess }) => {
           console.log('Flutterwave response:', response);
 
           if (response?.status === 'successful') {
+            if (typeof window.closePaymentModal === 'function') {
+              window.closePaymentModal();
+            }
             try {
               const token = localStorage.getItem('access_token');
               if (!token) {

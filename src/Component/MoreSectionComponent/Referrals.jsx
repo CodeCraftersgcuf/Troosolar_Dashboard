@@ -25,6 +25,8 @@ const Referrals = () => {
     referral_code: "",
     referral_balance: 0,
     my_referrals: 0,
+    program_summary: "",
+    minimum_withdrawal: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -53,10 +55,16 @@ const Referrals = () => {
         if (response.data.status === "success") {
           const data = response.data.data;
           // Backend now returns user_code as referral_code and generates it from username if missing
+          const summary =
+            data.program_summary?.trim() ||
+            "Earn referral bonus from the people you refer.";
+
           setReferralData({
             referral_code: data.referral_code ?? "",
             referral_balance: data.referral_balance ?? 0,
             my_referrals: data.my_referrals ?? 0,
+            program_summary: summary,
+            minimum_withdrawal: Number(data.minimum_withdrawal) || 0,
           });
         } else {
           setError(response.data.message || "Failed to fetch referral details");
@@ -83,7 +91,7 @@ const Referrals = () => {
       return;
     }
 
-    const shareText = `Join Troosolar using my referral code: ${referralCode}\n\nGet great deals on solar energy solutions!`;
+    const shareText = `Join Troosolar using my referral code: ${referralCode}\n\n${referralData.program_summary}`;
     const shareUrl = `${window.location.origin}/register?referral_code=${referralCode}`;
 
     // Try Web Share API first (mobile)
@@ -252,7 +260,20 @@ const Referrals = () => {
         </div>
 
         <div className="py-4 px-4 w-full border-dashed border-[#273e8e] border-[2px] rounded-2xl mt-4 bg-[#e9ebf3] text-center text-sm text-[#273e8e]">
-          <p>Earn 5% referral bonus from the people you refer</p>
+          {loading ? (
+            <p>Loading program details…</p>
+          ) : error ? (
+            <p>Unable to load program details.</p>
+          ) : (
+            <>
+              <p>{referralData.program_summary}</p>
+              {referralData.minimum_withdrawal > 0 ? (
+                <p className="mt-2 text-xs text-[#273e8e]/80">
+                  Minimum withdrawal: {formatCurrency(referralData.minimum_withdrawal)}
+                </p>
+              ) : null}
+            </>
+          )}
         </div>
       </main>
 
@@ -347,10 +368,21 @@ const Referrals = () => {
           </div>
 
           {/* Referral Bonus Info */}
-          <div className="mt-6 p-4 border-2 border-dashed border-gray-300 rounded-2xl bg-gray-50">
-            <p className="text-center text-sm text-gray-700">
-              Earn 5% referral bonus from the people you refer
-            </p>
+          <div className="mt-6 p-4 border-2 border-dashed border-gray-300 rounded-2xl bg-gray-50 text-center text-sm text-gray-700">
+            {loading ? (
+              <p>Loading program details…</p>
+            ) : error ? (
+              <p>Unable to load program details.</p>
+            ) : (
+              <>
+                <p>{referralData.program_summary}</p>
+                {referralData.minimum_withdrawal > 0 ? (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Minimum withdrawal: {formatCurrency(referralData.minimum_withdrawal)}
+                  </p>
+                ) : null}
+              </>
+            )}
           </div>
         </div>
       </div>

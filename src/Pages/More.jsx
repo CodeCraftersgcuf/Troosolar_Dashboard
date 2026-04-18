@@ -21,6 +21,7 @@ import EditProfile from "../Component/MoreSectionComponent/EditProfileSection";
 import KycDetails from "../Component/MoreSectionComponent/KycDetails";
 import Support from "../Component/MoreSectionComponent/Support";
 import MyOrders from "../Component/MoreSectionComponent/MyOrders"; // <-- NEW
+import AuditRequests from "../Component/MoreSectionComponent/AuditRequests";
 import Notifications from "../Component/MoreSectionComponent/Notifications"; // <-- NEW
 import CreditScore from "../Component/MoreSectionComponent/CreditScore";
 import FAQ from "../Component/FAQ";
@@ -35,6 +36,7 @@ import {
   Headphones,
   Settings,
   HelpCircle,
+  ClipboardList,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -116,6 +118,7 @@ const getInitials = (name) => {
 const sectionTitles = {
   editProfile: "Edit Profile",
   myOrders: "My Orders",
+  auditRequests: "Audit requests",
   transactionHistory: "Transaction History",
   creditScore: "Credit Score",
   referrals: "Referrals",
@@ -146,6 +149,8 @@ const More = () => {
       setActiveSection("maintenance");
     } else if (section === "myOrders") {
       setActiveSection("myOrders");
+    } else if (section === "auditRequests") {
+      setActiveSection("auditRequests");
     }
   }, [searchParams]);
   const displayName = useMemo(() => getDisplayName(user) || "User", [user]);
@@ -202,6 +207,8 @@ const More = () => {
     switch (activeSection) {
       case "myOrders":
         return <MyOrders />;
+      case "auditRequests":
+        return <AuditRequests />;
       case "transactionHistory":
         return <TransactionHistory />;
       case "referrals":
@@ -283,6 +290,15 @@ const More = () => {
                     />
                   </div>
 
+                  <div onClick={() => setActiveSection("auditRequests")}>
+                    <SidebarOption
+                      colorBg="bg-[#1e4d6b]"
+                      icon={ClipboardList}
+                      label="Audit requests"
+                      isSelected={activeSection === "auditRequests"}
+                    />
+                  </div>
+
                   <div onClick={() => setActiveSection("transactionHistory")}>
                     <SidebarOption
                       colorBg="bg-[#8E2727]"
@@ -331,7 +347,7 @@ const More = () => {
                     <SidebarOption
                       colorBg="bg-[#8E8E27]"
                       icon={Settings}
-                      label="Maintenance"
+                      label="Notifications"
                       isSelected={activeSection === "maintenance"}
                     />
                   </div>
@@ -444,6 +460,22 @@ const More = () => {
                   </div>
                   <span className="text-sm font-medium text-gray-700">
                     My Orders
+                  </span>
+                </div>
+                <ChevronRight className="text-gray-400" size={16} />
+              </div>
+
+              {/* Audit requests */}
+              <div
+                className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-between cursor-pointer"
+                onClick={() => handleMobileSectionChange("auditRequests")}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#1e4d6b] rounded-full flex items-center justify-center">
+                    <ClipboardList className="text-white" size={20} />
+                  </div>
+                  <span className="text-sm font-medium text-gray-700">
+                    Audit requests
                   </span>
                 </div>
                 <ChevronRight className="text-gray-400" size={16} />

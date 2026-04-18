@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import { assets } from "../assets/data";
 import { Sidebar_links } from "../assets/data";
 import LinkComp from "./LinkComponent";
 import API, { BASE_URL } from "../config/api.config";
+import { getSiteBanners } from "../utils/siteBanners";
 
 const LOGOUT_URL = API && API.LOGOUT ? API.LOGOUT : `${BASE_URL}/logout`;
 const USER_KEYS = [
@@ -30,8 +31,20 @@ const SideBar = () => {
   const [menuOpen] = useState(false);
   const [activeLink, setActiveLink] = useState("/dashboard");
   const [loggingOut, setLoggingOut] = useState(false);
+  const [sidebarBannerSrc, setSidebarBannerSrc] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { sidebarUrl } = await getSiteBanners();
+      if (!cancelled) setSidebarBannerSrc(sidebarUrl || null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const clearAuthStorage = () => {
     try {
@@ -79,7 +92,7 @@ const SideBar = () => {
     <>
       {/* Desktop Sidebar */}
       <div
-        className="hidden overflow-y-auto max-w-[250px] sm:block min-h-screen pb-10 transition-all duration-300 bg-[#273E8E] text-white"
+        className="hidden overflow-y-auto w-[250px] min-w-[250px] max-w-[250px] sm:block min-h-screen pb-10 transition-all duration-300 bg-[#273E8E] text-white shrink-0"
         style={{ scrollbarWidth: "thin", scrollbarColor: "white #273E8E" }}
       >
         {/* Sidebar Header */}
@@ -123,8 +136,11 @@ const SideBar = () => {
           </button>
         </div>
 
-        <img src={assets.sidebar} alt="" />
-        {/* <img src={assets.sidebar} alt="" /> */}
+        <img
+          src={sidebarBannerSrc || assets.sidebar}
+          alt=""
+          className="w-full h-auto"
+        />
       </div>
 
       {/* Mobile Bottom Navigation */}

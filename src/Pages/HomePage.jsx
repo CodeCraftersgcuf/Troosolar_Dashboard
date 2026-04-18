@@ -10,6 +10,7 @@ import TopNavbar from "../Component/TopNavbar";
 import HrLine from "../Component/MobileSectionResponsive/HrLine";
 import { ShoppingCart, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import API from "../config/api.config";
+import { apiFlagTrue } from "../utils/apiFlags";
 import PriceDropDown from "../Component/PriceDropDown";
 
 // ₦ formatter
@@ -112,7 +113,8 @@ const mapApiProductToCard = (p) => {
     ratingCount: reviews.length,
     categoryId: p?.category_id,
     stock: stockQty,
-    isHotDeal: !!p?.top_deal,
+    isHotDeal: apiFlagTrue(p?.top_deal),
+    isRecommended: apiFlagTrue(p?.is_most_popular),
   };
 };
 
@@ -591,6 +593,7 @@ const HomePage = () => {
                         ratingCount={item.ratingCount}
                         categoryName={item.categoryName}
                         isHotDeal={item.isHotDeal}
+                        isRecommended={item.isRecommended}
                         stock={item.stock}
                       />
                     </Link>
@@ -825,6 +828,7 @@ const HomePage = () => {
                         ratingCount={item.ratingCount}
                         categoryName={item.categoryName}
                         isHotDeal={item.isHotDeal}
+                        isRecommended={item.isRecommended}
                         stock={item.stock}
                       />
                     </Link>

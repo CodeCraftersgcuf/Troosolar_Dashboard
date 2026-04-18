@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import API from "../config/api.config";
@@ -24,6 +24,18 @@ const Auth = () => {
   const [hidePassword, setHidePassword] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (isLogin) return;
+    const params = new URLSearchParams(location.search);
+    const code = params.get("referral_code");
+    if (code) {
+      const trimmed = decodeURIComponent(code).trim();
+      if (trimmed) {
+        setFormData((prev) => ({ ...prev, code: trimmed }));
+      }
+    }
+  }, [location.search, isLogin]);
 
   // Function to check if all required fields are filled
   const isFormValid = () => {
@@ -65,7 +77,6 @@ const Auth = () => {
           phone: formData.phone?.trim(),
           // BVN removed - no longer required for registration
           referral_code: formData.code ? String(formData.code).trim() : null,
-          role: "Admin",
         };
 
         const { data } = await axios.post(API.REGISTER, payload, {
@@ -407,7 +418,7 @@ const Auth = () => {
               name="code" // ✅
               label="Referral Code (Optional)"
               placeholder="Enter your referral code"
-              type="number"
+              type="text"
               value={formData.code}
               onChange={handleChange}
               isMobile={true}

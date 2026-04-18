@@ -3,6 +3,7 @@ import axios from "axios";
 import { ContextApi } from "../Context/AppContext";
 import { assets } from "../assets/data";
 import API from "../config/api.config";
+import ProductPromoBadges from "./ProductPromoBadges";
 
 // clamp helper
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
@@ -31,7 +32,7 @@ const Stars = ({ value = 0 }) => {
     <svg
       viewBox="0 0 20 20"
       className={`h-4 w-4 max-sm:h-2 max-sm:w-2 ${
-        filled ? "fill-[#273e8e]" : "fill-gray-300"
+        filled ? "fill-amber-400" : "fill-gray-300"
       }`}
       aria-hidden="true"
     >
@@ -67,6 +68,7 @@ const Product = ({
   ratingCount, // int
   categoryName, // e.g., "Inverter"
   isHotDeal,
+  isRecommended,
   id,
   stock,
 }) => {
@@ -95,6 +97,12 @@ const Product = ({
     return starting_base_url + Image_url;
   }, [Image_url]);
   const isOutOfStock = Number(stock ?? 0) <= 0;
+
+  const cardHighlight = isRecommended
+    ? "ring-2 ring-emerald-500/90 border-emerald-400 shadow-lg"
+    : isHotDeal
+      ? "ring-2 ring-amber-400/90"
+      : "";
 
   const handleAddToCart = async (e) => {
     e?.preventDefault?.();
@@ -138,7 +146,15 @@ const Product = ({
   };
 
   return (
-    <div className="relative w-full h-full sm:h-full sm:w-full bg-white border border-gray-200 rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col min-h-[320px] sm:min-h-0">
+    <div
+      className={`relative w-full h-full sm:h-full sm:w-full bg-white border ${
+        isRecommended
+          ? "border-emerald-400"
+          : isHotDeal
+            ? "border-amber-300"
+            : "border-gray-200"
+      } rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col min-h-[320px] sm:min-h-0 ${cardHighlight}`.trim()}
+    >
       {/* Vertical Hot Deal ribbon (mobile-friendly) */}
       {/* {(isHotDeal || discount) && (
           <div className="absolute left-0 top-6 flex items-start">
@@ -153,6 +169,12 @@ const Product = ({
 
       {/* Image: locked height so grid cards don't collapse on mobile */}
       <div className="relative bg-gray-100 h-[140px] sm:h-[180px] flex rounded-2xl overflow-hidden items-center justify-center">
+        <div className="absolute top-2 left-2 z-20 pointer-events-none">
+          <ProductPromoBadges
+            isRecommended={isRecommended}
+            isHotDeal={isHotDeal}
+          />
+        </div>
         {/* Loading Indicator - Shows while image is loading */}
         {imageLoading && !imageError && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100">

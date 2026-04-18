@@ -9,54 +9,171 @@ import Loading from "../Loading";
 /** Fallback image when item has no featured_image */
 const PLACEHOLDER_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
 
+/** Parse API money (handles numbers, "25000.00", "25,000", etc.) */
+const parseMoney = (v) => {
+  if (v == null || v === "") return 0;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  const s = String(v).replace(/,/g, "").replace(/[^\d.-]/g, "");
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const formatNgn = (amount) =>
+  `₦${Number(amount).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+
+/** Compare titles so bundle subtitle is hidden when it duplicates the main title (spacing/case). */
+const normalizeTitleKey = (s) =>
+  String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+/** Line items use itemable_type "product" | "bundles" from the orders API. */
+const isProductLineItem = (lineItem) =>
+  String(lineItem?.itemable_type || "").toLowerCase() === "product";
+
+const getProductIdFromLineItem = (lineItem) => {
+  if (!isProductLineItem(lineItem)) return null;
+  const id = lineItem?.itemable_id ?? lineItem?.item?.id;
+  if (id == null || id === "") return null;
+  const n = Number(id);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+/** Unique product IDs the customer can review (one review per product per user in the backend). */
+const getReviewableProductIdsFromOrder = (rawData) => {
+  const ids = [];
+  const seen = new Set();
+  const items = Array.isArray(rawData?.items) ? rawData.items : [];
+  for (const i of items) {
+    const pid = getProductIdFromLineItem(i);
+    if (pid && !seen.has(pid)) {
+      seen.add(pid);
+      ids.push(pid);
+    }
+  }
+  if (ids.length === 0 && rawData?.product_id) {
+    const n = Number(rawData.product_id);
+    if (Number.isFinite(n) && n > 0) ids.push(n);
+  }
+  return ids;
+};
+
+const mapApiReviewToState = (review, userInfo) => {
+  const adminReply =
+    review.admin_reply && String(review.admin_reply).trim()
+      ? String(review.admin_reply).trim()
+      : null;
+  return {
+    id: review.id,
+    productId: review.product_id,
+    rating: review.rating,
+    reviewText: review.review,
+    userName:
+      userInfo?.name?.trim() ||
+      [userInfo?.first_name, userInfo?.sur_name].filter(Boolean).join(" ") ||
+      "User",
+    userInitials:
+      (userInfo?.first_name?.[0] || userInfo?.name?.[0] || "U") +
+      (userInfo?.sur_name?.[0] || ""),
+    date: new Date(review.created_at)
+      .toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "2-digit",
+      })
+      .replace(/\//g, "-"),
+    adminReply,
+    adminRepliedAt: review.admin_replied_at || null,
+  };
+};
+
+const isDeliveredOrCompleted = (status) => {
+  const s = String(status || "").toLowerCase();
+  return s === "delivered" || s === "completed";
+};
+
 const OrderSummary = ({ order, onBack }) => {
   const [showReviewModal, setShowReviewModal] = useState(false);
-  const [userReview, setUserReview] = useState(null);
+  /** Map product id string → review object, or `null` if none; empty object before fetch. */
+  const [reviewsByProductId, setReviewsByProductId] = useState({});
+  const [reviewModalProductId, setReviewModalProductId] = useState(null);
+  const [reviewModalProductTitle, setReviewModalProductTitle] = useState("");
   const [orderData, setOrderData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewError, setReviewError] = useState(null);
+  /** Server truth: product id string → may user review on this order (hides "Rate" when false). */
+  const [reviewEligibleByProductId, setReviewEligibleByProductId] = useState({});
 
-  // Fetch existing review for the product
-  const fetchExistingReview = useCallback(async (productId, userInfo) => {
-    if (!productId) return;
-    
-    try {
-      const token = localStorage.getItem("access_token");
-      if (!token) return;
-
-      const response = await axios.get(API.Product_Reviews, {
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        params: {
-          product_id: productId,
-        },
-      });
-
-      if (response.data.status === "success" && response.data.data?.length > 0) {
-        const review = response.data.data[0]; // Get the first review (assuming one review per user per product)
-        setUserReview({
-          id: review.id,
-          rating: review.rating,
-          reviewText: review.review,
-          userName: userInfo?.first_name || "User",
-          userInitials: (userInfo?.first_name?.[0] || "U") + (userInfo?.sur_name?.[0] || ""),
-          date: new Date(review.created_at)
-            .toLocaleDateString("en-GB", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "2-digit",
-            })
-            .replace(/\//g, "-"),
-        });
-      }
-    } catch (err) {
-      console.error("Error fetching existing review:", err);
-      // Don't set error for review fetch as it's optional
+  const fetchReviewsForOrderProducts = useCallback(async (rawData) => {
+    const ids = getReviewableProductIdsFromOrder(rawData);
+    const userInfo = rawData?.user_info;
+    const token = localStorage.getItem("access_token");
+    if (!token || ids.length === 0) {
+      setReviewsByProductId({});
+      return;
     }
+    const next = {};
+    await Promise.all(
+      ids.map(async (pid) => {
+        try {
+          const response = await axios.get(API.Product_Reviews, {
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            params: {
+              product_id: pid,
+              mine: 1,
+            },
+          });
+          if (response.data.status === "success" && response.data.data?.length > 0) {
+            next[String(pid)] = mapApiReviewToState(response.data.data[0], userInfo);
+          } else {
+            next[String(pid)] = null;
+          }
+        } catch (err) {
+          console.error("Error fetching review for product", pid, err);
+          next[String(pid)] = null;
+        }
+      })
+    );
+    setReviewsByProductId(next);
+  }, []);
+
+  const fetchReviewEligibilityForOrder = useCallback(async (rawData) => {
+    const delivered = isDeliveredOrCompleted(rawData?.order_status);
+    const ids = getReviewableProductIdsFromOrder(rawData);
+    const token = localStorage.getItem("access_token");
+    const orderId = rawData?.id;
+    if (!delivered || !token || ids.length === 0 || !orderId) {
+      setReviewEligibleByProductId({});
+      return;
+    }
+    const next = {};
+    await Promise.all(
+      ids.map(async (pid) => {
+        try {
+          const res = await axios.get(API.Product_Review_Eligibility, {
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            params: { product_id: pid, order_id: orderId },
+          });
+          next[String(pid)] = res.data?.data?.eligible === true;
+        } catch (e) {
+          console.warn("Review eligibility check failed for product", pid, e);
+          next[String(pid)] = true;
+        }
+      })
+    );
+    setReviewEligibleByProductId(next);
   }, []);
 
   // Fetch order details from API
@@ -90,17 +207,42 @@ const OrderSummary = ({ order, onBack }) => {
             appAddr?.phone_number ||
             data.user_info?.phone ||
             "Phone not provided";
+          // Always use the order owner's profile — never the admin/viewer's account (include_user_info / viewer_account)
           const customerName =
-            data.user_info?.name ||
-            [data.include_user_info?.first_name, data.include_user_info?.sur_name]
-              .filter(Boolean)
-              .join(" ")
-              .trim() ||
+            (data.user_info?.name && String(data.user_info.name).trim()) ||
+            [data.user_info?.first_name, data.user_info?.sur_name].filter(Boolean).join(" ").trim() ||
             "Customer";
-          const customerEmail =
-            data.user_info?.email ||
-            data.include_user_info?.email ||
-            "Email not provided";
+          const customerEmail = data.user_info?.email || "Email not provided";
+          const contactNameDisplay =
+            (addr?.contact_name && String(addr.contact_name).trim()) ||
+            customerName;
+          const fmtEst = (iso) => {
+            if (!iso) return null;
+            const d = new Date(iso);
+            if (Number.isNaN(d.getTime())) return null;
+            return d.toLocaleDateString("en-GB", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            });
+          };
+          const estimatedDeliverySummary =
+            data.estimated_delivery_from && data.estimated_delivery_to
+              ? `${fmtEst(data.estimated_delivery_from)} – ${fmtEst(data.estimated_delivery_to)}${
+                  data.delivery_estimate_label
+                    ? ` (${data.delivery_estimate_label})`
+                    : ""
+                }`
+              : data.delivery_estimate_label || null;
+          const orderPlacedDate = new Date(data.created_at).toLocaleDateString(
+            "en-GB",
+            {
+              weekday: "short",
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            }
+          );
 
           // Total quantity across all line items; keep items array for per-line display
           const items = Array.isArray(data.items) ? data.items : [];
@@ -119,23 +261,30 @@ const OrderSummary = ({ order, onBack }) => {
               data.items?.[0]?.item?.title ||
               data.items?.[0]?.item?.name ||
               "Purchase",
-            price: `₦${parseFloat(data.total_price).toLocaleString()}`,
-            deliveryDate: new Date(data.created_at).toLocaleDateString(
-              "en-GB",
-              {
-                weekday: "short",
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              }
-            ),
+            price: formatNgn(parseMoney(data.total_price)),
+            deliveryDate: orderPlacedDate,
+            orderPlacedDate,
+            estimatedDeliverySummary,
             deliveryAddress: deliveryAddressText,
+            contactNameDisplay,
             phoneNumber,
             customerName,
             customerEmail,
             paymentMethod:
               data.payment_method === "direct" ? "Direct" : data.payment_method,
-            charge: "Free", // This might need to be from API
+            charge:
+              data.delivery_fee != null && Number(data.delivery_fee) > 0
+                ? `₦${Number(data.delivery_fee).toLocaleString()}`
+                : "Free",
+            insuranceFee:
+              data.insurance_fee != null && Number(data.insurance_fee) > 0
+                ? `₦${Number(data.insurance_fee).toLocaleString()}`
+                : null,
+            installationFee:
+              data.installation_price != null &&
+              Number(data.installation_price) > 0
+                ? `₦${Number(data.installation_price).toLocaleString()}`
+                : null,
             productImage: (() => {
               const img = data.items?.[0]?.item?.featured_image;
               if (!img) return PLACEHOLDER_IMAGE;
@@ -143,7 +292,7 @@ const OrderSummary = ({ order, onBack }) => {
             })(),
             technicianName: data.installation?.technician_name,
             userInfo: data.user_info,
-            includeUserInfo: data.include_user_info,
+            includeUserInfo: data.viewer_account ?? data.include_user_info,
             // Additional API data
             rawData: data,
             quantity: totalQuantity,
@@ -153,14 +302,11 @@ const OrderSummary = ({ order, onBack }) => {
           };
 
           setOrderData(transformedData);
-          
-          // Fetch existing review for this product
-          const firstItem = data.items?.[0];
-          const reviewProductId =
-            firstItem?.itemable_type === "product" && firstItem?.itemable_id
-              ? firstItem.itemable_id
-              : firstItem?.item?.id;
-          await fetchExistingReview(reviewProductId, data.include_user_info);
+
+          await Promise.all([
+            fetchReviewsForOrderProducts(data),
+            fetchReviewEligibilityForOrder(data),
+          ]);
         }
       } catch (err) {
         console.error("Error fetching order details:", err);
@@ -176,36 +322,40 @@ const OrderSummary = ({ order, onBack }) => {
       setError("Order ID not provided");
       setLoading(false);
     }
-  }, [order?.id, fetchExistingReview]);
+  }, [order?.id, fetchReviewsForOrderProducts, fetchReviewEligibilityForOrder]);
 
   const handleReviewSubmit = async (reviewData) => {
-    if (!orderData?.rawData?.items?.[0]?.itemable_id) {
+    const productId = reviewModalProductId;
+    if (!productId) {
       setReviewError("Product ID not found");
       return;
     }
 
+    const key = String(productId);
+    const existingForProduct = reviewsByProductId[key];
+
     try {
       setReviewLoading(true);
       setReviewError(null);
-      
+
       const token = localStorage.getItem("access_token");
       if (!token) {
         setReviewError("Please log in to submit a review");
         return;
       }
 
-      const productId = orderData.rawData.items[0].itemable_id;
+      const orderId = orderData?.rawData?.id ?? orderData?.id;
       const payload = {
-        product_id: productId.toString(),
+        product_id: String(productId),
         review: reviewData.reviewText,
         rating: reviewData.rating,
+        ...(orderId != null ? { order_id: String(orderId) } : {}),
       };
 
       let response;
-      if (userReview?.id) {
-        // Update existing review
+      if (existingForProduct?.id) {
         response = await axios.put(
-          API.Update_Product_Review(userReview.id),
+          API.Update_Product_Review(existingForProduct.id),
           payload,
           {
             headers: {
@@ -215,38 +365,54 @@ const OrderSummary = ({ order, onBack }) => {
           }
         );
       } else {
-        // Create new review
-        response = await axios.post(
-          API.Product_Reviews,
-          payload,
-          {
-            headers: {
-              Accept: "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+        response = await axios.post(API.Product_Reviews, payload, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
       }
 
       if (response.data.status === "success") {
-        // Update the user review state
-        setUserReview({
-          id: response.data.data?.id || userReview?.id,
-          rating: reviewData.rating,
-          reviewText: reviewData.reviewText,
-          userName: orderData?.includeUserInfo?.first_name || "User",
-          userInitials: (orderData?.includeUserInfo?.first_name?.[0] || "U") + (orderData?.includeUserInfo?.sur_name?.[0] || ""),
-          date: new Date()
-            .toLocaleDateString("en-GB", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "2-digit",
-            })
-            .replace(/\//g, "-"),
-        });
-        
+        const authUser = orderData?.rawData?.user_info || orderData?.userInfo || {};
+        const saved = response.data.data || {};
+        const adminReply =
+          saved.admin_reply && String(saved.admin_reply).trim()
+            ? String(saved.admin_reply).trim()
+            : existingForProduct?.adminReply ?? null;
+        const adminRepliedAt =
+          saved.admin_replied_at ?? existingForProduct?.adminRepliedAt ?? null;
+
+        setReviewsByProductId((prev) => ({
+          ...prev,
+          [key]: {
+            id: saved.id || existingForProduct?.id,
+            productId: Number(saved.product_id) || productId,
+            rating: reviewData.rating,
+            reviewText: reviewData.reviewText,
+            userName:
+              authUser?.name ||
+              [authUser?.first_name, authUser?.sur_name].filter(Boolean).join(" ") ||
+              "User",
+            userInitials:
+              (authUser?.first_name?.[0] || authUser?.name?.[0] || "U") +
+              (authUser?.sur_name?.[0] || ""),
+            date: new Date()
+              .toLocaleDateString("en-GB", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "2-digit",
+              })
+              .replace(/\//g, "-"),
+            adminReply,
+            adminRepliedAt,
+          },
+        }));
+
         setShowReviewModal(false);
-        alert(userReview?.id ? "Review updated successfully!" : "Review submitted successfully!");
+        setReviewModalProductId(null);
+        setReviewModalProductTitle("");
+        alert(existingForProduct?.id ? "Review updated successfully!" : "Review submitted successfully!");
       } else {
         setReviewError("Failed to submit review");
       }
@@ -256,6 +422,22 @@ const OrderSummary = ({ order, onBack }) => {
     } finally {
       setReviewLoading(false);
     }
+  };
+
+  const openReviewModal = (productId, productTitle) => {
+    if (!productId) return;
+    setReviewModalProductId(productId);
+    setReviewModalProductTitle(productTitle || "");
+    setReviewError(null);
+    setShowReviewModal(true);
+  };
+
+  const closeReviewModal = () => {
+    if (reviewLoading) return;
+    setShowReviewModal(false);
+    setReviewModalProductId(null);
+    setReviewModalProductTitle("");
+    setReviewError(null);
   };
 
   // Loading state
@@ -309,6 +491,54 @@ const OrderSummary = ({ order, onBack }) => {
     );
   }
 
+  const canReviewOrder = isDeliveredOrCompleted(orderData.orderStatus);
+  const reviewableProductIds = getReviewableProductIdsFromOrder(orderData.rawData);
+  const hasReviewableProducts = reviewableProductIds.length > 0;
+
+  const renderProductReviewSection = (productId, productTitle) => {
+    if (!productId || !canReviewOrder) return null;
+    if (reviewEligibleByProductId[String(productId)] === false) return null;
+    const rev = reviewsByProductId[String(productId)];
+    return (
+      <div className="mt-3 pt-3 border-t border-gray-200">
+        {rev ? (
+          <div className="mb-2 space-y-1">
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Star
+                  key={star}
+                  size={14}
+                  className={
+                    star <= rev.rating
+                      ? "text-[#273E8E] fill-current"
+                      : "text-gray-300"
+                  }
+                />
+              ))}
+              <span className="text-xs text-gray-600 ml-1">Your review</span>
+            </div>
+            {rev.reviewText ? (
+              <p className="text-xs text-gray-700 line-clamp-2">{rev.reviewText}</p>
+            ) : null}
+            {rev.adminReply ? (
+              <div className="text-xs text-gray-800 mt-1 p-2 bg-[#f5f7ff] rounded-lg border border-[#273e8e]/20">
+                <span className="font-semibold text-[#273e8e]">Troosolar</span>
+                <p className="whitespace-pre-wrap mt-0.5">{rev.adminReply}</p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => openReviewModal(productId, productTitle)}
+          className="text-sm font-medium text-[#273e8e] hover:text-[#1e327a] underline-offset-2 hover:underline"
+        >
+          {rev ? "Edit review for this product" : "Rate this product"}
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Web Header with Back Arrow */}
@@ -344,13 +574,18 @@ const OrderSummary = ({ order, onBack }) => {
                 {isDelivered ? (
                   <>
                     <b>Congratulations</b> — your order {orderData.orderNumber}{" "}
-                    has been successfully delivered on {orderData.deliveryDate}
+                    has been successfully delivered
                   </>
                 ) : (
                   <>
                     Your order <b>{orderData.orderNumber}</b> is confirmed
-                    {orderData.deliveryDate ? (
-                      <> (placed on {orderData.deliveryDate})</>
+                    {orderData.orderPlacedDate ? (
+                      <> (placed on {orderData.orderPlacedDate})</>
+                    ) : null}
+                    {orderData.estimatedDeliverySummary ? (
+                      <span className="block mt-2 text-xs font-normal text-gray-600">
+                        Estimated delivery: {orderData.estimatedDeliverySummary}
+                      </span>
                     ) : null}
                   </>
                 )}
@@ -384,13 +619,15 @@ const OrderSummary = ({ order, onBack }) => {
                 const img = rawImg
                   ? (rawImg.startsWith("http") ? rawImg : `${BASE_URL.replace("/api", "")}${rawImg}`)
                   : PLACEHOLDER_IMAGE;
-                const totalPrice = parseFloat(orderData.rawData?.total_price) || 0;
-                const totalQty = orderData.items.reduce((s, i) => s + (Number(i?.quantity) || 1), 0) || 1;
                 const qty = Number(lineItem?.quantity) || 1;
-                const lineSubtotal = parseFloat(lineItem?.subtotal) || parseFloat(lineItem?.unit_price) * qty || 0;
-                const displayPrice = lineSubtotal > 0
-                  ? lineSubtotal
-                  : (totalPrice / totalQty) * qty;
+                const lineSubtotal = parseMoney(lineItem?.subtotal);
+                const unitPrice = parseMoney(lineItem?.unit_price);
+                const listUnitPrice = parseMoney(lineItem?.list_unit_price);
+                const outrightPct = parseMoney(
+                  lineItem?.referral_outright_discount_percent
+                );
+                const displayAmount =
+                  lineSubtotal > 0 ? lineSubtotal : unitPrice > 0 ? unitPrice * qty : 0;
                 return (
                   <div
                     key={idx}
@@ -407,14 +644,43 @@ const OrderSummary = ({ order, onBack }) => {
                       <h4 className="text-sm font-medium text-gray-900 mb-2">
                         {lineItem?.item?.title || lineItem?.item?.name || lineItem?.name || "Purchase"}
                       </h4>
+                      {lineItem?.item?.subtitle &&
+                        normalizeTitleKey(lineItem.item.subtitle) !==
+                          normalizeTitleKey(lineItem?.item?.title || "") && (
+                        <p className="text-xs text-gray-600 mb-2">{lineItem.item.subtitle}</p>
+                      )}
                       <div className="flex items-center gap-2 mb-2">
                         <span className="bg-purple-100 text-[#000000] text-xs px-2 py-1 rounded">
                           Qty: {qty}
                         </span>
                       </div>
+                      {listUnitPrice > 0 &&
+                        unitPrice > 0 &&
+                        listUnitPrice > unitPrice + 0.005 &&
+                        outrightPct > 0 && (
+                          <p className="text-xs text-gray-500 mb-1">
+                            List price:{" "}
+                            <span className="line-through">{formatNgn(listUnitPrice)}</span>
+                            {" · "}
+                            Outright discount ({outrightPct}%)
+                          </p>
+                        )}
+                      {unitPrice > 0 && (
+                        <p className="text-xs text-gray-600 mb-1">
+                          Unit price (charged): {formatNgn(unitPrice)}
+                        </p>
+                      )}
                       <p className="text-xl font-bold text-[#273E8E]">
-                        ₦{displayPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {displayAmount > 0 ? (
+                          formatNgn(displayAmount)
+                        ) : (
+                          <span className="text-gray-600 text-sm font-normal">Amount unavailable</span>
+                        )}
                       </p>
+                      {renderProductReviewSection(
+                        getProductIdFromLineItem(lineItem),
+                        lineItem?.item?.title || lineItem?.item?.name || "Product"
+                      )}
                     </div>
                   </div>
                 );
@@ -440,6 +706,10 @@ const OrderSummary = ({ order, onBack }) => {
                   <p className="text-xl font-bold text-[#273E8E]">
                     {orderData.price}
                   </p>
+                  {renderProductReviewSection(
+                    reviewableProductIds[0] ?? null,
+                    orderData.productName
+                  )}
                 </div>
               </div>
             )}
@@ -463,6 +733,14 @@ const OrderSummary = ({ order, onBack }) => {
               {/* Delivery Address Box */}
               <div className="bg-gray-100 rounded-xl p-4 space-y-3">
                 <div>
+                  <span className="block text-xs text-gray-600">
+                    Contact name (delivery)
+                  </span>
+                  <p className="text-sm font-medium text-gray-900">
+                    {orderData.contactNameDisplay || orderData.customerName}
+                  </p>
+                </div>
+                <div>
                   <span className="block text-xs text-gray-600">Address</span>
                   <p className="text-sm font-medium text-gray-900">
                     {orderData.deliveryAddress}
@@ -478,9 +756,18 @@ const OrderSummary = ({ order, onBack }) => {
                 </div>
               </div>
 
+              {orderData.estimatedDeliverySummary && (
+                <div className="flex justify-between items-center py-3 border-t border-gray-300">
+                  <span className="text-sm text-gray-600">Estimated delivery</span>
+                  <span className="text-sm font-medium text-gray-900 text-right max-w-[65%]">
+                    {orderData.estimatedDeliverySummary}
+                  </span>
+                </div>
+              )}
+
               {/* Customer Name */}
               <div className="flex justify-between items-center py-3 border-t border-gray-300 mb-0">
-                <span className="text-sm text-gray-600">Customer Name</span>
+                <span className="text-sm text-gray-600">Account name</span>
                 <span className="text-sm font-medium text-gray-900">
                   {orderData.customerName}
                 </span>
@@ -508,85 +795,133 @@ const OrderSummary = ({ order, onBack }) => {
               </span>
             </div>
             <div className="flex justify-between items-center p-2">
-              <span className="text-sm text-gray-600">Charge</span>
+              <span className="text-sm text-gray-600">Delivery</span>
               <span className="text-sm font-medium text-gray-900">
                 {orderData.charge}
               </span>
             </div>
+            {orderData.installationFee && (
+              <div className="flex justify-between items-center p-2">
+                <span className="text-sm text-gray-600">Installation</span>
+                <span className="text-sm font-medium text-gray-900">
+                  {orderData.installationFee}
+                </span>
+              </div>
+            )}
+            {orderData.insuranceFee && (
+              <div className="flex justify-between items-center p-2">
+                <span className="text-sm text-gray-600">Insurance</span>
+                <span className="text-sm font-medium text-gray-900">
+                  {orderData.insuranceFee}
+                </span>
+              </div>
+            )}
+            {(() => {
+              const disc = parseMoney(orderData.rawData?.online_checkout_discount_amount);
+              const catalog = parseMoney(orderData.rawData?.catalog_items_subtotal);
+              const charged = parseMoney(orderData.rawData?.items_subtotal);
+              const pctRaw = orderData.rawData?.items?.find(
+                (i) => parseMoney(i?.referral_outright_discount_percent) > 0
+              )?.referral_outright_discount_percent;
+              const pctLabel =
+                pctRaw != null && String(pctRaw).trim() !== ""
+                  ? ` (${Number(pctRaw)}%)`
+                  : "";
+
+              if (disc > 0 && catalog > 0 && charged > 0) {
+                return (
+                  <>
+                    <div className="flex justify-between items-center p-2 border-t border-gray-200">
+                      <span className="text-sm text-gray-600">Items subtotal</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {formatNgn(catalog)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center p-2">
+                      <span className="text-sm text-gray-600">
+                        Online checkout discount{pctLabel}
+                      </span>
+                      <span className="text-sm font-medium text-red-600">
+                        −{formatNgn(disc)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center p-2">
+                      <span className="text-sm text-gray-600">Items after discount</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {formatNgn(charged)}
+                      </span>
+                    </div>
+                  </>
+                );
+              }
+
+              if (charged > 0) {
+                return (
+                  <div className="flex justify-between items-center p-2 border-t border-gray-200">
+                    <span className="text-sm text-gray-600">Items subtotal</span>
+                    <span className="text-sm font-medium text-gray-900">
+                      {formatNgn(charged)}
+                    </span>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+            {orderData.rawData?.vat_amount != null &&
+              Number(orderData.rawData.vat_amount) > 0 && (
+                <div className="flex justify-between items-center p-2">
+                  <span className="text-sm text-gray-600">
+                    VAT
+                    {orderData.rawData.vat_percentage != null
+                      ? ` (${parseMoney(orderData.rawData.vat_percentage)}%)`
+                      : ""}
+                  </span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {formatNgn(parseMoney(orderData.rawData.vat_amount))}
+                  </span>
+                </div>
+              )}
+            <div className="flex justify-between items-center p-2 border-t border-gray-200 font-semibold">
+              <span className="text-sm text-gray-800">Order total</span>
+              <span className="text-sm text-[#273e8e]">{orderData.price}</span>
+            </div>
           </div>
         </div>
 
-        {/* My Review Section - Only show if user has submitted a review */}
-        {userReview && (
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              My Review
-            </h3>
-            <div className="bg-white rounded-2xl p-4 shadow-sm">
-              <div className="flex items-start gap-4">
-                {/* User Avatar */}
-                <div className="w-12 h-12 bg-gray-300 rounded-full flex items-center justify-center flex-shrink-0">
-                  <span className="text-gray-600 font-semibold text-sm">
-                    {userReview.userInitials}
-                  </span>
-                </div>
-
-                {/* Review Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-900 mb-1">
-                        {userReview.userName}
-                      </h4>
-                      {/* Star Rating */}
-                      <div className="flex items-center gap-1">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <Star
-                            key={star}
-                            size={16}
-                            className={`${
-                              star <= userReview.rating
-                                ? "text-[#273E8E] fill-current"
-                                : "text-gray-300"
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                    <span className="text-xs text-gray-500">
-                      {userReview.date}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-700">
-                    {userReview.reviewText}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Bottom Action Button */}
+      {/* Bottom hint — reviews are per product above */}
       <div className="sm:relative fixed bottom-0 left-0 right-0 bg-white border-t border-gray-300 p-4">
         <div className="sm:max-w-md sm:mx-auto">
-          <button
-            onClick={() => setShowReviewModal(true)}
-            className="w-full bg-[#273e8e] text-white font-semibold py-4 rounded-xl hover:bg-[#1e327a] transition-colors"
-          >
-            {userReview ? "Edit Review" : "Leave a review"}
-          </button>
+          {hasReviewableProducts ? (
+            <p className="text-center text-sm text-gray-600 leading-relaxed">
+              {canReviewOrder
+                ? "Use “Rate this product” under each item. Each product has its own rating and review."
+                : "After delivery, you can rate each product individually from this order."}
+            </p>
+          ) : (
+            <p className="text-center text-sm text-gray-600">
+              {canReviewOrder
+                ? "This order has no separate products to review (e.g. bundle-only). Reviews apply to individual catalog products."
+                : "Product reviews are available after your order is delivered."}
+            </p>
+          )}
         </div>
       </div>
 
       {/* Review Modal */}
       <ReviewModal
         isOpen={showReviewModal}
-        onClose={() => setShowReviewModal(false)}
+        onClose={closeReviewModal}
         onSubmit={handleReviewSubmit}
         loading={reviewLoading}
         error={reviewError}
-        existingReview={userReview}
+        productTitle={reviewModalProductTitle}
+        existingReview={
+          reviewModalProductId != null
+            ? reviewsByProductId[String(reviewModalProductId)] ?? null
+            : null
+        }
       />
     </div>
   );

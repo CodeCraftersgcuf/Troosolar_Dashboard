@@ -4,6 +4,8 @@ import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText,
 import LoanCalculator from '../../Component/LoanCalculator';
 import axios from 'axios';
 import API, { BASE_URL } from '../../config/api.config';
+import ProductPromoBadges from '../../Component/ProductPromoBadges';
+import { apiFlagTrue } from '../../utils/apiFlags';
 
 // Helper function to convert storage paths to absolute URLs (same as SolarBundle.jsx)
 const toAbsolute = (path) => {
@@ -295,6 +297,7 @@ const BNPLFlow = () => {
     const [loading, setLoading] = useState(false);
     const [applicationId, setApplicationId] = useState(null);
     const [applicationStatus, setApplicationStatus] = useState('pending');
+    const [checkingAuditStatus, setCheckingAuditStatus] = useState(false);
     const [guarantorId, setGuarantorId] = useState(null);
     const [invoiceData, setInvoiceData] = useState(null);
     const [processingPayment, setProcessingPayment] = useState(false);
@@ -310,6 +313,22 @@ const BNPLFlow = () => {
     
     // Custom order flow (from admin-created cart)
     const [searchParams] = useSearchParams();
+    /** Re-apply from BNPL loan details: credit check fee waived; prior_application_id sent on submit */
+    const [reapplyPriorApplicationId, setReapplyPriorApplicationId] = useState(() => {
+        try {
+            const s = sessionStorage.getItem('bnpl_reapply_prior_application_id');
+            return s ? parseInt(s, 10) : null;
+        } catch {
+            return null;
+        }
+    });
+    const [skipCreditCheckFee, setSkipCreditCheckFee] = useState(() => {
+        try {
+            return sessionStorage.getItem('bnpl_skip_credit_check_fee') === '1';
+        } catch {
+            return false;
+        }
+    });
     const [bnplTermsAccepted, setBnplTermsAccepted] = useState(() => typeof sessionStorage !== 'undefined' && sessionStorage.getItem('bnpl_terms_accepted') === 'true');
     const [bnplTermsCheckbox, setBnplTermsCheckbox] = useState(false);
     const [cartToken, setCartToken] = useState(null);
@@ -323,6 +342,13 @@ const BNPLFlow = () => {
         productCategory: '', // 'full-kit', 'inverter-battery', 'battery-only', 'inverter-only', 'panels-only'
         optionType: '', // 'choose-system', 'build-system', 'audit'
         auditType: '', // 'home-office', 'commercial'
+        auditSubtype: '', // 'home' | 'office' when auditType is home-office
+        companyName: '',
+        facilityDescription: '',
+        buildingType: '',
+        commercialAddress: '',
+        officeAddress: '',
+        officeSpaces: '',
         address: '',
         state: '',
         stateId: null,
@@ -642,6 +668,9 @@ const BNPLFlow = () => {
         const token = searchParams.get('token');
         const type = searchParams.get('type');
         const applicationIdParam = searchParams.get('applicationId');
+        const reapplyParam = searchParams.get('reapply');
+        const priorApplicationIdParam = searchParams.get('priorApplicationId');
+        const skipCreditCheckFeeParam = searchParams.get('skipCreditCheckFee');
         const bundleIdParam = searchParams.get('bundleId');
         const stepParam = searchParams.get('step');
         const fromBundle = searchParams.get('fromBundle') === 'true';
@@ -657,6 +686,18 @@ const BNPLFlow = () => {
             loadExistingApplication(Number(applicationIdParam)).then(() => {
                 if (stepParam) setStep(Number(stepParam));
             });
+        }
+
+        if (reapplyParam === '1' && priorApplicationIdParam) {
+            const pid = Number(priorApplicationIdParam);
+            if (Number.isFinite(pid) && pid > 0) {
+                setReapplyPriorApplicationId(pid);
+                setSkipCreditCheckFee(skipCreditCheckFeeParam === '1');
+                try {
+                    sessionStorage.setItem('bnpl_reapply_prior_application_id', String(pid));
+                    sessionStorage.setItem('bnpl_skip_credit_check_fee', skipCreditCheckFeeParam === '1' ? '1' : '0');
+                } catch {}
+            }
         }
         
         // If coming from bundle detail page, load bundle and skip to order summary
@@ -845,24 +886,32 @@ const BNPLFlow = () => {
                     const bundles = [];
                     
                     cartData.cart_items.forEach(item => {
-                        if (item.itemable_type === 'App\\Models\\Product' && item.itemable) {
+                        const qty = Math.max(1, Number(item.quantity || 1));
+                        const sub = Number(item.subtotal) || 0;
+                        const unit = Number(item.unit_price) || 0;
+                        const unitPrice = sub > 0 ? sub / qty : unit;
+                        if (item.type === 'product' && item.itemable) {
                             products.push({
                                 id: item.itemable_id,
                                 product: item.itemable,
-                                price: Number(item.unit_price || item.itemable.discount_price || item.itemable.price || 0)
+                                price: unitPrice,
+                                quantity: qty,
                             });
-                        } else if (item.itemable_type === 'App\\Models\\Bundle' && item.itemable) {
+                        } else if (item.type === 'bundle' && item.itemable) {
                             bundles.push({
                                 id: item.itemable_id,
                                 bundle: item.itemable,
-                                price: Number(item.unit_price || item.itemable.discount_price || item.itemable.total_price || 0),
-                                quantity: Number(item.quantity || 1)
+                                price: unitPrice,
+                                quantity: qty,
                             });
                         }
                     });
                     
                     if (products.length > 0 || bundles.length > 0) {
-                        const totalPrice = [...products, ...bundles].reduce((sum, item) => sum + item.price, 0);
+                        const totalPrice = [...products, ...bundles].reduce(
+                            (sum, item) => sum + item.price * (item.quantity || 1),
+                            0
+                        );
                         setFormData(prev => ({
                             ...prev,
                             selectedProducts: products,
@@ -882,6 +931,93 @@ const BNPLFlow = () => {
             setCartLoading(false);
         }
     };
+
+    /** Shop cart "Buy By Loan" → open BNPL invoice (6.75), then user proceeds to loan calculator (8). */
+    React.useEffect(() => {
+        if (searchParams.get('fromCart') !== '1') return;
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            navigate('/login?return=' + encodeURIComponent('/bnpl?fromCart=1&step=6.75'));
+            return;
+        }
+        const rawStep = searchParams.get('step');
+        const parsed = rawStep != null && rawStep !== '' ? parseFloat(rawStep) : 6.75;
+        const stepToUse = Number.isFinite(parsed) ? parsed : 6.75;
+
+        let cancelled = false;
+        (async () => {
+            setLoading(true);
+            try {
+                const response = await axios.get(API.CART, {
+                    headers: {
+                        Accept: 'application/json',
+                        Authorization: `Bearer ${token}`,
+                    },
+                });
+                if (cancelled) return;
+                const list = Array.isArray(response.data?.data) ? response.data.data : [];
+                if (list.length === 0) {
+                    alert('Your cart is empty. Add items before applying for BNPL.');
+                    navigate('/cart');
+                    return;
+                }
+                const products = [];
+                const bundles = [];
+                let total = 0;
+                list.forEach((item) => {
+                    const itemable = item.itemable;
+                    const qty = Math.max(1, Number(item.quantity || 1));
+                    const sub = Number(item.subtotal) || 0;
+                    const unit = Number(item.unit_price) || 0;
+                    const lineTotal = sub > 0 ? sub : unit * qty;
+                    const unitPrice = sub > 0 ? sub / qty : unit;
+                    if (item.type === 'product' && itemable) {
+                        products.push({
+                            id: item.itemable_id,
+                            product: itemable,
+                            price: unitPrice,
+                            quantity: qty,
+                        });
+                        total += lineTotal;
+                    } else if (item.type === 'bundle' && itemable) {
+                        bundles.push({
+                            id: item.itemable_id,
+                            bundle: itemable,
+                            price: unitPrice,
+                            quantity: qty,
+                        });
+                        total += lineTotal;
+                    }
+                });
+                if (products.length === 0 && bundles.length === 0) {
+                    alert('Could not read your cart items. Please try again.');
+                    navigate('/cart');
+                    return;
+                }
+                setFormData((prev) => ({
+                    ...prev,
+                    optionType: 'choose-system',
+                    productCategory: prev.productCategory || 'full-kit',
+                    customerType: prev.customerType || 'residential',
+                    selectedProducts: products,
+                    selectedBundles: bundles,
+                    selectedProductPrice: total,
+                }));
+                setStep(stepToUse);
+            } catch (e) {
+                if (!cancelled) {
+                    console.error(e);
+                    alert(e?.response?.data?.message || 'Failed to load cart for BNPL.');
+                    navigate('/cart');
+                }
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [searchParams, navigate]);
 
     React.useEffect(() => {
         const fetchConfig = async () => {
@@ -985,10 +1121,19 @@ const BNPLFlow = () => {
         if (!Array.isArray(arr)) return [];
         const aliases = bundleTypeAliasesByCategory[categoryKey];
         if (!aliases?.length) return arr;
+        const fullKitAliases = bundleTypeAliasesByCategory['full-kit'] || [];
         return arr.filter((bundle) => {
             const normalized = normalizeBundleType(
                 bundle?.bundle_type || bundle?.category || bundle?.product_category || bundle?.category_type
             );
+            // "solar inverter battery" contains the substring "inverter battery", so full kits were incorrectly
+            // included in inverter-battery. Exclude full-kit matches first for that flow only.
+            if (categoryKey === 'inverter-battery') {
+                const isFullSolarKit = fullKitAliases.some((alias) =>
+                    normalized.includes(normalizeBundleType(alias))
+                );
+                if (isFullSolarKit) return false;
+            }
             return aliases.some((alias) => normalized.includes(normalizeBundleType(alias)));
         });
     }, [bundleTypeAliasesByCategory]);
@@ -1067,7 +1212,19 @@ const BNPLFlow = () => {
     // --- Handlers ---
 
     const handleCustomerTypeSelect = (type) => {
-        setFormData({ ...formData, customerType: type });
+        if (type === 'commercial') {
+            setFormData((prev) => ({
+                ...prev,
+                customerType: 'commercial',
+                optionType: 'audit',
+                auditType: 'commercial',
+                auditSubtype: '',
+                productCategory: prev.productCategory || 'full-kit',
+            }));
+            setStep(5); // Commercial/Industrial audit form — skip product category & method steps
+            return;
+        }
+        setFormData((prev) => ({ ...prev, customerType: type }));
         setStep(2); // Go to Product Category
     };
 
@@ -1139,7 +1296,18 @@ const BNPLFlow = () => {
     const handleOptionSelect = async (option) => {
         setFormData({ ...formData, optionType: option });
         if (option === 'audit') {
-            setStep(4); // Audit Type Selection
+            if (formData.customerType === 'commercial') {
+                setFormData({
+                    ...formData,
+                    optionType: 'audit',
+                    auditType: 'commercial',
+                    auditSubtype: '',
+                });
+                setStep(5);
+            } else {
+                setFormData({ ...formData, optionType: 'audit' });
+                setStep(4); // Home vs Office only
+            }
         } else if (option === 'choose-system') {
             // Clear previous bundles and set loading state BEFORE navigating
             setBundles([]);
@@ -1231,9 +1399,8 @@ const BNPLFlow = () => {
         }
     };
 
-    const handleAuditTypeSelect = (type) => {
-        // Both audit types now collect details first so admin can see contact/location context.
-        setFormData({ ...formData, auditType: type });
+    const handleAuditTypeSelect = (subtype) => {
+        setFormData({ ...formData, auditType: 'home-office', auditSubtype: subtype });
         setStep(5);
     };
 
@@ -1250,23 +1417,47 @@ const BNPLFlow = () => {
             }
 
             // Submit audit request before proceeding
-            // Build full address from components
-            const fullAddress = [
-                formData.houseNo,
-                formData.streetName,
-                formData.landmark
-            ].filter(Boolean).join(', ');
-            
+            const isCommercial = formData.auditType === 'commercial';
+            const isOffice = formData.auditType === 'home-office' && formData.auditSubtype === 'office';
+            const isHome = formData.auditType === 'home-office' && !isOffice;
+
+            let fullAddress = '';
+            if (isCommercial) {
+                fullAddress = (formData.commercialAddress || '').trim();
+            } else if (isOffice) {
+                fullAddress = (formData.officeAddress || '').trim();
+            } else {
+                fullAddress = [formData.houseNo, formData.streetName].filter(Boolean).join(', ');
+            }
+
             const auditRequestPayload = {
                 audit_type: formData.auditType,
                 customer_type: formData.customerType,
+                source: 'bnpl',
                 property_state: formData.state,
-                property_address: fullAddress || formData.address, // Use full address or fallback to address field
+                property_address: fullAddress || formData.address,
                 property_landmark: formData.landmark || '',
-                property_floors: formData.floors ? Number(formData.floors) : null,
-                property_rooms: formData.rooms ? Number(formData.rooms) : null,
-                is_gated_estate: formData.isGatedEstate,
+                property_floors: isCommercial ? null : (formData.floors ? Number(formData.floors) : null),
+                property_rooms: isCommercial
+                    ? null
+                    : isOffice
+                        ? (formData.officeSpaces ? Number(formData.officeSpaces) : null)
+                        : (formData.rooms ? Number(formData.rooms) : null),
+                is_gated_estate: isHome ? formData.isGatedEstate : false,
             };
+
+            if (formData.auditType === 'home-office') {
+                auditRequestPayload.audit_subtype = isOffice ? 'office' : 'home';
+            }
+            if (isCommercial || isOffice) {
+                auditRequestPayload.company_name = (formData.companyName || '').trim();
+            }
+            if (isCommercial) {
+                auditRequestPayload.facility_description = (formData.facilityDescription || '').trim();
+            }
+            if (isOffice || isHome) {
+                auditRequestPayload.building_type = (formData.buildingType || '').trim();
+            }
 
             // Always send contact info when available so admin can process commercial requests faster.
             try {
@@ -1277,8 +1468,7 @@ const BNPLFlow = () => {
                 // Ignore parse errors and proceed with payload defaults.
             }
 
-            // Add estate fields if gated estate
-            if (formData.isGatedEstate) {
+            if (isHome && formData.isGatedEstate) {
                 auditRequestPayload.estate_name = formData.estateName;
                 auditRequestPayload.estate_address = formData.estateAddress;
             }
@@ -1317,6 +1507,50 @@ const BNPLFlow = () => {
             alert(errorMessage);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleCheckAuditRequestStatus = async () => {
+        const requestId = formData.auditRequestId;
+        if (!requestId) {
+            alert('Request ID is not available on this screen yet. Opening Audit requests so you can track your submissions.');
+            navigate('/more?section=auditRequests');
+            return;
+        }
+
+        setCheckingAuditStatus(true);
+        let openAuditTab = true;
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                alert('Please log in to check audit request status.');
+                navigate('/login');
+                openAuditTab = false;
+                return;
+            }
+
+            const response = await axios.get(API.AUDIT_REQUEST_BY_ID(requestId), {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+
+            if (response.data?.status === 'success') {
+                const status = response.data?.data?.status || 'pending';
+                alert(
+                    status === 'approved'
+                        ? 'Your audit request has been approved. Opening Audit requests for details.'
+                        : `Your audit request is currently ${status}. Opening Audit requests for details.`
+                );
+            } else {
+                alert('Could not fetch status right now. Opening Audit requests.');
+            }
+        } catch (error) {
+            console.error('Failed to check audit status:', error);
+            alert('Failed to fetch audit request status right now. Opening Audit requests.');
+        } finally {
+            setCheckingAuditStatus(false);
+        }
+        if (openAuditTab) {
+            navigate(`/more?section=auditRequests&auditRequestId=${encodeURIComponent(requestId)}`);
         }
     };
 
@@ -1678,6 +1912,8 @@ const BNPLFlow = () => {
                             
                             // Check if product is selected
                             const isSelected = formData.selectedProducts.some(p => p.id === product.id);
+                            const isRec = apiFlagTrue(product.is_most_popular);
+                            const isHot = apiFlagTrue(product.top_deal);
                             
                             return (
                                 <div
@@ -1685,6 +1921,8 @@ const BNPLFlow = () => {
                                     className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 cursor-pointer ${
                                         isSelected 
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
+                                            : isRec
+                                            ? 'border-emerald-200 ring-2 ring-emerald-500 shadow-md hover:border-emerald-300'
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
                                     onClick={() => {
@@ -1706,6 +1944,12 @@ const BNPLFlow = () => {
                                                 }
                                             }}
                                         />
+                                        <div className="absolute top-2 left-2 z-[5] pointer-events-none">
+                                            <ProductPromoBadges
+                                                isRecommended={isRec}
+                                                isHotDeal={isHot}
+                                            />
+                                        </div>
                                         {isSelected && (
                                             <div className="absolute top-2 right-2 bg-[#273e8e] text-white rounded-full p-2">
                                                 <CheckCircle size={20} />
@@ -1842,6 +2086,8 @@ const BNPLFlow = () => {
                             
                             // Check if product is selected
                             const isSelected = formData.selectedProducts.some(p => p.id === product.id);
+                            const isRec = apiFlagTrue(product.is_most_popular);
+                            const isHot = apiFlagTrue(product.top_deal);
                             
                             return (
                                 <div
@@ -1849,6 +2095,8 @@ const BNPLFlow = () => {
                                     className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 cursor-pointer ${
                                         isSelected 
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
+                                            : isRec
+                                            ? 'border-emerald-200 ring-2 ring-emerald-500 shadow-md hover:border-emerald-300'
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
                                     onClick={() => {
@@ -1870,6 +2118,12 @@ const BNPLFlow = () => {
                                                 }
                                             }}
                                         />
+                                        <div className="absolute top-2 left-2 z-[5] pointer-events-none">
+                                            <ProductPromoBadges
+                                                isRecommended={isRec}
+                                                isHotDeal={isHot}
+                                            />
+                                        </div>
                                         {isSelected && (
                                             <div className="absolute top-2 right-2 bg-[#273e8e] text-white rounded-full p-2">
                                                 <CheckCircle size={20} />
@@ -1968,7 +2222,7 @@ const BNPLFlow = () => {
                     <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-6 rounded-full mb-6 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300">
                         <FileText size={40} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Request Professional Audit (Paid)</h3>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">Request Professional Load Audit (paid)</h3>
                 </button>
             </div>
         </div>
@@ -2600,354 +2854,543 @@ const BNPLFlow = () => {
         );
     };
 
-    const renderStep4 = () => {
-        const normalizeAuditTypeId = (id, label = '') => {
-            const text = `${String(id || '')} ${String(label || '')}`.toLowerCase();
-            if (text.includes('commercial')) return 'commercial';
-            if (text.includes('home') || text.includes('office')) return 'home-office';
-            return String(id || '');
-        };
-
-        const defaultAuditTypeOptions = [
-            { id: 'home-office', label: 'Home / Office' },
-            { id: 'commercial', label: 'Commercial / Industrial' },
-        ];
-
-        const fromApi = (auditTypes || [])
-            .map((t) => ({
-                id: normalizeAuditTypeId(t?.id, t?.label),
-                label:
-                    String(t?.label || '').trim() ||
-                    (normalizeAuditTypeId(t?.id, t?.label) === 'commercial'
-                        ? 'Commercial / Industrial'
-                        : 'Home / Office'),
-            }))
-            .filter((t) => t.id === 'home-office' || t.id === 'commercial')
-            .filter((t, idx, arr) => arr.findIndex((x) => x.id === t.id) === idx);
-
-        const auditTypeOptions = fromApi.length > 0 ? fromApi : defaultAuditTypeOptions;
-
-        return (
+    const renderStep4 = () => (
         <div className="animate-fade-in">
             <button onClick={() => setStep(3)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
                 <ArrowLeft size={16} className="mr-2" /> Back
             </button>
             <h2 className="text-3xl font-bold text-center mb-8 text-[#273e8e]">
-                Select Audit Type
+                Where is the audit for?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-                {auditTypeOptions.map((type) => (
-                    <button
-                        key={type.id}
-                        onClick={() => handleAuditTypeSelect(type.id)}
-                        className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center"
-                    >
-                        <div className="bg-blue-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
-                            <FileText size={40} className="text-[#273e8e]" />
-                        </div>
-                        <h3 className="text-xl font-bold mb-2 text-gray-800">{type.label}</h3>
-                    </button>
-                ))}
+                <button
+                    type="button"
+                    onClick={() => handleAuditTypeSelect('home')}
+                    className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center"
+                >
+                    <div className="bg-blue-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
+                        <Home size={40} className="text-[#273e8e]" />
+                    </div>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800">Home</h3>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => handleAuditTypeSelect('office')}
+                    className="group bg-white border-2 border-gray-100 hover:border-[#273e8e] rounded-2xl p-8 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center"
+                >
+                    <div className="bg-blue-50 p-6 rounded-full mb-6 group-hover:bg-[#273e8e]/10 transition-colors">
+                        <Building2 size={40} className="text-[#273e8e]" />
+                    </div>
+                    <h3 className="text-xl font-bold mb-2 text-gray-800">Office</h3>
+                </button>
             </div>
         </div>
     );
-    };
 
-    const renderStep5 = () => (
-        <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-            <button onClick={() => setStep(4)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]">
-                <ArrowLeft size={16} className="mr-2" /> Back
-            </button>
-            
-            {/* Custom Order Flow Indicator */}
-            {cartToken && cartItems.length > 0 && (
-                <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <div className="flex items-start">
-                        <CheckCircle size={20} className="text-blue-600 mr-3 mt-0.5" />
-                        <div className="flex-1">
-                            <h3 className="font-semibold text-blue-800 mb-2">Custom Order Items Loaded</h3>
-                            <p className="text-sm text-blue-700 mb-3">
-                                Your cart contains {cartItems.length} item{cartItems.length !== 1 ? 's' : ''} prepared by admin.
-                            </p>
-                            <div className="space-y-2">
-                                {cartItems.map((item, idx) => (
-                                    <div key={idx} className="text-sm text-blue-600 bg-white p-2 rounded border border-blue-200">
-                                        <span className="font-medium">
-                                            {item.itemable?.title || item.itemable?.name || `Item #${item.itemable_id}`}
-                                        </span>
-                                        <span className="ml-2">
-                                            (₦{Number(item.unit_price || 0).toLocaleString()})
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-            
-            {cartLoading && (
-                <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <div className="flex items-center">
-                        <Loader className="animate-spin text-yellow-600 mr-3" size={20} />
-                        <p className="text-sm text-yellow-700">Loading cart items...</p>
-                    </div>
-                </div>
-            )}
-            
-            {cartError && (
-                <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
-                    <div className="flex items-center">
-                        <AlertCircle size={20} className="text-red-600 mr-3" />
-                        <p className="text-sm text-red-700">{cartError}</p>
-                    </div>
-                </div>
-            )}
-            
-            <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">Property Details</h2>
-            <form onSubmit={handleAddressSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Contact Name *</label>
-                        <input
-                            type="text"
-                            placeholder="Full Name"
-                            required
-                            className="w-full p-3 border rounded-lg"
-                            value={formData.fullName}
-                            onChange={e => setFormData({ ...formData, fullName: e.target.value })}
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Contact Phone *</label>
-                        <input
-                            type="tel"
-                            placeholder="Phone Number"
-                            required
-                            className="w-full p-3 border rounded-lg"
-                            value={formData.phone}
-                            onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                        />
-                    </div>
-                </div>
+    const renderStep5 = () => {
+        const isCommercial = formData.auditType === 'commercial';
+        const isOffice = formData.auditType === 'home-office' && formData.auditSubtype === 'office';
+        const isHome = formData.auditType === 'home-office' && !isOffice;
+        const auditBackStep = isCommercial ? 1 : 4;
+        const formTitle = isCommercial
+            ? 'Commercial/Industrial Details'
+            : isOffice
+                ? 'Office Details'
+                : 'Property Details';
+
+        const stateBlock = (
+            <>
                 {states.length > 0 ? (
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
-                    <select
-                        required
-                        className="w-full p-3 border rounded-lg"
-                        onChange={e => {
-                            const stateId = e.target.value ? Number(e.target.value) : null;
-                            const selectedState = states.find(s => s.id === stateId);
-                            setFormData({ ...formData, state: selectedState?.name || '', stateId });
-                        }}
-                    >
-                        <option value="">Select State</option>
-                        {states.filter(s => s.is_active).map((state) => (
-                            <option key={state.id} value={state.id}>{state.name}</option>
-                        ))}
-                    </select>
+                        <select
+                            required
+                            className="w-full p-3 border rounded-lg"
+                            value={formData.stateId ?? ''}
+                            onChange={(e) => {
+                                const stateId = e.target.value ? Number(e.target.value) : null;
+                                const selectedState = states.find((s) => s.id === stateId);
+                                setFormData({ ...formData, state: selectedState?.name || '', stateId });
+                            }}
+                        >
+                            <option value="">Select State</option>
+                            {states.filter((s) => s.is_active).map((state) => (
+                                <option key={state.id} value={state.id}>
+                                    {state.name}
+                                </option>
+                            ))}
+                        </select>
                     </div>
                 ) : (
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
-                    <input type="text" placeholder="State" required className="w-full p-3 border rounded-lg" onChange={e => setFormData({ ...formData, state: e.target.value })} />
-                    </div>
-                )}
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">House No *</label>
-                    <input 
-                        type="text" 
-                        placeholder="House Number" 
-                        required 
-                        className="w-full p-3 border rounded-lg" 
-                        value={formData.houseNo}
-                        onChange={e => setFormData({ ...formData, houseNo: e.target.value })} 
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Street Name *</label>
-                    <input 
-                        type="text" 
-                        placeholder="Street Name" 
-                        required 
-                        className="w-full p-3 border rounded-lg" 
-                        value={formData.streetName}
-                        onChange={e => setFormData({ ...formData, streetName: e.target.value })} 
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Landmark (Optional)</label>
-                    <input 
-                        type="text" 
-                        placeholder="Landmark" 
-                        className="w-full p-3 border rounded-lg" 
-                        value={formData.landmark}
-                        onChange={e => setFormData({ ...formData, landmark: e.target.value })} 
-                    />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Number of Floors *</label>
-                        <input 
-                            type="number" 
-                            placeholder="Floors" 
+                        <input
+                            type="text"
+                            placeholder="State"
                             required
-                            min="0"
-                            className="w-full p-3 border rounded-lg" 
-                            value={formData.floors}
-                            onChange={e => setFormData({ ...formData, floors: e.target.value })} 
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Number of Rooms *</label>
-                        <input 
-                            type="number" 
-                            placeholder="Rooms" 
-                            required
-                            min="0"
-                            className="w-full p-3 border rounded-lg" 
-                            value={formData.rooms}
-                            onChange={e => setFormData({ ...formData, rooms: e.target.value })} 
-                        />
-                    </div>
-                </div>
-                
-                {/* Gated Estate Section */}
-                <div className="mt-4">
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                        <input 
-                            type="checkbox" 
-                            checked={formData.isGatedEstate} 
-                            onChange={e => setFormData({ ...formData, isGatedEstate: e.target.checked })} 
-                            className="h-5 w-5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded"
-                        />
-                        <span className="text-gray-700">Is this property in a gated estate?</span>
-                    </label>
-                </div>
-                
-                {formData.isGatedEstate && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                        <input 
-                            type="text" 
-                            placeholder="Estate Name *" 
-                            required={formData.isGatedEstate}
-                            className="p-3 border rounded-lg" 
-                            onChange={e => setFormData({ ...formData, estateName: e.target.value })} 
-                        />
-                        <input 
-                            type="text" 
-                            placeholder="Estate Address *" 
-                            required={formData.isGatedEstate}
-                            className="p-3 border rounded-lg" 
-                            onChange={e => setFormData({ ...formData, estateAddress: e.target.value })} 
+                            className="w-full p-3 border rounded-lg"
+                            value={formData.state}
+                            onChange={(e) => setFormData({ ...formData, state: e.target.value })}
                         />
                     </div>
                 )}
-                
-                <button 
-                    type="submit" 
-                    disabled={
-                        loading || 
-                        !formData.fullName ||
-                        !formData.phone ||
-                        !formData.state || 
-                        !formData.houseNo || 
-                        !formData.streetName || 
-                        !formData.floors || 
-                        !formData.rooms ||
-                        (formData.isGatedEstate && (!formData.estateName || !formData.estateAddress))
-                    }
-                    className={`w-full py-4 rounded-xl font-bold transition-colors ${
-                        loading || 
-                        !formData.fullName ||
-                        !formData.phone ||
-                        !formData.state || 
-                        !formData.houseNo || 
-                        !formData.streetName || 
-                        !formData.floors || 
-                        !formData.rooms ||
-                        (formData.isGatedEstate && (!formData.estateName || !formData.estateAddress))
-                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                            : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
-                    }`}
-                >
-                    {loading ? (
-                        <span className="flex items-center justify-center">
-                            <Loader className="animate-spin mr-2" size={20} />
-                            Submitting...
-                        </span>
-                    ) : (
-                        'Continue'
-                    )}
-                </button>
-                {(!formData.fullName || !formData.phone || !formData.state || !formData.houseNo || !formData.streetName || !formData.floors || !formData.rooms) && (
-                    <p className="text-sm text-red-600 text-center">
-                        Please fill in all required fields (Contact Name, Phone, State, House No, Street Name, Floors, and Rooms)
-                    </p>
-                )}
-                {formData.isGatedEstate && (!formData.estateName || !formData.estateAddress) && (
-                    <p className="text-sm text-red-600 text-center">
-                        Please fill in Estate Name and Estate Address
-                    </p>
-                )}
-            </form>
-        </div>
-    );
+            </>
+        );
 
-    const renderStep6 = () => (
-        <div className="animate-fade-in max-w-3xl mx-auto text-center">
-            <div className="bg-yellow-50 border border-yellow-200 p-8 rounded-2xl">
-                <AlertCircle size={64} className="text-yellow-600 mx-auto mb-6" />
-                <h2 className="text-2xl font-bold mb-4 text-gray-800">Audit Request Submitted</h2>
-                <p className="text-gray-600 mb-4">
-                    Your {formData.auditType === 'commercial' ? 'commercial' : 'home/office'} audit request has been submitted successfully (Request ID: #{formData.auditRequestId}).
-                </p>
-                <p className="text-gray-600 mb-6">
-                    Our team will contact you within 24 - 72 hours to discuss your energy audit.
-                </p>
-                {/* <p className="text-sm text-[#273e8e] font-medium mb-6">
-                    No upfront payment is required for this audit request.
-                </p> */}
-                <div className="space-y-3">
-                    <button 
-                        onClick={() => navigate('/')} 
-                        className="w-full bg-[#273e8e] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors"
-                    >
-                    Return to Dashboard
+        const homeInvalid =
+            loading ||
+            !formData.fullName ||
+            !formData.phone ||
+            !formData.state ||
+            !formData.houseNo ||
+            !formData.streetName ||
+            !formData.buildingType?.trim() ||
+            !formData.landmark?.trim() ||
+            !formData.floors ||
+            !formData.rooms ||
+            (formData.isGatedEstate && (!formData.estateName || !formData.estateAddress));
+
+        const officeInvalid =
+            loading ||
+            !formData.companyName?.trim() ||
+            !formData.fullName?.trim() ||
+            !formData.phone?.trim() ||
+            !formData.state ||
+            !formData.officeAddress?.trim() ||
+            !formData.landmark?.trim() ||
+            !formData.buildingType?.trim() ||
+            !formData.floors ||
+            !formData.officeSpaces;
+
+        const commercialInvalid =
+            loading ||
+            !formData.companyName?.trim() ||
+            !formData.fullName?.trim() ||
+            !formData.phone?.trim() ||
+            !formData.state ||
+            !formData.commercialAddress?.trim() ||
+            !formData.landmark?.trim() ||
+            !formData.facilityDescription?.trim();
+
+        const submitDisabled = isCommercial ? commercialInvalid : isOffice ? officeInvalid : homeInvalid;
+
+        return (
+            <div className="animate-fade-in max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                <button
+                    type="button"
+                    onClick={() => setStep(auditBackStep)}
+                    className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]"
+                >
+                    <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
-                    <button 
-                        onClick={async () => {
-                            // Check audit request status
-                            if (!formData.auditRequestId) return;
-                            try {
-                                const token = localStorage.getItem('access_token');
-                                const response = await axios.get(API.AUDIT_REQUEST_BY_ID(formData.auditRequestId), {
-                                    headers: { Authorization: `Bearer ${token}` }
-                                });
-                                
-                                if (response.data.status === 'success') {
-                                    const status = response.data.data.status;
-                                    if (status === 'approved') {
-                                        // Proceed to order summary if approved
-                                        setStep(6.5);
-                                    } else {
-                                        alert(`Your audit request is currently ${status}. Please wait for admin approval.`);
-                                    }
-                                }
-                            } catch (error) {
-                                console.error("Failed to check audit status:", error);
-                                alert("Failed to check audit request status. Please try again later.");
-                            }
-                        }}
-                        className="w-full border-2 border-gray-300 text-gray-700 px-8 py-3 rounded-xl font-bold hover:bg-gray-50 transition-colors"
+
+                {cartToken && cartItems.length > 0 && (
+                    <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-start">
+                            <CheckCircle size={20} className="text-blue-600 mr-3 mt-0.5" />
+                            <div className="flex-1">
+                                <h3 className="font-semibold text-blue-800 mb-2">Custom Order Items Loaded</h3>
+                                <p className="text-sm text-blue-700 mb-3">
+                                    Your cart contains {cartItems.length} item{cartItems.length !== 1 ? 's' : ''} prepared by
+                                    admin.
+                                </p>
+                                <div className="space-y-2">
+                                    {cartItems.map((item, idx) => (
+                                        <div key={idx} className="text-sm text-blue-600 bg-white p-2 rounded border border-blue-200">
+                                            <span className="font-medium">
+                                                {item.itemable?.title || item.itemable?.name || `Item #${item.itemable_id}`}
+                                            </span>
+                                            <span className="ml-2">(₦{Number(item.unit_price || 0).toLocaleString()})</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {cartLoading && (
+                    <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <div className="flex items-center">
+                            <Loader className="animate-spin text-yellow-600 mr-3" size={20} />
+                            <p className="text-sm text-yellow-700">Loading cart items...</p>
+                        </div>
+                    </div>
+                )}
+
+                {cartError && (
+                    <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+                        <div className="flex items-center">
+                            <AlertCircle size={20} className="text-red-600 mr-3" />
+                            <p className="text-sm text-red-700">{cartError}</p>
+                        </div>
+                    </div>
+                )}
+
+                <h2 className="text-2xl font-bold mb-6 text-[#273e8e]">{formTitle}</h2>
+                <form onSubmit={handleAddressSubmit} className="space-y-4">
+                    {isCommercial && (
+                        <>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Company Name *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    className="w-full p-3 border rounded-lg"
+                                    value={formData.companyName}
+                                    onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                                />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Contact Person Name *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.fullName}
+                                        onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Contact Phone Number *</label>
+                                    <input
+                                        type="tel"
+                                        required
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.phone}
+                                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                            {stateBlock}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Address *</label>
+                                <textarea
+                                    required
+                                    rows={3}
+                                    className="w-full p-3 border rounded-lg"
+                                    value={formData.commercialAddress}
+                                    onChange={(e) => setFormData({ ...formData, commercialAddress: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    className="w-full p-3 border rounded-lg"
+                                    placeholder="e.g. grid, diesel generator, inverter"
+                                    value={formData.landmark}
+                                    onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Description of facility *</label>
+                                <textarea
+                                    required
+                                    rows={4}
+                                    className="w-full p-3 border rounded-lg"
+                                    value={formData.facilityDescription}
+                                    onChange={(e) => setFormData({ ...formData, facilityDescription: e.target.value })}
+                                />
+                            </div>
+                        </>
+                    )}
+
+                    {isOffice && (
+                        <>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Company Name *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    className="w-full p-3 border rounded-lg"
+                                    value={formData.companyName}
+                                    onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                                />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Contact Person Name *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.fullName}
+                                        onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Contact Phone Number *</label>
+                                    <input
+                                        type="tel"
+                                        required
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.phone}
+                                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                            {stateBlock}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Address *</label>
+                                <textarea
+                                    required
+                                    rows={3}
+                                    className="w-full p-3 border rounded-lg"
+                                    value={formData.officeAddress}
+                                    onChange={(e) => setFormData({ ...formData, officeAddress: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    className="w-full p-3 border rounded-lg"
+                                    placeholder="e.g. grid, diesel generator, inverter"
+                                    value={formData.landmark}
+                                    onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Type of building *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    className="w-full p-3 border rounded-lg"
+                                    value={formData.buildingType}
+                                    onChange={(e) => setFormData({ ...formData, buildingType: e.target.value })}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">No. of floors *</label>
+                                    <input
+                                        type="number"
+                                        required
+                                        min="0"
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.floors}
+                                        onChange={(e) => setFormData({ ...formData, floors: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">No. of office spaces *</label>
+                                    <input
+                                        type="number"
+                                        required
+                                        min="0"
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.officeSpaces}
+                                        onChange={(e) => setFormData({ ...formData, officeSpaces: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {isHome && (
+                        <>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Contact Name *</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Full Name"
+                                        required
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.fullName}
+                                        onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Contact Phone *</label>
+                                    <input
+                                        type="tel"
+                                        placeholder="Phone Number"
+                                        required
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.phone}
+                                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                            {stateBlock}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">House No *</label>
+                                <input
+                                    type="text"
+                                    placeholder="House Number"
+                                    required
+                                    className="w-full p-3 border rounded-lg"
+                                    value={formData.houseNo}
+                                    onChange={(e) => setFormData({ ...formData, houseNo: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Street Name *</label>
+                                <input
+                                    type="text"
+                                    placeholder="Street Name"
+                                    required
+                                    className="w-full p-3 border rounded-lg"
+                                    value={formData.streetName}
+                                    onChange={(e) => setFormData({ ...formData, streetName: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Type of building *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="e.g. Bungalow, duplex, detached"
+                                    className="w-full p-3 border rounded-lg"
+                                    value={formData.buildingType}
+                                    onChange={(e) => setFormData({ ...formData, buildingType: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="e.g. grid, diesel generator, inverter"
+                                    className="w-full p-3 border rounded-lg"
+                                    value={formData.landmark}
+                                    onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Number of Floors *</label>
+                                    <input
+                                        type="number"
+                                        placeholder="Floors"
+                                        required
+                                        min="0"
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.floors}
+                                        onChange={(e) => setFormData({ ...formData, floors: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Number of Rooms *</label>
+                                    <input
+                                        type="number"
+                                        placeholder="Rooms"
+                                        required
+                                        min="0"
+                                        className="w-full p-3 border rounded-lg"
+                                        value={formData.rooms}
+                                        onChange={(e) => setFormData({ ...formData, rooms: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                            <div className="mt-4">
+                                <label className="flex items-center space-x-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.isGatedEstate}
+                                        onChange={(e) => setFormData({ ...formData, isGatedEstate: e.target.checked })}
+                                        className="h-5 w-5 text-[#273e8e] focus:ring-[#273e8e] border-gray-300 rounded"
+                                    />
+                                    <span className="text-gray-700">Is this property in a gated estate?</span>
+                                </label>
+                            </div>
+                            {formData.isGatedEstate && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                    <input
+                                        type="text"
+                                        placeholder="Estate Name *"
+                                        required={formData.isGatedEstate}
+                                        className="p-3 border rounded-lg"
+                                        value={formData.estateName}
+                                        onChange={(e) => setFormData({ ...formData, estateName: e.target.value })}
+                                    />
+                                    <input
+                                        type="text"
+                                        placeholder="Estate Address *"
+                                        required={formData.isGatedEstate}
+                                        className="p-3 border rounded-lg"
+                                        value={formData.estateAddress}
+                                        onChange={(e) => setFormData({ ...formData, estateAddress: e.target.value })}
+                                    />
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    <button
+                        type="submit"
+                        disabled={submitDisabled}
+                        className={`w-full py-4 rounded-xl font-bold transition-colors ${
+                            submitDisabled
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
+                        }`}
                     >
-                        Check Audit Request Status
+                        {loading ? (
+                            <span className="flex items-center justify-center">
+                                <Loader className="animate-spin mr-2" size={20} />
+                                Submitting...
+                            </span>
+                        ) : (
+                            'Continue'
+                        )}
                     </button>
+                    {submitDisabled && !loading && (
+                        <p className="text-sm text-red-600 text-center">Please fill in all required fields.</p>
+                    )}
+                </form>
+            </div>
+        );
+    };
+
+    const renderStep6 = () => {
+        const auditKindLabel =
+            formData.auditType === 'commercial'
+                ? 'commercial / industrial'
+                : formData.auditSubtype === 'office'
+                    ? 'office'
+                    : 'home';
+
+        return (
+            <div className="animate-fade-in max-w-lg w-full mx-auto text-center px-2">
+                <div className="bg-[#FFFDF8] border border-amber-100/80 shadow-sm p-8 md:p-10 rounded-2xl">
+                    <div className="w-16 h-16 rounded-full bg-amber-100/90 flex items-center justify-center mx-auto mb-6 ring-4 ring-amber-50">
+                        <AlertCircle className="w-9 h-9 text-amber-800/90" strokeWidth={2.25} />
+                    </div>
+                    <h2 className="text-2xl font-bold mb-4 text-[#1e3a5f]">Audit Request Submitted</h2>
+                    <p className="text-gray-600 mb-3 text-[15px] leading-relaxed">
+                        Your {auditKindLabel} audit request has been submitted successfully{' '}
+                        <span className="whitespace-nowrap">(Request ID: #{formData.auditRequestId})</span>.
+                    </p>
+                    <p className="text-gray-600 mb-8 text-[15px] leading-relaxed">
+                        Our team will contact you within 24 - 72 hours to discuss your energy audit.
+                    </p>
+                    <div className="space-y-3">
+                        <button
+                            type="button"
+                            onClick={() => navigate('/')}
+                            className="w-full bg-[#273e8e] text-white px-8 py-3.5 rounded-xl font-bold hover:bg-[#1a2b6b] transition-colors shadow-sm"
+                        >
+                            Return to Dashboard
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleCheckAuditRequestStatus}
+                            disabled={checkingAuditStatus}
+                            className="w-full border-2 border-gray-300 bg-white text-[#273e8e] px-8 py-3.5 rounded-xl font-bold hover:bg-gray-50 transition-colors"
+                        >
+                            {checkingAuditStatus ? 'Checking...' : 'Check Audit Request Status'}
+                        </button>
+                    </div>
                 </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     const extractBundleLineItems = (bundle) => {
         const toNumber = (v) => typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.]/g, '')) || 0;
@@ -3204,6 +3647,10 @@ const BNPLFlow = () => {
     };
 
     const renderStep6_5 = () => {
+        if (formData.optionType === 'audit') {
+            return renderStep6();
+        }
+
         // Calculate totals
         const bundlesTotal = formData.selectedBundles.reduce((sum, b) => sum + (b.price * (b.quantity || 1)), 0);
         const productsTotal = formData.selectedProducts.reduce((sum, p) => sum + (p.price * (p.quantity || 1)), 0);
@@ -3427,6 +3874,9 @@ const BNPLFlow = () => {
                 },
                 callback: async (response) => {
                     if (response?.status === "successful") {
+                        if (typeof window.closePaymentModal === 'function') {
+                            window.closePaymentModal();
+                        }
                         try {
                             const token = localStorage.getItem('access_token');
                             // Confirm deposit payment
@@ -3543,6 +3993,9 @@ const BNPLFlow = () => {
                 },
                 callback: async (response) => {
                     if (response?.status === "successful") {
+                        if (typeof window.closePaymentModal === 'function') {
+                            window.closePaymentModal();
+                        }
                         // Create audit order and confirm payment
                         try {
                             const token = localStorage.getItem('access_token');
@@ -3934,6 +4387,10 @@ const BNPLFlow = () => {
     );
 
     const renderStep8 = () => {
+        if (formData.optionType === 'audit') {
+            return renderStep6();
+        }
+
         const { overallGrandTotal } = getBnplPricingSnapshot();
         const totalAmount = overallGrandTotal;
 
@@ -4421,6 +4878,9 @@ const BNPLFlow = () => {
                     console.log("Flutterwave payment callback:", response);
                     
                     if (response?.status === "successful") {
+                        if (typeof window.closePaymentModal === 'function') {
+                            window.closePaymentModal();
+                        }
                         // Payment successful
                         console.log("Payment successful");
                         
@@ -4519,6 +4979,13 @@ const BNPLFlow = () => {
                 </button>
                 <h2 className="text-2xl font-bold mb-2 text-[#273e8e]">Credit Check</h2>
                 <p className="text-gray-600 mb-6">Upload your documents for manual review. We will verify your bank statement and identity.</p>
+                {skipCreditCheckFee && (
+                    <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4">
+                        <p className="text-sm text-green-800 font-medium">
+                            Re-application detected: your credit check fee is waived for this submission.
+                        </p>
+                    </div>
+                )}
                 <div className="p-6 rounded-xl border-2 border-[#273e8e] bg-blue-50 mb-6">
                     <div className="flex items-center mb-2">
                         <CheckCircle size={20} className="text-[#273e8e]" />
@@ -4656,24 +5123,29 @@ const BNPLFlow = () => {
                 <button
                     onClick={(e) => {
                         e.preventDefault();
-                        if (!formData.bankStatement) {
+                        if (!skipCreditCheckFee && !formData.bankStatement) {
                             alert("Please upload your bank statement (Last 6 Months)");
                             return;
                         }
-                        if (!formData.livePhoto) {
+                        if (!skipCreditCheckFee && !formData.livePhoto) {
                             alert("Please upload your live photo / selfie");
+                            return;
+                        }
+                        if (skipCreditCheckFee) {
+                            const fakeEvent = { preventDefault: () => {} };
+                            submitApplication(fakeEvent);
                             return;
                         }
                         setShowCreditCheckFeeModal(true);
                     }}
-                    disabled={loading || !formData.bankStatement || !formData.livePhoto}
+                    disabled={loading || (!skipCreditCheckFee && (!formData.bankStatement || !formData.livePhoto))}
                     className={`w-full py-4 rounded-xl font-bold transition-colors ${
-                        loading || !formData.bankStatement || !formData.livePhoto
+                        loading || (!skipCreditCheckFee && (!formData.bankStatement || !formData.livePhoto))
                             ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                             : 'bg-[#273e8e] text-white hover:bg-[#1a2b6b]'
                     }`}
                 >
-                    {loading ? 'Submitting Application...' : 'Proceed to Payment'}
+                    {loading ? 'Submitting Application...' : skipCreditCheckFee ? 'Submit Re-application' : 'Proceed to Payment'}
                 </button>
                 
                 {/* Credit Check Fee Modal */}
@@ -4837,6 +5309,16 @@ const BNPLFlow = () => {
             formDataToSend.append('loan_amount', formData.loanDetails?.totalRepayment || formData.selectedProductPrice);
             formDataToSend.append('repayment_duration', formData.loanDetails?.tenor || 6);
             formDataToSend.append('credit_check_method', formData.creditCheckMethod || 'manual');
+            if (reapplyPriorApplicationId && Number.isFinite(Number(reapplyPriorApplicationId))) {
+                formDataToSend.append('prior_application_id', String(reapplyPriorApplicationId));
+            }
+            if (formData.loanDetails) {
+                try {
+                    formDataToSend.append('loan_plan_snapshot', JSON.stringify(formData.loanDetails));
+                } catch (e) {
+                    console.error('loan_plan_snapshot', e);
+                }
+            }
             
             // Add loan calculation ID if available
             if (loanCalculationId) {
@@ -4897,7 +5379,7 @@ const BNPLFlow = () => {
             }
 
             // Files - Only required for manual credit check or when Mono has failed
-            if (formData.creditCheckMethod === 'manual' || monoFailed) {
+            if ((formData.creditCheckMethod === 'manual' || monoFailed) && !skipCreditCheckFee) {
                 if (!formData.bankStatement || !formData.livePhoto) {
                     alert("Bank statement and live photo are required for manual credit check. Please upload both documents.");
                     setLoading(false);
@@ -4919,6 +5401,12 @@ const BNPLFlow = () => {
                 setApplicationId(response.data.data.loan_application.id);
                 const appStatus = response.data.data.loan_application.status;
                 setApplicationStatus(appStatus);
+                setSkipCreditCheckFee(false);
+                setReapplyPriorApplicationId(null);
+                try {
+                    sessionStorage.removeItem('bnpl_reapply_prior_application_id');
+                    sessionStorage.removeItem('bnpl_skip_credit_check_fee');
+                } catch {}
                 
                 // If application is already approved, go directly to invoice (step 21)
                 // Otherwise, go to pending status (step 12)
@@ -5008,7 +5496,7 @@ const BNPLFlow = () => {
                             <input type="text" placeholder="State" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, state: e.target.value })} />
                         )}
                         <input type="text" placeholder="Address" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, address: e.target.value })} />
-                        <input type="text" placeholder="Landmark" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, landmark: e.target.value })} />
+                        <input type="text" placeholder="Current power sources" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, landmark: e.target.value })} />
                         <input type="number" placeholder="Floors" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, floors: e.target.value })} />
                         <input type="number" placeholder="Rooms" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, rooms: e.target.value })} />
                     </div>
@@ -5106,8 +5594,7 @@ const BNPLFlow = () => {
                         const status = response.data.data.status;
                         if (status === 'approved') {
                             clearInterval(pollInterval);
-                            // Auto-proceed to order summary when approved
-                            setStep(6.5);
+                            // Stay on success screen; audit flows do not continue to order summary / loan calculator.
                         } else if (status === 'rejected') {
                             clearInterval(pollInterval);
                             alert("Your audit request has been rejected. Please contact support for more information.");
@@ -5269,7 +5756,7 @@ const BNPLFlow = () => {
                         >
                             Accept Counteroffer
                         </button>
-                        <button
+                        {/* <button
                             onClick={() => {
                                 // Re-apply - go back to loan calculator
                                 setStep(8);
@@ -5277,7 +5764,7 @@ const BNPLFlow = () => {
                             className="w-full border-2 border-gray-300 text-gray-700 py-4 rounded-xl font-bold hover:bg-gray-50 transition-colors"
                         >
                             Re-apply with Different Terms
-                        </button>
+                        </button> */}
                     </div>
                 </div>
             </div>

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import ProductPromoBadges from "./ProductPromoBadges";
 
 const SolarBundleComponent = ({
   id,
@@ -14,6 +15,8 @@ const SolarBundleComponent = ({
   borderColor,
   bundleTitle,
   inverterRating,
+  isHotDeal = false,
+  isRecommended = false,
 }) => {
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
@@ -60,14 +63,23 @@ const SolarBundleComponent = ({
     return /kva/i.test(raw) ? raw : `${raw}kVA`;
   })();
 
+  const cardHighlight = isRecommended
+    ? "ring-2 ring-emerald-500/90 shadow-lg"
+    : isHotDeal
+      ? "ring-2 ring-amber-400/90"
+      : "";
+
   return (
     <div
-      className="w-full h-full bg-white rounded-[24px] p-3 sm:p-4 shadow-sm flex flex-col min-h-[320px] sm:min-h-0 cursor-pointer hover:shadow-md transition-shadow"
+      className={`w-full h-full bg-white rounded-[20px] p-3 sm:p-3 shadow-sm flex flex-col min-h-[290px] sm:min-h-0 cursor-pointer hover:shadow-md transition-shadow ${cardHighlight}`.trim()}
       style={{ border: `2px solid ${borderColor || '#273e8e'}` }}
       onClick={handleCardClick}
     >
       {/* Image: Fixed height container to prevent layout shift - matches Product component */}
-      <div className="relative rounded-2xl mb-2 overflow-hidden bg-gray-100 h-[140px] sm:h-[180px] flex items-center justify-center">
+      <div className="relative rounded-xl mb-2 overflow-hidden bg-gray-100 h-[130px] sm:h-[145px] flex items-center justify-center">
+        <div className="absolute top-2 left-2 z-[11] pointer-events-none max-w-[55%]">
+          <ProductPromoBadges isRecommended={isRecommended} isHotDeal={isHotDeal} />
+        </div>
         {inverterRatingText && (
           <span className="absolute top-2 right-2 z-10 bg-[#E8A91D] text-white text-[10px] sm:text-[11px] px-2 py-1 rounded-full font-semibold shadow">
             {inverterRatingText}
@@ -113,8 +125,8 @@ const SolarBundleComponent = ({
           onError={handleImageError}
         />
       </div>
-      {/* Title - with fixed height to prevent layout shift */}
-      <div className="min-h-[60px] mb-2">
+      {/* Title - compact height for 4-column layout */}
+      <div className="min-h-[48px] mb-2">
         <h2 className="text-[13px] sm:text-[14px] font-medium text-slate-800 leading-snug line-clamp-2">
           {heading}
         </h2>
@@ -160,17 +172,17 @@ const SolarBundleComponent = ({
       <hr className="border-gray-300 mt-2 mb-3" />
 
       {/* Actions: Buttons similar to Product component */}
-      <div className="grid grid-cols-2 gap-3 mt-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="grid grid-cols-2 gap-2 mt-auto" onClick={(e) => e.stopPropagation()}>
         <Link
           to={detailLink}
-          className="h-10 border border-[#000000] text-[12px] max-sm:text-[8px] rounded-full max-sm:rounded-2xl text-[#181919] max-sm:h-7 flex items-center justify-center hover:bg-gray-50 transition-colors"
+          className="h-9 border border-[#000000] text-[11px] max-sm:text-[8px] rounded-full max-sm:rounded-2xl text-[#181919] max-sm:h-7 flex items-center justify-center hover:bg-gray-50 transition-colors"
           onClick={(e) => e.stopPropagation()}
         >
           Learn More
         </Link>
         <Link
           to={detailLink}
-          className="h-10 text-[10px] sm:text-[12px] rounded-full bg-[#273e8e] max-sm:text-[8px] max-sm:rounded-2xl max-sm:h-7 text-white flex items-center justify-center hover:bg-[#1a2b6b] transition-colors"
+          className="h-9 text-[10px] sm:text-[11px] rounded-full bg-[#273e8e] max-sm:text-[8px] max-sm:rounded-2xl max-sm:h-7 text-white flex items-center justify-center hover:bg-[#1a2b6b] transition-colors"
           onClick={(e) => e.stopPropagation()}
         >
           Buy Now

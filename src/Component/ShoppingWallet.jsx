@@ -101,6 +101,9 @@ const ShoppingWallet = () => {
           console.log("Flutterwave response:", response);
 
           if (response?.status === "successful") {
+            if (typeof window.closePaymentModal === "function") {
+              window.closePaymentModal();
+            }
             console.log("onSuccess (client):", {
               tx_ref: response?.tx_ref || txRef,
               transaction_id: response?.transaction_id,

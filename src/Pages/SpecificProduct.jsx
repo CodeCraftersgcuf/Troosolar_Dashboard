@@ -11,10 +11,73 @@ import TopNavbar from "../Component/TopNavbar";
 import HrLine from "../Component/MobileSectionResponsive/HrLine";
 import Items from "../Component/Items";
 
-import API from "../config/api.config";
+import API, { BASE_URL } from "../config/api.config";
 import { ContextApi } from "../Context/AppContext";
 import { assets } from "../assets/data";
-import { SearchIcon, ShoppingCart } from "lucide-react";
+import { SearchIcon, ShoppingCart, ChevronLeft, ChevronRight } from "lucide-react";
+import SolarBundleComponent from "../Component/SolarBundleComponent";
+import { apiFlagTrue } from "../utils/apiFlags";
+
+const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, "");
+
+/** Map specific category pages to bundle types from Buy Solar Bundles. */
+const getBundleTypeForCategoryPage = (categoryId, cat) => {
+  const idStr = String(categoryId);
+  const label = String(cat?.name || cat?.title || "")
+    .trim()
+    .toLowerCase();
+  if (idStr === "25" || label === "solar bundles") {
+    return "Solar+Inverter+Battery";
+  }
+  if (idStr === "26" || label === "inverter bundles") {
+    return "Inverter + Battery";
+  }
+  return null;
+};
+
+const toAbsoluteBundleImage = (path) => {
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path;
+  if (path.startsWith("/")) return `${API_ORIGIN}${path}`;
+  const cleaned = path.replace(/^public\//, "");
+  return `${API_ORIGIN}/storage/${cleaned}`;
+};
+
+const BUNDLE_FALLBACK_IMAGE =
+  "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
+
+const normalizeBundleTypeKey = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .replace(/\s+/g, "");
+
+/** Matches Buy Solar Bundles "Solar+Inverter+Battery" and minor spacing variants. */
+const isSolarInverterBatteryBundle = (b) => {
+  const key = normalizeBundleTypeKey(b?.bundle_type);
+  return (
+    key === "solar+inverter+battery" ||
+    key === "solarinverterbattery" ||
+    /solar.*inverter.*battery/i.test(String(b?.bundle_type || ""))
+  );
+};
+
+/** Matches Buy Solar Bundles "Inverter + Battery" and minor spacing variants. */
+const isInverterBatteryBundle = (b) => {
+  const key = normalizeBundleTypeKey(b?.bundle_type);
+  return (
+    key === "inverter+battery" ||
+    key === "inverterbattery" ||
+    /inverter.*battery/i.test(String(b?.bundle_type || ""))
+  );
+};
+
+const normalizeBundlesResponse = (data) => {
+  const root = data?.data ?? data;
+  if (Array.isArray(root)) return root;
+  if (Array.isArray(root?.data)) return root.data;
+  if (root && typeof root === "object") return [root];
+  return [];
+};
 
 const toNumber = (v) =>
   typeof v === "number"
@@ -58,6 +121,39 @@ const formatNGN = (n) => {
   }
 };
 
+const mapBundleToGridItem = (b) => {
+  const image = b?.featured_image
+    ? toAbsoluteBundleImage(b.featured_image)
+    : BUNDLE_FALLBACK_IMAGE;
+  const title = b?.title || `Bundle #${b?.id ?? ""}`;
+  const total = Number(b?.total_price ?? 0);
+  const discount = Number(b?.discount_price ?? 0);
+  const showDiscount = discount > 0 && discount < total;
+  const priceNum = showDiscount ? discount : total;
+  const price = formatNGN(priceNum);
+  const oldPrice = showDiscount ? formatNGN(total) : "";
+  const pct = showDiscount && total > 0 ? Math.round((1 - discount / total) * 100) : 0;
+  const discountBadge = showDiscount ? `-${pct}%` : "";
+  return {
+    id: b?.id,
+    image,
+    heading: title,
+    price,
+    oldPrice,
+    discount: discountBadge,
+    rating: assets?.fiveStars || assets?.rating || "",
+    bundleTitle: b?.bundle_type || "",
+    inverterRating:
+      b?.inver_rating ?? b?.inverter_rating ?? b?.inverterRating ?? "",
+    borderColor: "#273e8e",
+    _price_numeric: priceNum,
+    _category_id: b?.category_id,
+    bundle: b,
+    isHotDeal: apiFlagTrue(b?.top_deal),
+    isRecommended: apiFlagTrue(b?.is_most_popular),
+  };
+};
+
 const mapApiProductToCard = (p) => {
   if (!p) return null;
   const stockQty = parseStockQuantity(p?.stock);
@@ -85,6 +181,12 @@ const mapApiProductToCard = (p) => {
     discount = `-${pct}%`;
   }
 
+  const reviews = Array.isArray(p?.reviews) ? p.reviews : [];
+  const ratingAvg =
+    reviews.length > 0
+      ? reviews.reduce((s, r) => s + Number(r?.rating ?? 0), 0) / reviews.length
+      : 0;
+
   return {
     id: p.id,
     image,
@@ -92,7 +194,10 @@ const mapApiProductToCard = (p) => {
     price,
     oldPrice,
     discount,
-    rating: assets?.rating || assets?.fiveStars || "",
+    ratingAvg,
+    ratingCount: reviews.length,
+    isHotDeal: apiFlagTrue(p?.top_deal),
+    isRecommended: apiFlagTrue(p?.is_most_popular),
     _price_numeric: priceNum,
     _category_id: p.category_id,
     stock: stockQty,
@@ -143,6 +248,8 @@ const SpecificProduct = () => {
   const [specificProduct, setSpecificProduct] = useState([]); // currently displayed list
   const [prodLoading, setProdLoading] = useState(false);
   const [prodError, setProdError] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12;
 
   // fetch category details
   useEffect(() => {
@@ -192,7 +299,13 @@ const SpecificProduct = () => {
     fetchCategories();
   }, []);
 
-  // fetch category products + fallback to /products filtered by category_id
+  const bundleTypeForPage = useMemo(
+    () => getBundleTypeForCategoryPage(id, category),
+    [id, category]
+  );
+  const bundleCategoryShop = Boolean(bundleTypeForPage);
+
+  // fetch category products, or bundle cards for mapped bundle-category pages
   useEffect(() => {
     const fetchCategoryProducts = async () => {
       setProdLoading(true);
@@ -203,6 +316,30 @@ const SpecificProduct = () => {
           Accept: "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         };
+
+        if (bundleTypeForPage) {
+          const typeEnc = encodeURIComponent(bundleTypeForPage);
+          const bundleMatcher =
+            bundleTypeForPage === "Inverter + Battery"
+              ? isInverterBatteryBundle
+              : isSolarInverterBatteryBundle;
+          const { data: bundleResp } = await axios.get(
+            `${API.BUNDLES}?bundle_type=${typeEnc}`,
+            { headers }
+          );
+          let rawBundles = normalizeBundlesResponse(bundleResp).filter(bundleMatcher);
+          if (!rawBundles.length) {
+            const { data: allBundlesResp } = await axios.get(API.BUNDLES, {
+              headers,
+            });
+            rawBundles = normalizeBundlesResponse(allBundlesResp).filter(bundleMatcher);
+          }
+          registerProducts([]);
+          const mapped = rawBundles.map(mapBundleToGridItem).filter(Boolean);
+          setAllProducts(mapped);
+          setSpecificProduct(mapped);
+          return;
+        }
 
         // 1) try /categories/:id/products (if you have it in api.config)
         const { data: catResp } = await axios.get(API.CATEGORY_PRODUCTS(id), {
@@ -242,7 +379,11 @@ const SpecificProduct = () => {
     };
     if (id) fetchCategoryProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]); // Removed registerProducts from deps to prevent infinite loops
+  }, [
+    id,
+    // When slug is /product/25 or /product/26, category name is not needed; avoid refetch when category loads.
+    String(id) === "25" || String(id) === "26" ? undefined : category,
+  ]);
 
   // price filter
   const handlePriceFilter = (min, max) => {
@@ -259,6 +400,10 @@ const SpecificProduct = () => {
   // result === "__ALL__" -> restore allProducts
   // result === raw products array from /brands/{ids}/products -> map + restrict to this category (just in case)
   const handleBrandFilterResult = (result) => {
+    if (bundleCategoryShop) {
+      setSpecificProduct(allProducts);
+      return;
+    }
     if (result === "__ALL__") {
       setSpecificProduct(allProducts);
       return;
@@ -276,11 +421,30 @@ const SpecificProduct = () => {
     return category?.name || category?.title || `Category #${id}`;
   }, [category, id]);
 
+  const totalItems = specificProduct.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+
+  const paginatedProducts = useMemo(() => {
+    if (!bundleCategoryShop) return specificProduct;
+    const start = (currentPage - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    return specificProduct.slice(start, end);
+  }, [bundleCategoryShop, currentPage, itemsPerPage, specificProduct]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [id, bundleCategoryShop, totalItems]);
+
+  const handlePageChange = (nextPage) => {
+    if (nextPage < 1 || nextPage > totalPages) return;
+    setCurrentPage(nextPage);
+  };
+
   return (
     <>
       {/* Desktop View */}
       <div className="sm:flex hidden w-full min-h-screen bg-gray-100">
-        <div className="w-auto">
+        <div className="w-[250px] min-w-[250px] shrink-0">
           <SideBar />
         </div>
 
@@ -306,10 +470,12 @@ const SpecificProduct = () => {
 
           <div className="px-6 py-6 flex-1 overflow-auto">
             <div className="relative z-[100] flex justify-start items-center gap-4 mb-4">
-              <ProductBrandFilter
-                categoryId={id}
-                onFilter={handleBrandFilterResult}
-              />
+              {!bundleCategoryShop && (
+                <ProductBrandFilter
+                  categoryId={id}
+                  onFilter={handleBrandFilterResult}
+                />
+              )}
               <ProductPriceFilter onFilter={handlePriceFilter} />
             </div>
 
@@ -322,27 +488,79 @@ const SpecificProduct = () => {
             )}
             {prodLoading && <p className="text-gray-600 text-sm">Loading…</p>}
 
-            <div className="grid xl:grid-cols-3 lg:grid-cols-2 md:grid-cols-2 sm:grid-cols-1 gap-4">
-              {specificProduct.map((item) => (
-                <Link key={item.id} to={`/homePage/product/${item.id}`}>
-                  <Product
-                    id={item.id}
-                    image={item.image}
-                    heading={item.heading}
-                    price={item.price}
-                    oldPrice={item.oldPrice}
-                    discount={item.discount}
-                    rating={item.rating}
-                    stock={item.stock}
-                  />
-                </Link>
-              ))}
+            <div
+              className={
+                bundleCategoryShop
+                  ? "grid xl:grid-cols-4 lg:grid-cols-3 md:grid-cols-2 sm:grid-cols-1 gap-4"
+                  : "grid xl:grid-cols-3 lg:grid-cols-2 md:grid-cols-2 sm:grid-cols-1 gap-4"
+              }
+            >
+              {bundleCategoryShop
+                ? paginatedProducts.map((item) => (
+                    <SolarBundleComponent
+                      key={item.id}
+                      id={item.id}
+                      image={item.image}
+                      heading={item.heading}
+                      price={item.price}
+                      oldPrice={item.oldPrice}
+                      discount={item.discount}
+                      rating={item.rating}
+                      borderColor={item.borderColor}
+                      bundleTitle={item.bundleTitle}
+                      inverterRating={item.inverterRating}
+                      isHotDeal={item.isHotDeal}
+                      isRecommended={item.isRecommended}
+                    />
+                  ))
+                : specificProduct.map((item) => (
+                    <Link key={item.id} to={`/homePage/product/${item.id}`}>
+                      <Product
+                        id={item.id}
+                        image={item.image}
+                        heading={item.heading}
+                        price={item.price}
+                        oldPrice={item.oldPrice}
+                        discount={item.discount}
+                        ratingAvg={item.ratingAvg}
+                        ratingCount={item.ratingCount}
+                        isHotDeal={item.isHotDeal}
+                        isRecommended={item.isRecommended}
+                        stock={item.stock}
+                      />
+                    </Link>
+                  ))}
               {!prodLoading && !specificProduct.length && !prodError && (
                 <div className="text-gray-500 bg-white border rounded-xl p-4">
-                  No products in this category.
+                  {bundleCategoryShop
+                    ? `No ${bundleTypeForPage} bundles are available right now.`
+                    : "No products in this category."}
                 </div>
               )}
             </div>
+            {bundleCategoryShop && !prodLoading && !prodError && totalPages > 1 && (
+              <div className="flex justify-center items-center gap-2 mt-8">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <div className="px-4 text-sm text-gray-600">
+                  Page {currentPage} of {totalPages}
+                </div>
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                  aria-label="Next page"
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -375,13 +593,17 @@ const SpecificProduct = () => {
             </div>
 
             <div className="relative z-[100] flex h-[70px] justify-center items-center mb-4">
-              <ProductBrandFilter
-                categoryId={id}
-                onFilter={handleBrandFilterResult}
-              />
-              <div className="h-full flex items-center px-3">
-                <div className="h-[50px] w-[4px] bg-white rounded" />
-              </div>
+              {!bundleCategoryShop && (
+                <ProductBrandFilter
+                  categoryId={id}
+                  onFilter={handleBrandFilterResult}
+                />
+              )}
+              {!bundleCategoryShop && (
+                <div className="h-full flex items-center px-3">
+                  <div className="h-[50px] w-[4px] bg-white rounded" />
+                </div>
+              )}
               <ProductPriceFilter onFilter={handlePriceFilter} />
             </div>
           </div>
@@ -395,27 +617,79 @@ const SpecificProduct = () => {
             )}
             {prodLoading && <p className="text-gray-600 text-sm">Loading…</p>}
 
-            <div className="grid grid-cols-2 place-items-center gap-4">
-              {specificProduct.map((item) => (
-                <Link key={item.id} to={`/homePage/product/${item.id}`}>
-                  <Product
-                    id={item.id}
-                    image={item.image}
-                    heading={item.heading}
-                    price={item.price}
-                    oldPrice={item.oldPrice}
-                    discount={item.discount}
-                    rating={item.rating}
-                    stock={item.stock}
-                  />
-                </Link>
-              ))}
+            <div
+              className={
+                bundleCategoryShop
+                  ? "grid grid-cols-1 place-items-stretch gap-4 w-full"
+                  : "grid grid-cols-2 place-items-center gap-4"
+              }
+            >
+              {bundleCategoryShop
+                ? paginatedProducts.map((item) => (
+                    <SolarBundleComponent
+                      key={item.id}
+                      id={item.id}
+                      image={item.image}
+                      heading={item.heading}
+                      price={item.price}
+                      oldPrice={item.oldPrice}
+                      discount={item.discount}
+                      rating={item.rating}
+                      borderColor={item.borderColor}
+                      bundleTitle={item.bundleTitle}
+                      inverterRating={item.inverterRating}
+                      isHotDeal={item.isHotDeal}
+                      isRecommended={item.isRecommended}
+                    />
+                  ))
+                : specificProduct.map((item) => (
+                    <Link key={item.id} to={`/homePage/product/${item.id}`}>
+                      <Product
+                        id={item.id}
+                        image={item.image}
+                        heading={item.heading}
+                        price={item.price}
+                        oldPrice={item.oldPrice}
+                        discount={item.discount}
+                        ratingAvg={item.ratingAvg}
+                        ratingCount={item.ratingCount}
+                        isHotDeal={item.isHotDeal}
+                        isRecommended={item.isRecommended}
+                        stock={item.stock}
+                      />
+                    </Link>
+                  ))}
               {!prodLoading && !specificProduct.length && !prodError && (
                 <div className="text-gray-500 bg-white border rounded-xl p-4 col-span-2 w-full text-center">
-                  No products in this category.
+                  {bundleCategoryShop
+                    ? `No ${bundleTypeForPage} bundles are available right now.`
+                    : "No products in this category."}
                 </div>
               )}
             </div>
+            {bundleCategoryShop && !prodLoading && !prodError && totalPages > 1 && (
+              <div className="flex justify-center items-center gap-2 mt-6 pb-2">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <div className="px-3 text-sm text-gray-600">
+                  {currentPage} / {totalPages}
+                </div>
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                  aria-label="Next page"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

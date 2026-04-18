@@ -62,6 +62,7 @@ const API = {
     Delete_Address: (id) => `${BASE_URL}/delivery-address/delete/${id}`,
     Add_Address: `${BASE_URL}/delivery-address/store`,
     Product_Reviews: `${BASE_URL}/product-reviews`,
+    Product_Review_Eligibility: `${BASE_URL}/product-reviews/review-eligibility`,
     Update_Product_Review: (id) => `${BASE_URL}/product-reviews/${id}`,
     Kyc_Upload: `${BASE_URL}/kyc`,
 
