@@ -32,7 +32,7 @@ const Stars = ({ value = 0 }) => {
     <svg
       viewBox="0 0 20 20"
       className={`h-4 w-4 max-sm:h-2 max-sm:w-2 ${
-        filled ? "fill-amber-400" : "fill-gray-300"
+        filled ? "fill-[#F8A91D]" : "fill-gray-300"
       }`}
       aria-hidden="true"
     >
@@ -99,7 +99,7 @@ const Product = ({
   const isOutOfStock = Number(stock ?? 0) <= 0;
 
   const cardHighlight = isRecommended
-    ? "ring-2 ring-emerald-500/90 border-emerald-400 shadow-lg"
+    ? "ring-2 ring-[#F8A91D]/90 border-[#F8A91D] shadow-lg"
     : isHotDeal
       ? "ring-2 ring-amber-400/90"
       : "";
@@ -149,7 +149,7 @@ const Product = ({
     <div
       className={`relative w-full h-full sm:h-full sm:w-full bg-white border ${
         isRecommended
-          ? "border-emerald-400"
+          ? "border-[#F8A91D]"
           : isHotDeal
             ? "border-amber-300"
             : "border-gray-200"

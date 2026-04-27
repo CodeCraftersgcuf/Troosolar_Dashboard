@@ -64,7 +64,7 @@ const SolarBundleComponent = ({
   })();
 
   const cardHighlight = isRecommended
-    ? "ring-2 ring-emerald-500/90 shadow-lg"
+    ? "ring-2 ring-[#F8A91D]/90 shadow-lg"
     : isHotDeal
       ? "ring-2 ring-amber-400/90"
       : "";
@@ -72,7 +72,9 @@ const SolarBundleComponent = ({
   return (
     <div
       className={`w-full h-full bg-white rounded-[20px] p-3 sm:p-3 shadow-sm flex flex-col min-h-[290px] sm:min-h-0 cursor-pointer hover:shadow-md transition-shadow ${cardHighlight}`.trim()}
-      style={{ border: `2px solid ${borderColor || '#273e8e'}` }}
+      style={{
+        border: `2px solid ${isRecommended ? "#F8A91D" : borderColor || "#273e8e"}`,
+      }}
       onClick={handleCardClick}
     >
       {/* Image: Fixed height container to prevent layout shift - matches Product component */}
@@ -81,7 +83,7 @@ const SolarBundleComponent = ({
           <ProductPromoBadges isRecommended={isRecommended} isHotDeal={isHotDeal} />
         </div>
         {inverterRatingText && (
-          <span className="absolute top-2 right-2 z-10 bg-[#E8A91D] text-white text-[10px] sm:text-[11px] px-2 py-1 rounded-full font-semibold shadow">
+          <span className="absolute top-2 right-2 z-10 bg-[#F8A91D] text-white text-[10px] sm:text-[11px] px-2 py-1 rounded-full font-semibold shadow">
             {inverterRatingText}
           </span>
         )}

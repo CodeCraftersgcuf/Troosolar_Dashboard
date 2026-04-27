@@ -7,6 +7,7 @@ const SIZE_OPTIONS = [
   { label: "1.2kVA/12V", value: 1.2 },
   { label: "1.5kVA/12V", value: 1.5 },
   { label: "1.8kVA/12V", value: 1.8 },
+  { label: "2.5kVA/24V", value: 2.5 },
   { label: "3.6kVA/24V", value: 3.6 },
   { label: "4kVA/24V", value: 4.0 },
   { label: "5kVA/48V", value: 5.0 },

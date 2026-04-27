@@ -126,7 +126,7 @@ const Stars = ({ value = 0, size = 20 }) => {
             key={i}
             size={size}
             className={
-              filled ? "fill-amber-400 text-amber-400" : "text-gray-300"
+              filled ? "fill-[#F8A91D] text-[#F8A91D]" : "text-gray-300"
             }
           />
         );
@@ -650,13 +650,13 @@ export default function ProductDetails() {
                     </button>
                   </div>
                   <div className="p-4 mt-6 bg-[#FFFF0033] rounded-lg">
-                    <p className="text-[#E8A91D] text-[14px] pb-5">
+                    <p className="text-[#F8A91D] text-[14px] pb-5">
                       Don't have the finances to proceed? Take a loan and repay
                       at your convenience
                     </p>
                     <Link
                       to="/loan"
-                      className="bg-[#E8A91D] py-2 px-6 text-white rounded-full text-[13px] hover:bg-[#E8A91D]/90 transition"
+                      className="bg-[#F8A91D] py-2 px-6 text-white rounded-full text-[13px] hover:bg-[#E09618]/90 transition"
                     >
                       Apply
                     </Link>

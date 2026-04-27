@@ -89,7 +89,7 @@ const ReviewModal = ({
                     size={24}
                     className={`${
                       star <= rating
-                        ? "text-amber-400 fill-current"
+                        ? "text-[#F8A91D] fill-current"
                         : "text-gray-300"
                     } transition-colors`}
                   />
@@ -170,7 +170,7 @@ const ReviewModal = ({
                     size={28}
                     className={`${
                       star <= rating
-                        ? "text-amber-400 fill-current"
+                        ? "text-[#F8A91D] fill-current"
                         : "text-gray-300"
                     } transition-colors`}
                   />

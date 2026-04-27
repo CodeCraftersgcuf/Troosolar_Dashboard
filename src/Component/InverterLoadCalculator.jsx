@@ -9,7 +9,8 @@ const DEFAULT_INVERTER_SELECTION_RANGES = [
   { minKw: 0.0, maxKw: 0.96, targetKva: 1.2, voltageV: 12, label: "1.2kVA/12V" },
   { minKw: 0.96, maxKw: 1.13, targetKva: 1.5, voltageV: 12, label: "1.5kVA/12V" },
   { minKw: 1.13, maxKw: 1.35, targetKva: 1.8, voltageV: 12, label: "1.8kVA/12V" },
-  { minKw: 1.35, maxKw: 2.52, targetKva: 3.6, voltageV: 24, label: "3.6kVA/24V" },
+  { minKw: 1.35, maxKw: 1.88, targetKva: 2.5, voltageV: 24, label: "2.5kVA/24V" },
+  { minKw: 1.88, maxKw: 2.52, targetKva: 3.6, voltageV: 24, label: "3.6kVA/24V" },
   { minKw: 2.52, maxKw: 2.89, targetKva: 4.0, voltageV: 24, label: "4kVA/24V" },
   { minKw: 2.89, maxKw: 4.0, targetKva: 5.0, voltageV: 48, label: "5kVA/48V" },
   { minKw: 4.0, maxKw: 4.2, targetKva: 6.0, voltageV: 48, label: "6kVA/48V" },
@@ -225,21 +226,35 @@ const InverterLoadCalculator = () => {
             if (normalized.some((r) => /(?:\s|^)or(?:\s|$)/i.test(String(r.label || "")))) {
               return false;
             }
-            // Must contain the critical breakpoint ranges from the provided sheet:
-            // 1.35–2.52 => 3.6 and 2.52–2.89 => 4.0
-            const has36 = normalized.some(
-              (r) =>
-                approxEq(r.minKw, 1.35, 0.02) &&
-                approxEq(r.maxKw, 2.52, 0.02) &&
-                approxEq(r.targetKva, 3.6, 0.05)
-            );
+            // 2.52–2.89 => 4.0 (unchanged)
             const has4 = normalized.some(
               (r) =>
                 approxEq(r.minKw, 2.52, 0.02) &&
                 approxEq(r.maxKw, 2.89, 0.02) &&
                 (approxEq(r.targetKva, 4.0, 0.05) || approxEq(r.targetKva, 4, 0.05))
             );
-            return has36 && has4;
+            if (!has4) return false;
+            // New sheet: 1.35–1.88 => 2.5 and 1.88–2.52 => 3.6
+            const has25And36 = normalized.some(
+              (r) =>
+                approxEq(r.minKw, 1.35, 0.02) &&
+                approxEq(r.maxKw, 1.88, 0.02) &&
+                approxEq(r.targetKva, 2.5, 0.05)
+            ) &&
+              normalized.some(
+                (r) =>
+                  approxEq(r.minKw, 1.88, 0.02) &&
+                  approxEq(r.maxKw, 2.52, 0.02) &&
+                  approxEq(r.targetKva, 3.6, 0.05)
+              );
+            // Legacy single band (pre–2.5kVA tier): 1.35–2.52 => 3.6
+            const hasLegacy36 = normalized.some(
+              (r) =>
+                approxEq(r.minKw, 1.35, 0.02) &&
+                approxEq(r.maxKw, 2.52, 0.02) &&
+                approxEq(r.targetKva, 3.6, 0.05)
+            );
+            return has25And36 || hasLegacy36;
           })();
 
           if (normalized.length > 0 && looksLikeSheet) {
@@ -325,7 +340,7 @@ const InverterLoadCalculator = () => {
   };
   const inferVoltageV = (kva) => {
     if (!Number.isFinite(kva)) return null;
-    // Per the provided load→rating table.
+    // Per the provided load→rating table (12V up to 1.8kVA; 24V through 4kVA; 48V above).
     if (kva <= 1.8) return 12;
     if (kva <= 4.0) return 24;
     return 48;

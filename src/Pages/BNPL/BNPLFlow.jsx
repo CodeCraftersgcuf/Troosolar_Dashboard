@@ -1922,7 +1922,7 @@ const BNPLFlow = () => {
                                         isSelected 
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
                                             : isRec
-                                            ? 'border-emerald-200 ring-2 ring-emerald-500 shadow-md hover:border-emerald-300'
+                                            ? 'border-[#FCD28A] ring-2 ring-[#F8A91D] shadow-md hover:border-[#F8A91D]'
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
                                     onClick={() => {
@@ -2096,7 +2096,7 @@ const BNPLFlow = () => {
                                         isSelected 
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
                                             : isRec
-                                            ? 'border-emerald-200 ring-2 ring-emerald-500 shadow-md hover:border-emerald-300'
+                                            ? 'border-[#FCD28A] ring-2 ring-[#F8A91D] shadow-md hover:border-[#F8A91D]'
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
                                     onClick={() => {
