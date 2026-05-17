@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { Calculator, ArrowRight } from 'lucide-react';
+import { Calculator, ArrowRight, Download } from 'lucide-react';
 import API from '../config/api.config';
 
 const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: loanConfigProp }) => {
@@ -47,6 +47,10 @@ const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: l
   const [depositPercent, setDepositPercent] = useState(downPaymentOptions[0] ?? minDepositPercent);
   const [tenor, setTenor] = useState(allowedTenors.includes(12) ? 12 : allowedTenors[0] || 12);
   const [interestRate] = useState(maxInterestRate);
+  const vatPercent = Number(config?.vat_percentage ?? 7.5);
+  const insurancePercent = Number(config?.insurance_fee_percentage ?? 3);
+  const managementPercent = Number(config?.management_fee_percentage ?? 1);
+  const legalPercent = Number(config?.residual_fee_percentage ?? 1);
 
   const totalAmount = isStandalone
     ? Number(String(standaloneAmount).replace(/[^\d.]/g, '')) || 0
@@ -54,6 +58,13 @@ const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: l
 
   const depositAmount = (totalAmount * depositPercent) / 100;
   const principal = totalAmount - depositAmount; // Total Loan Amount
+  const insuranceFee = totalAmount * (insurancePercent / 100);
+  const managementFee = principal * (managementPercent / 100);
+  const legalFee = principal * (legalPercent / 100);
+  const administrativeFees = insuranceFee + managementFee + legalFee;
+  const amountExcludingVat = vatPercent > 0 ? totalAmount / (1 + (vatPercent / 100)) : totalAmount;
+  const vatAmount = Math.max(totalAmount - amountExcludingVat, 0);
+  const upfrontDue = depositAmount + administrativeFees;
   const totalInterest = principal * (interestRate / 100) * tenor;
   const totalRepayment = principal + totalInterest; // Total Repayment Amount
   const monthlyRepayment = tenor > 0 ? totalRepayment / tenor : 0;
@@ -81,6 +92,36 @@ const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: l
       setDepositPercent(downPaymentOptions[0]);
     }
   }, [downPaymentOptions, depositPercent]);
+
+  const handleDownloadLoanSummary = () => {
+    if (totalAmount <= 0) return;
+    const lines = [
+      'Troosolar Loan Calculator Summary',
+      `Generated: ${new Date().toLocaleString()}`,
+      '',
+      `Total Amount (incl. VAT): ${formatCurrency(totalAmount)}`,
+      `VAT (${vatPercent}%): ${formatCurrency(vatAmount)}`,
+      `Initial Deposit (${depositPercent}%): ${formatCurrency(depositAmount)}`,
+      `Insurance Fee (${insurancePercent}% of total amount): ${formatCurrency(insuranceFee)}`,
+      `Management Fee (${managementPercent}% of loan amount): ${formatCurrency(managementFee)}`,
+      `Legal Fee (${legalPercent}% of loan amount): ${formatCurrency(legalFee)}`,
+      `Total Administrative Fees: ${formatCurrency(administrativeFees)}`,
+      `Upfront Payment (Deposit + Admin Fees): ${formatCurrency(upfrontDue)}`,
+      `Total Loan Amount: ${formatCurrency(principal)}`,
+      `Total Interest (${interestRate}% x ${tenor} mo): ${formatCurrency(totalInterest)}`,
+      `Total Repayment Amount: ${formatCurrency(totalRepayment)}`,
+      `Monthly Repayment (${tenor} mo): ${formatCurrency(monthlyRepayment)}`,
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `troosolar-loan-summary-${Date.now()}.txt`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
 
   if (configLoading && isStandalone) {
     return (
@@ -189,12 +230,38 @@ const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: l
                 <span className="font-medium">{formatCurrency(totalAmount)}</span>
               </div>
               <div className="flex justify-between text-sm">
+                <span className="text-gray-500">VAT ({vatPercent}%)</span>
+                <span className="font-medium">{formatCurrency(vatAmount)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Initial Deposit</span>
                 <span className="font-medium text-red-600">−{formatCurrency(depositAmount)}</span>
               </div>
               <div className="flex justify-between text-sm border-b border-gray-200 pb-2">
                 <span className="text-gray-500">Total Loan Amount</span>
                 <span className="font-medium">{formatCurrency(principal)}</span>
+              </div>
+              <div className="pt-2 border-b border-gray-200 pb-2 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Insurance Fee ({insurancePercent}% of total amount)</span>
+                  <span className="font-medium">{formatCurrency(insuranceFee)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Management Fee ({managementPercent}% of loan amount)</span>
+                  <span className="font-medium">{formatCurrency(managementFee)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Legal Fee ({legalPercent}% of loan amount)</span>
+                  <span className="font-medium">{formatCurrency(legalFee)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-semibold">
+                  <span className="text-gray-600">Total Administrative Fees</span>
+                  <span>{formatCurrency(administrativeFees)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-semibold">
+                  <span className="text-gray-600">Upfront Payment (Deposit + Admin Fees)</span>
+                  <span>{formatCurrency(upfrontDue)}</span>
+                </div>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Total Interest Amount ({interestRate}% × {tenor} mo)</span>
@@ -211,6 +278,19 @@ const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: l
             </div>
           </div>
 
+          {totalAmount > 0 && (
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={handleDownloadLoanSummary}
+                className="inline-flex items-center gap-2 border border-[#273e8e] text-[#273e8e] px-4 py-2 rounded-lg font-medium hover:bg-[#273e8e]/5 transition-colors"
+              >
+                <Download size={16} />
+                Download Loan Summary
+              </button>
+            </div>
+          )}
+
           {!isStandalone && onConfirm && (
             <div className="mt-8 pt-6 border-t flex justify-end">
               <button
@@ -225,6 +305,13 @@ const LoanCalculator = ({ totalAmount: totalAmountProp, onConfirm, loanConfig: l
                   totalInterestAmount: totalInterest,
                   totalRepaymentAmount: totalRepayment,
                   monthlyRepaymentAmount: monthlyRepayment,
+                  vatPercent,
+                  vatAmount,
+                  insuranceFee,
+                  managementFee,
+                  legalFee,
+                  totalAdministrativeFees: administrativeFees,
+                  upfrontDue,
                   tenor,
                   // legacy keys for backward compatibility
                   monthlyRepayment,

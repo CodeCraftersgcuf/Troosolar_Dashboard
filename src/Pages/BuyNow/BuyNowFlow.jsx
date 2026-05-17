@@ -1,10 +1,18 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader, CheckCircle2, XCircle, AlertCircle, CreditCard, Minus, Plus, X, Info, ChevronDown, User, MapPin, Phone } from 'lucide-react';
+import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader, CheckCircle2, XCircle, AlertCircle, CreditCard, Minus, Plus, X, Info, ChevronDown, ChevronLeft, ChevronRight, User, MapPin, Phone, Layers, BatteryCharging, PlugZap, PanelsTopLeft } from 'lucide-react';
 import axios from 'axios';
 import API, { BASE_URL } from '../../config/api.config';
 import ProductPromoBadges from '../../Component/ProductPromoBadges';
-import { apiFlagTrue } from '../../utils/apiFlags';
+import {
+    extractKvaFromBundle,
+    sortBundlesFeaturedThenKvaAsc,
+    sortProductsByPromoFirst,
+    entityTopDeal,
+    entityHighlyRecommended,
+} from '../../utils/bundleSort';
+
+const BUNDLE_STEP_GRID_PAGE_SIZE = 9;
 
 // Helper function to convert storage paths to absolute URLs (same as SolarBundle.jsx)
 const toAbsolute = (path) => {
@@ -44,6 +52,13 @@ const FEE_VIS_OWN_PREFIX = "[FEE:OWN]";
 const FEE_VIS_BOTH_PREFIX = "[FEE]";
 const OL_VIS_TROO_PREFIX = "[OL:TROOSOLAR]";
 const OL_VIS_OWN_PREFIX = "[OL:OWN]";
+const stripFeeVisibilityPrefix = (title) => {
+    const t = String(title || '');
+    if (t.startsWith(FEE_VIS_TROO_PREFIX)) return t.slice(FEE_VIS_TROO_PREFIX.length).trim();
+    if (t.startsWith(FEE_VIS_OWN_PREFIX)) return t.slice(FEE_VIS_OWN_PREFIX.length).trim();
+    if (t.startsWith(FEE_VIS_BOTH_PREFIX)) return t.slice(FEE_VIS_BOTH_PREFIX.length).trim();
+    return t;
+};
 
 // Format backup time text - split sentences by periods and display on separate lines with blank line between
 const formatBackupTime = (text) => {
@@ -296,6 +311,7 @@ const BuyNowFlow = () => {
     const [selectedBundleDetails, setSelectedBundleDetails] = useState(null); // For "Learn More" modal
     const [bundleDetailTab, setBundleDetailTab] = useState('description'); // 'description' | 'specs'
     const [selectedSystemSize, setSelectedSystemSize] = useState("all"); // System size filter
+    const [bundleGridPage, setBundleGridPage] = useState(1);
     const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false);
     const sizeDropdownRef = useRef(null);
     const [showBundleSelectPrompt, setShowBundleSelectPrompt] = useState(false);
@@ -710,7 +726,7 @@ const BuyNowFlow = () => {
                         return acc;
                     }, {})
                 );
-                setCategoryProducts(uniqueProducts);
+                setCategoryProducts(sortProductsByPromoFirst(uniqueProducts));
             } catch (error) {
                 console.error("Failed to fetch products:", error);
                 alert("Failed to load products. Please try again.");
@@ -798,7 +814,7 @@ const BuyNowFlow = () => {
             
             const root = response.data?.data ?? response.data;
             const materials = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
-            setCategoryMaterials(materials);
+            setCategoryMaterials(sortProductsByPromoFirst(materials));
             
             // Store materials in map for cart display (preserve across category changes)
             setAllMaterialsMap(prev => {
@@ -860,7 +876,7 @@ const BuyNowFlow = () => {
                 const allProducts = Array.isArray(allProductsRes.data?.data) ? allProductsRes.data.data : [];
                 products = allProducts.filter(p => String(p.category_id) === String(categoryId));
             }
-            setCategoryProducts(products);
+            setCategoryProducts(sortProductsByPromoFirst(products));
         } catch (error) {
             console.error("Failed to fetch products:", error);
             alert("Failed to load products. Please try again.");
@@ -872,25 +888,12 @@ const BuyNowFlow = () => {
 
     const bundlesFetchedRef = useRef(false);
 
-    // Helper function to extract numeric value from inverter rating (e.g., "1.2 kVA" -> 1.2)
-    const extractSystemSize = (bundle) => {
-        const rating = bundle.inver_rating || bundle.inverter_rating || bundle.inverterRating || '';
-        if (!rating) return null;
-        
-        // Extract numeric value (handles formats like "1.2 kVA", "1.2kVA", "1.2 kva", etc.)
-        const match = String(rating).match(/(\d+\.?\d*)/);
-        if (match) {
-            return parseFloat(match[1]);
-        }
-        return null;
-    };
-
     // System size options derived from actual bundles (only sizes we have)
     const sizeOptions = useMemo(() => {
         const sizeSet = new Set();
         bundles.forEach((bundle) => {
-            const size = extractSystemSize(bundle);
-            if (size && Number.isFinite(size)) {
+            const size = extractKvaFromBundle(bundle);
+            if (size > 0 && Number.isFinite(size)) {
                 const rounded = Number(size.toFixed(1));
                 sizeSet.add(rounded);
             }
@@ -903,24 +906,44 @@ const BuyNowFlow = () => {
         return [{ label: "All Sizes", value: "all" }, ...options];
     }, [bundles]);
 
-    // Filter bundles based on selected system size
+    // Filter by size, then promo-first order (same as /solar-bundles).
     const filteredBundles = useMemo(() => {
+        let list;
         if (selectedSystemSize === "all") {
-            return bundles;
+            list = bundles;
+        } else {
+            const targetSize = parseFloat(selectedSystemSize);
+            if (isNaN(targetSize)) {
+                list = bundles;
+            } else {
+                list = bundles.filter((bundle) => {
+                    const bundleSize = extractKvaFromBundle(bundle);
+                    if (bundleSize <= 0) return false;
+                    const tolerance = 0.3;
+                    return Math.abs(bundleSize - targetSize) <= tolerance;
+                });
+            }
         }
-        
-        const targetSize = parseFloat(selectedSystemSize);
-        if (isNaN(targetSize)) return bundles;
-        
-        return bundles.filter((bundle) => {
-            const bundleSize = extractSystemSize(bundle);
-            if (bundleSize === null) return false;
-            
-            // Match within ±0.3kW tolerance
-            const tolerance = 0.3;
-            return Math.abs(bundleSize - targetSize) <= tolerance;
-        });
+        return sortBundlesFeaturedThenKvaAsc(list);
     }, [bundles, selectedSystemSize]);
+
+    useEffect(() => {
+        setBundleGridPage(1);
+    }, [selectedSystemSize, bundles]);
+
+    useEffect(() => {
+        const total = Math.max(1, Math.ceil(filteredBundles.length / BUNDLE_STEP_GRID_PAGE_SIZE));
+        setBundleGridPage((p) => (p > total ? total : p));
+    }, [filteredBundles.length]);
+
+    const orderedCategoryProducts = useMemo(
+        () => sortProductsByPromoFirst(categoryProducts),
+        [categoryProducts]
+    );
+    const orderedCategoryMaterials = useMemo(
+        () => sortProductsByPromoFirst(categoryMaterials),
+        [categoryMaterials]
+    );
 
     // Close size dropdown if clicked outside
     useEffect(() => {
@@ -1796,7 +1819,7 @@ const BuyNowFlow = () => {
             'inverter plus battery',
         ],
         'battery-only': ['battery only', 'battery'],
-        'inverter-only': ['inverter only', 'inverter'],
+        'inverter-only': ['inverter only', 'inverters only', 'inverter', 'inverters'],
         'panels-only': ['solar panel only', 'panels only', 'solar panels only', 'panel only'],
     }), []);
 
@@ -1808,7 +1831,7 @@ const BuyNowFlow = () => {
                 if (categoryKey === 'full-kit') return 'Solar + Inverter + Battery';
                 if (categoryKey === 'inverter-battery') return 'Inverter + Battery';
                 if (categoryKey === 'battery-only') return 'Battery only';
-                if (categoryKey === 'inverter-only') return 'Inverter only';
+                if (categoryKey === 'inverter-only') return 'Inverters only';
                 if (categoryKey === 'panels-only') return 'Panels only';
             }
         }
@@ -1933,89 +1956,96 @@ const BuyNowFlow = () => {
 
     // NEW: Render Step 2 - Solar Solution Selection (5 predefined options, same as BNPL)
     const renderStep2 = () => {
-        // Predefined category groups that map to API categories
         const categoryGroups = [
             {
                 id: 'full-kit',
                 name: 'Solar panels, inverter, and battery solution',
-                icon: Sun,
-                description: 'Complete solar system solution'
+                icon: Layers,
+                description: 'Complete solar system solution',
             },
             {
                 id: 'inverter-battery',
                 name: 'Inverter and battery solution',
-                icon: Zap,
-                description: 'Power backup solution'
+                icon: BatteryCharging,
+                description: 'Power backup solution',
             },
             {
                 id: 'battery-only',
                 name: 'Battery only',
                 icon: Battery,
                 description: 'Choose battery capacity',
-                subtitle: 'Choose battery capacity'
+                subtitle: 'Choose battery capacity',
             },
             {
                 id: 'inverter-only',
-                name: 'Inverter only',
-                icon: Monitor,
+                name: 'Inverters Only',
+                icon: PlugZap,
                 description: 'Choose inverter capacity',
-                subtitle: 'Choose inverter capacity'
+                subtitle: 'Choose inverter capacity',
             },
             {
                 id: 'panels-only',
                 name: 'Solar panels only',
-                icon: Sun,
+                icon: PanelsTopLeft,
                 description: 'Choose solar panel capacity',
-                subtitle: 'Choose solar panel capacity'
-            }
+                subtitle: 'Choose solar panel capacity',
+            },
         ];
+        const byId = Object.fromEntries(categoryGroups.map((g) => [g.id, g]));
+
+        const renderCategoryCard = (group) => {
+            if (!group) return null;
+            const IconComponent = group.icon;
+            return (
+                <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => handleCategorySelect(group.id)}
+                    className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1 w-full"
+                >
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]" />
+                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-5 rounded-full mb-4 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300 flex items-center justify-center min-h-[72px] w-[72px]">
+                        <IconComponent size={36} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-800 mb-1 group-hover:text-[#273e8e] transition-colors">{group.name}</h3>
+                    {group.subtitle ? <p className="text-sm text-gray-500 italic">{group.subtitle}</p> : null}
+                </button>
+            );
+        };
 
         return (
-            <div className="animate-fade-in">
-                <button onClick={() => navigate('/')} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e] transition-colors">
+            <>
+                <button type="button" onClick={() => navigate('/')} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e] transition-colors">
                     <ArrowLeft size={16} className="mr-2" /> Back
                 </button>
-                {/* Buy Now Badge */}
                 <div className="flex justify-center mb-6">
                     <span className="inline-flex items-center px-5 py-2.5 rounded-full text-sm font-bold bg-gradient-to-r from-[#E8A91D] to-[#d4991a] text-white shadow-lg">
                         <CreditCard size={16} className="mr-2" />
                         Buy Now
                     </span>
                 </div>
-                <h2 className="text-3xl font-bold text-center mb-10 text-[#273e8e]">
-                    Select Product Category
-                </h2>
+                <h2 className="text-3xl font-bold text-center mb-10 text-[#273e8e]">Select Product Category</h2>
                 {categories.length === 0 ? (
                     <div className="text-center py-12">
                         <Loader className="animate-spin mx-auto text-[#273e8e]" size={48} />
                         <p className="mt-4 text-gray-600">Loading categories...</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                        {categoryGroups.map((group) => {
-                            const IconComponent = group.icon;
-                            const matchingCategoryIds = getCategoryIdsForGroup(group.id);
-                            
-                            return (
-                                <button
-                                    key={group.id}
-                                    onClick={() => handleCategorySelect(group.id)}
-                                    className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1"
-                                >
-                                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
-                                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-5 rounded-full mb-4 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300 flex items-center justify-center min-h-[72px] w-[72px]">
-                                        <IconComponent size={36} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
-                                    </div>
-                                    <h3 className="text-lg font-bold text-gray-800 mb-1 group-hover:text-[#273e8e] transition-colors">{group.name}</h3>
-                                    {group.subtitle && (
-                                        <p className="text-sm text-gray-500 italic">{group.subtitle}</p>
-                                    )}
-                                </button>
-                            );
-                        })}
+                    <div className="max-w-6xl mx-auto w-full space-y-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {renderCategoryCard(byId['full-kit'])}
+                            {renderCategoryCard(byId['inverter-battery'])}
+                        </div>
+                        <div className="flex justify-center px-2">
+                            <div className="w-full max-w-md">{renderCategoryCard(byId['inverter-only'])}</div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:max-w-4xl md:mx-auto">
+                            {renderCategoryCard(byId['panels-only'])}
+                            {renderCategoryCard(byId['battery-only'])}
+                        </div>
                     </div>
                 )}
-            </div>
+            </>
         );
     };
 
@@ -2210,7 +2240,7 @@ const BuyNowFlow = () => {
                             <p className="mt-2 text-sm text-gray-500">Please wait while we fetch available products</p>
                         </div>
                     </div>
-                ) : categoryProducts.length === 0 ? (
+                ) : orderedCategoryProducts.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-2xl border border-gray-200">
                         <p className="text-gray-600">No products available in this category.</p>
                         <button
@@ -2223,7 +2253,7 @@ const BuyNowFlow = () => {
                 ) : (
                     <>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                            {categoryProducts.map((product) => {
+                            {orderedCategoryProducts.map((product) => {
                                 const price = Number(product.discount_price || product.price || 0);
                                 const oldPrice = product.discount_price && product.price && product.discount_price < product.price 
                                     ? Number(product.price) 
@@ -2233,8 +2263,9 @@ const BuyNowFlow = () => {
                                     : 0;
                                 // Check if product is selected
                                 const isSelected = formData.selectedProducts.some(p => p.id === product.id);
-                                const isRec = apiFlagTrue(product.is_most_popular);
-                                const isHot = apiFlagTrue(product.top_deal);
+                                const isRec = entityHighlyRecommended(product);
+                                const isHot = entityTopDeal(product);
+                                const isPromoHighlight = isRec || isHot;
                                 
                                 return (
                                     <div
@@ -2242,7 +2273,7 @@ const BuyNowFlow = () => {
                                         className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 cursor-pointer ${
                                             isSelected 
                                                 ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
-                                                : isRec
+                                                : isPromoHighlight
                                                 ? 'border-[#FCD28A] ring-2 ring-[#F8A91D] shadow-md hover:border-[#F8A91D]'
                                                 : 'border-gray-100 hover:border-[#273e8e]'
                                         }`}
@@ -2338,7 +2369,7 @@ const BuyNowFlow = () => {
 
     const renderStep3_75 = () => {
         const isBuildSystem = formData.optionType === 'build-system';
-        const itemsToShow = isBuildSystem ? categoryMaterials : categoryProducts;
+        const itemsToShow = isBuildSystem ? orderedCategoryMaterials : orderedCategoryProducts;
         const isLoading = isBuildSystem ? materialsLoading : productsLoading;
 
         const getItemImage = (item) => {
@@ -2421,8 +2452,9 @@ const BuyNowFlow = () => {
                                 ? selectedMaterials.find(m => m.material_id === item.id)
                                 : null;
                             const quantity = selectedMaterial?.quantity || 1;
-                            const isRec = apiFlagTrue(item.is_most_popular);
-                            const isHot = apiFlagTrue(item.top_deal);
+                            const isRec = entityHighlyRecommended(item);
+                            const isHot = entityTopDeal(item);
+                            const isPromoHighlight = isRec || isHot;
                             
                             return (
                                 <div
@@ -2430,7 +2462,7 @@ const BuyNowFlow = () => {
                                     className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 cursor-pointer ${
                                         isSelected 
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
-                                            : isRec
+                                            : isPromoHighlight
                                             ? 'border-[#FCD28A] ring-2 ring-[#F8A91D] shadow-md hover:border-[#F8A91D]'
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
@@ -2714,6 +2746,14 @@ const BuyNowFlow = () => {
 
     const renderStep3_5 = () => {
         const selectedSizeLabel = sizeOptions.find((o) => o.value === selectedSystemSize)?.label || "All Sizes";
+        const totalBundlePages = Math.max(1, Math.ceil(filteredBundles.length / BUNDLE_STEP_GRID_PAGE_SIZE));
+        const bundleGridStart = (bundleGridPage - 1) * BUNDLE_STEP_GRID_PAGE_SIZE;
+        const paginatedBundles = filteredBundles.slice(bundleGridStart, bundleGridStart + BUNDLE_STEP_GRID_PAGE_SIZE);
+        const handleBundlePageChange = (page) => {
+            if (page < 1 || page > totalBundlePages) return;
+            setBundleGridPage(page);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
 
         return (
             <div className="animate-fade-in">
@@ -2784,8 +2824,9 @@ const BuyNowFlow = () => {
                         </button>
                     </div>
                 ) : (
+                    <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
-                        {filteredBundles.map((bundle) => {
+                        {paginatedBundles.map((bundle) => {
                             const price = Number(bundle.discount_price || bundle.total_price || 0);
                             const oldPrice = bundle.discount_price && bundle.total_price && bundle.discount_price < bundle.total_price
                                 ? Number(bundle.total_price)
@@ -2794,6 +2835,9 @@ const BuyNowFlow = () => {
                                 ? Math.round(((oldPrice - price) / oldPrice) * 100)
                                 : 0;
                             const isSelected = formData.selectedBundleId === bundle.id;
+                            const isRec = entityHighlyRecommended(bundle);
+                            const isHot = entityTopDeal(bundle);
+                            const isPromoHighlight = isRec || isHot;
 
                             const bundleItems = bundle.bundleItems ?? bundle.bundle_items ?? [];
                             
@@ -2803,6 +2847,8 @@ const BuyNowFlow = () => {
                                     className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 ${
                                         isSelected
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]'
+                                            : isPromoHighlight
+                                            ? 'border-[#FCD28A] ring-2 ring-[#F8A91D] shadow-md hover:border-[#F8A91D]'
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
                                 >
@@ -2818,20 +2864,22 @@ const BuyNowFlow = () => {
                                                 }
                                             }}
                                         />
+                                        <div className="absolute top-2 left-2 z-[15] flex flex-col gap-1.5 items-start pointer-events-none max-w-[min(100%,14rem)]">
+                                            {getBundleInverterRating(bundle) ? (
+                                                <span className="bg-[#E8A91D] text-white text-[11px] px-2 py-1 rounded-full font-semibold shadow">
+                                                    {String(getBundleInverterRating(bundle)).includes('kVA')
+                                                        ? String(getBundleInverterRating(bundle))
+                                                        : `${getBundleInverterRating(bundle)}kVA`}
+                                                </span>
+                                            ) : null}
+                                        </div>
                                         {discount > 0 && (
-                                            <div className="absolute top-2 right-2 bg-[#FFA500] text-white px-3 py-1 rounded-full text-sm font-bold">
+                                            <div className="absolute top-2 right-2 z-10 bg-[#FFA500] text-white px-3 py-1 rounded-full text-sm font-bold">
                                                 -{discount}%
                                             </div>
                                         )}
-                                        {getBundleInverterRating(bundle) && (
-                                            <span className="absolute top-2 left-2 bg-[#E8A91D] text-white text-[11px] px-2 py-1 rounded-full font-semibold shadow">
-                                                {String(getBundleInverterRating(bundle)).includes('kVA')
-                                                    ? String(getBundleInverterRating(bundle))
-                                                    : `${getBundleInverterRating(bundle)}kVA`}
-                                            </span>
-                                        )}
                                         {isSelected && (
-                                            <div className="absolute inset-0 bg-[#273e8e]/20 flex items-center justify-center">
+                                            <div className="absolute inset-0 z-[5] bg-[#273e8e]/20 flex items-center justify-center">
                                                 <CheckCircle size={48} className="text-[#273e8e]" />
                                             </div>
                                         )}
@@ -2839,7 +2887,17 @@ const BuyNowFlow = () => {
                                     <h3 className="text-xl font-bold mb-2 text-gray-800">
                                         {bundle.title || `Bundle #${bundle.id}`}
                                     </h3>
-                                    <p className="text-sm text-gray-500 mb-3">{getBundleCategoryLabel(bundle)}</p>
+                                    <p className="text-sm text-gray-500 mb-2">{getBundleCategoryLabel(bundle)}</p>
+                                    {(isRec || isHot) && (
+                                        <div className="mb-3">
+                                            <ProductPromoBadges
+                                                layout="row"
+                                                size="large"
+                                                isRecommended={isRec}
+                                                isHotDeal={isHot}
+                                            />
+                                        </div>
+                                    )}
                                     <div className="flex items-baseline gap-2 mb-4">
                                         <span className="text-2xl font-bold text-[#273e8e]">
                                             {formatPrice(price)}
@@ -2905,6 +2963,63 @@ const BuyNowFlow = () => {
                             );
                         })}
                     </div>
+
+                    {totalBundlePages > 1 && (
+                        <div className="flex justify-center items-center gap-2 mt-8">
+                            <button
+                                type="button"
+                                onClick={() => handleBundlePageChange(bundleGridPage - 1)}
+                                disabled={bundleGridPage === 1}
+                                className="p-2 rounded-lg border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                                aria-label="Previous page"
+                            >
+                                <ChevronLeft size={20} className="text-gray-700" />
+                            </button>
+                            <div className="flex gap-1">
+                                {Array.from({ length: Math.min(5, totalBundlePages) }, (_, i) => {
+                                    let pageNum;
+                                    if (totalBundlePages <= 5) {
+                                        pageNum = i + 1;
+                                    } else if (bundleGridPage <= 3) {
+                                        pageNum = i + 1;
+                                    } else if (bundleGridPage >= totalBundlePages - 2) {
+                                        pageNum = totalBundlePages - 4 + i;
+                                    } else {
+                                        pageNum = bundleGridPage - 2 + i;
+                                    }
+                                    return (
+                                        <button
+                                            type="button"
+                                            key={pageNum}
+                                            onClick={() => handleBundlePageChange(pageNum)}
+                                            className={`min-w-[2.5rem] px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                                bundleGridPage === pageNum
+                                                    ? 'bg-[#273e8e] text-white'
+                                                    : 'border border-gray-300 bg-white hover:bg-gray-50 text-gray-700'
+                                            }`}
+                                        >
+                                            {pageNum}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => handleBundlePageChange(bundleGridPage + 1)}
+                                disabled={bundleGridPage === totalBundlePages}
+                                className="p-2 rounded-lg border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                                aria-label="Next page"
+                            >
+                                <ChevronRight size={20} className="text-gray-700" />
+                            </button>
+                        </div>
+                    )}
+                    {filteredBundles.length > 0 && (
+                        <p className="text-center text-sm text-gray-500 mt-4">
+                            Showing {bundleGridStart + 1} - {Math.min(bundleGridStart + BUNDLE_STEP_GRID_PAGE_SIZE, filteredBundles.length)} of {filteredBundles.length} {isInverterFlow ? 'solutions' : 'bundles'}
+                        </p>
+                    )}
+                    </>
                 )}
             </div>
         );
@@ -3891,7 +4006,7 @@ const BuyNowFlow = () => {
                                 <tbody>
                                     {section.rows.map((row) => (
                                         <tr key={row.id} className="border-b border-gray-100">
-                                            <td className="py-3 px-2 text-gray-800">{row.description}</td>
+                                            <td className="py-3 px-2 text-gray-800">{stripFeeVisibilityPrefix(row.description)}</td>
                                             <td className="py-3 px-2 text-center">{row.quantity}</td>
                                             <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
                                             <td className="py-3 px-2 text-right text-gray-600">{row.rate > 0 ? `₦${formatAmount(row.rate)}` : <span className="italic text-gray-400">Included</span>}</td>
@@ -3931,7 +4046,7 @@ const BuyNowFlow = () => {
                                 <tbody>
                                     {productRows.map((row) => (
                                         <tr key={row.id} className="border-b border-gray-100">
-                                            <td className="py-3 px-2 text-gray-800">{row.description}</td>
+                                            <td className="py-3 px-2 text-gray-800">{stripFeeVisibilityPrefix(row.description)}</td>
                                             <td className="py-3 px-2 text-center">{row.quantity}</td>
                                             <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
                                             <td className="py-3 px-2 text-right">₦{formatAmount(row.rate)}</td>
@@ -4253,7 +4368,7 @@ const BuyNowFlow = () => {
                                 <tbody>
                                     {section.allRows.map((row) => (
                                         <tr key={row.id} className={`border-b border-gray-100 ${row.isDetail ? 'bg-gray-50/50' : ''}`}>
-                                            <td className={`py-3 px-2 ${row.isBold ? 'font-semibold text-gray-900' : row.isDetail ? 'text-gray-500 text-xs' : 'text-gray-800'}`}>{row.description}</td>
+                                            <td className={`py-3 px-2 ${row.isBold ? 'font-semibold text-gray-900' : row.isDetail ? 'text-gray-500 text-xs' : 'text-gray-800'}`}>{stripFeeVisibilityPrefix(row.description)}</td>
                                             <td className="py-3 px-2 text-center">{row.quantity}</td>
                                             <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
                                             <td className="py-3 px-2 text-right">{row.isDetail ? <span className="text-gray-400 text-xs">Included</span> : (row.rate > 0 ? `₦${formatAmount(row.rate)}` : '—')}</td>
@@ -4263,7 +4378,7 @@ const BuyNowFlow = () => {
                                 </tbody>
                                 <tfoot>
                                     <tr className="border-t-2 border-gray-300">
-                                        <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Net-Total</td>
+                                        <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Sum-Total</td>
                                         <td className="py-3 px-2 text-right font-bold">₦{formatAmount(section.netTotal)}</td>
                                     </tr>
                                 </tfoot>
@@ -4293,7 +4408,7 @@ const BuyNowFlow = () => {
                                 <tbody>
                                     {productInvoiceRows.map((row) => (
                                         <tr key={row.id} className="border-b border-gray-100">
-                                            <td className="py-3 px-2 text-gray-800">{row.description}</td>
+                                            <td className="py-3 px-2 text-gray-800">{stripFeeVisibilityPrefix(row.description)}</td>
                                             <td className="py-3 px-2 text-center">{row.quantity}</td>
                                             <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
                                             <td className="py-3 px-2 text-right">₦{formatAmount(row.rate)}</td>
@@ -4314,7 +4429,7 @@ const BuyNowFlow = () => {
 
                 <div className="bg-[#273e8e]/5 border border-[#273e8e]/20 rounded-lg p-4 mb-6">
                     <div className="flex justify-between items-center text-sm text-gray-700 mb-1">
-                        <span>Overall Net-Total</span>
+                        <span>Sum-Total</span>
                         <span className="font-semibold">₦{formatAmount(overallNetTotal)}</span>
                     </div>
                     <div className="flex justify-between items-center text-sm text-gray-700 mb-2">
@@ -4322,7 +4437,7 @@ const BuyNowFlow = () => {
                         <span className="font-semibold">₦{formatAmount(overallVat)}</span>
                     </div>
                     <div className="flex justify-between items-center border-t border-[#273e8e]/20 pt-2">
-                        <span className="font-bold text-lg text-[#273e8e]">Overall Grand-Total</span>
+                        <span className="font-bold text-lg text-[#273e8e]">Grand Total</span>
                         <span className="font-bold text-xl text-[#273e8e]">₦{formatAmount(overallGrandTotal)}</span>
                     </div>
                 </div>
@@ -4568,12 +4683,12 @@ const BuyNowFlow = () => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources *</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources and Capacity *</label>
                                     <input
                                         type="text"
                                         required
                                         className="w-full p-3 border rounded-lg"
-                                        placeholder="e.g. grid, diesel generator, inverter"
+                                        placeholder="e.g., grid, diesel generator(kVA), inverter(kVA/kW)"
                                         value={formData.landmark}
                                         onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
                                     />
@@ -4637,12 +4752,12 @@ const BuyNowFlow = () => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources *</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources and Capacity *</label>
                                     <input
                                         type="text"
                                         required
                                         className="w-full p-3 border rounded-lg"
-                                        placeholder="e.g. grid, diesel generator, inverter"
+                                        placeholder="e.g., grid, diesel generator(kVA), inverter(kVA/kW)"
                                         value={formData.landmark}
                                         onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
                                     />
@@ -4745,11 +4860,11 @@ const BuyNowFlow = () => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources *</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources and Capacity *</label>
                                     <input
                                         type="text"
                                         required
-                                        placeholder="e.g. grid, diesel generator, inverter"
+                                        placeholder="e.g., grid, diesel generator(kVA), inverter(kVA/kW)"
                                         className="w-full p-3 border rounded-lg"
                                         value={formData.landmark}
                                         onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
@@ -4941,7 +5056,7 @@ const BuyNowFlow = () => {
         const vatAmount = (netTotal * vatPercent) / 100;
         const grandTotal = netTotal + vatAmount;
         // Keep totals internally consistent in this summary card:
-        // Grand-Total must equal Net-Total + VAT.
+        // Grand Total must equal Sum-Total + VAT.
         const finalTotal = grandTotal;
 
         return (
@@ -5008,7 +5123,7 @@ const BuyNowFlow = () => {
                             <tbody>
                                 {section.allRows.map((row) => (
                                     <tr key={row.id} className="border-b border-gray-100">
-                                        <td className="py-3 px-2 text-gray-800">{row.description}</td>
+                                        <td className="py-3 px-2 text-gray-800">{stripFeeVisibilityPrefix(row.description)}</td>
                                         <td className="py-3 px-2 text-center">{row.quantity}</td>
                                         <td className="py-3 px-2 text-center text-gray-600">{row.unit}</td>
                                         <td className="py-3 px-2 text-right">{row.rate > 0 ? `₦${formatAmount(row.rate)}` : '—'}</td>
@@ -5018,7 +5133,7 @@ const BuyNowFlow = () => {
                             </tbody>
                             <tfoot>
                                 <tr className="border-t-2 border-gray-300">
-                                    <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Net-Total</td>
+                                    <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Sum-Total</td>
                                     <td className="py-3 px-2 text-right font-bold">₦{formatAmount(section.netTotal)}</td>
                                 </tr>
                             </tfoot>
@@ -5062,7 +5177,7 @@ const BuyNowFlow = () => {
                     </div>
                 )}
                 <div className="flex justify-between items-center text-sm text-gray-800 mb-1 mt-1 font-medium">
-                    <span>Net-Total (before VAT)</span>
+                    <span>Sum-Total (before VAT)</span>
                     <span className="font-semibold">₦{formatAmount(netTotal)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm text-gray-700 mb-2">
@@ -5070,7 +5185,7 @@ const BuyNowFlow = () => {
                     <span className="font-semibold">₦{formatAmount(vatAmount)}</span>
                 </div>
                 <div className="flex justify-between items-center border-t border-[#273e8e]/20 pt-2">
-                    <span className="font-bold text-lg text-[#273e8e]">Grand-Total</span>
+                    <span className="font-bold text-lg text-[#273e8e]">Grand Total</span>
                     <span className="font-bold text-xl text-[#273e8e]">₦{formatAmount(finalTotal)}</span>
                 </div>
             </div>
@@ -5273,6 +5388,37 @@ const BuyNowFlow = () => {
         }, 0);
     }, [formData.optionType, step, selectedMaterials, allMaterialsMap, categoryMaterials]);
 
+    const renderBuyNowProgressBar = () => (
+        <div className="mb-12 max-w-xl mx-auto">
+            <div className="flex justify-between text-sm font-medium text-gray-400 mb-2">
+                <span className={step >= 1 ? "text-[#273e8e]" : ""}>Type</span>
+                <span className={step >= 2 ? "text-[#273e8e]" : ""}>Product</span>
+                <span className={step >= 3 && step < 4 ? "text-[#273e8e]" : ""}>Option</span>
+                <span className={step >= 7 ? "text-[#273e8e]" : ""}>Summary</span>
+                <span className={step === 4 ? "text-[#273e8e]" : ""}>Checkout</span>
+                <span className={step === 5 ? "text-[#273e8e]" : ""}>Payment</span>
+                <span className={step === 6 ? "text-[#273e8e]" : ""}>Complete</span>
+            </div>
+            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                    className="h-full bg-[#273e8e] transition-all duration-500 ease-out"
+                    style={{
+                        width: `${(() => {
+                            if (step === 1) return 14;
+                            if (step >= 2 && step < 3) return 28;
+                            if (step >= 3 && step < 4) return 42;
+                            if (step === 4) return 57;
+                            if (step === 5) return 71;
+                            if (step === 6) return 85;
+                            if (step >= 7) return 100;
+                            return 0;
+                        })()}%`,
+                    }}
+                />
+            </div>
+        </div>
+    );
+
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
             {/* Navbar Placeholder */}
@@ -5285,49 +5431,20 @@ const BuyNowFlow = () => {
                 </div>
             </div>
 
-            {/* Main Content */}
+            {step === 2 ? (
+                <div className="animate-fade-in flex-1 w-full px-6 py-6 overflow-y-auto">
+                    <div className="w-full max-w-6xl mx-auto">
+                        {renderBuyNowProgressBar()}
+                        {renderStep2()}
+                    </div>
+                </div>
+            ) : (
+            /* Main Content */
             <div className="flex-grow flex items-center justify-center p-6">
                 <div className="w-full max-w-6xl">
-                    {/* Progress Bar */}
-                    <div className="mb-12 max-w-xl mx-auto">
-                        <div className="flex justify-between text-sm font-medium text-gray-400 mb-2">
-                            <span className={step >= 1 ? "text-[#273e8e]" : ""}>Type</span>
-                            <span className={step >= 2 ? "text-[#273e8e]" : ""}>Product</span>
-                            <span className={step >= 3 && step < 4 ? "text-[#273e8e]" : ""}>Option</span>
-                            <span className={step >= 7 ? "text-[#273e8e]" : ""}>Summary</span>
-                            <span className={step === 4 ? "text-[#273e8e]" : ""}>Checkout</span>
-                            <span className={step === 5 ? "text-[#273e8e]" : ""}>Payment</span>
-                            <span className={step === 6 ? "text-[#273e8e]" : ""}>Complete</span>
-                        </div>
-                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-[#273e8e] transition-all duration-500 ease-out"
-                                style={{ 
-                                    width: `${(() => {
-                                        // Map steps to progress percentage (7 stages total)
-                                        // Type (1): ~14%
-                                        if (step === 1) return 14;
-                                        // Product (2, 2.5, 2.75): ~28%
-                                        if (step >= 2 && step < 3) return 28;
-                                        // Option (3, 3.5, 3.75): ~42%
-                                        if (step >= 3 && step < 4) return 42;
-                                        // Checkout (4): ~57%
-                                        if (step === 4) return 57;
-                                        // Payment (5): ~71%
-                                        if (step === 5) return 71;
-                                        // Complete (6): ~85%
-                                        if (step === 6) return 85;
-                                        // Summary (7, 8): ~100%
-                                        if (step >= 7) return 100;
-                                        return 0;
-                                    })()}%` 
-                                }}
-                            />
-                        </div>
-                    </div>
+                    {renderBuyNowProgressBar()}
 
                     {step === 1 && renderStep1()}
-                    {step === 2 && renderStep2()}
                     {step === 2.5 && renderStep2_5()}
                     {step === 2.75 && renderStep2_75()}
                     {step === 3 && renderStep3()}
@@ -5342,6 +5459,7 @@ const BuyNowFlow = () => {
                     {step === 6 && renderStep6()}
                 </div>
             </div>
+            )}
 
             {/* Floating Cart - Only show during material selection (build-system) */}
             {formData.optionType === 'build-system' && step === 3.75 && selectedMaterials.length > 0 && (

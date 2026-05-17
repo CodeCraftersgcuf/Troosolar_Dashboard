@@ -269,7 +269,7 @@ const AuditRequests = () => {
                       </div>
                       {row.property_landmark ? (
                         <div className="sm:col-span-2">
-                          <dt className="text-gray-500">Current power sources</dt>
+                          <dt className="text-gray-500">Current power sources and capacity</dt>
                           <dd className="font-medium text-gray-900">
                             {row.property_landmark}
                           </dd>

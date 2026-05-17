@@ -1,11 +1,19 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Upload, CreditCard, Camera, Clock, Download, AlertCircle, Calendar, Loader, CheckCircle2, XCircle, X, Minus, Plus, Info, ChevronDown } from 'lucide-react';
+import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Upload, CreditCard, Camera, Clock, Download, AlertCircle, Calendar, Loader, CheckCircle2, XCircle, X, Minus, Plus, Info, ChevronDown, ChevronLeft, ChevronRight, Layers, BatteryCharging, PlugZap, PanelsTopLeft } from 'lucide-react';
 import LoanCalculator from '../../Component/LoanCalculator';
 import axios from 'axios';
 import API, { BASE_URL } from '../../config/api.config';
 import ProductPromoBadges from '../../Component/ProductPromoBadges';
-import { apiFlagTrue } from '../../utils/apiFlags';
+import {
+    extractKvaFromBundle,
+    sortBundlesFeaturedThenKvaAsc,
+    sortProductsByPromoFirst,
+    entityTopDeal,
+    entityHighlyRecommended,
+} from '../../utils/bundleSort';
+
+const BUNDLE_STEP_GRID_PAGE_SIZE = 9;
 
 // Helper function to convert storage paths to absolute URLs (same as SolarBundle.jsx)
 const toAbsolute = (path) => {
@@ -28,6 +36,25 @@ const toAbsolute = (path) => {
 
 // Fallback image URL
 const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
+const FEE_VIS_TROO_PREFIX = "[FEE:TROOSOLAR]";
+const FEE_VIS_OWN_PREFIX = "[FEE:OWN]";
+const FEE_VIS_BOTH_PREFIX = "[FEE]";
+const SOCIAL_HANDLE_REGEX = /^@[A-Za-z0-9._]{3,30}$/;
+const SOCIAL_PROFILE_URL_REGEX = /^https?:\/\/(www\.)?(instagram\.com|facebook\.com)\/[A-Za-z0-9._-]{3,}\/?$/i;
+
+const isValidSocialMediaIdentity = (value) => {
+    const v = String(value || '').trim();
+    if (!v) return false;
+    return SOCIAL_HANDLE_REGEX.test(v) || SOCIAL_PROFILE_URL_REGEX.test(v);
+};
+
+const getSocialMediaVerificationUrl = (value) => {
+    const v = String(value || '').trim();
+    if (!v) return '';
+    if (SOCIAL_PROFILE_URL_REGEX.test(v)) return v;
+    if (SOCIAL_HANDLE_REGEX.test(v)) return `https://www.instagram.com/${v.slice(1)}`;
+    return '';
+};
 
 // Insurance: default 3% of order when not set in backend. Backend can override via add-ons (is_compulsory_bnpl, calculation_type: 'percentage', calculation_value).
 const DEFAULT_INSURANCE_PERCENT = 3;
@@ -462,6 +489,7 @@ const BNPLFlow = () => {
     const [selectedBundleDetails, setSelectedBundleDetails] = useState(null); // For "Learn More" modal
     const [bundleDetailTab, setBundleDetailTab] = useState('description'); // 'description' | 'specs'
     const [selectedSystemSize, setSelectedSystemSize] = useState("all"); // System size filter
+    const [bundleGridPage, setBundleGridPage] = useState(1);
     const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false);
     const sizeDropdownRef = useRef(null);
     const [showBundleSelectPrompt, setShowBundleSelectPrompt] = useState(false);
@@ -571,19 +599,6 @@ const BNPLFlow = () => {
         return Array.from(new Set(categoryIds[groupType] || []));
     };
 
-    // Helper function to extract numeric value from inverter rating (e.g., "1.2 kVA" -> 1.2)
-    const extractSystemSize = (bundle) => {
-        const rating = bundle.inver_rating || bundle.inverter_rating || bundle.inverterRating || '';
-        if (!rating) return null;
-        
-        // Extract numeric value (handles formats like "1.2 kVA", "1.2kVA", "1.2 kva", etc.)
-        const match = String(rating).match(/(\d+\.?\d*)/);
-        if (match) {
-            return parseFloat(match[1]);
-        }
-        return null;
-    };
-
     const parseAmount = (value) => {
         if (value == null || value === '') return 0;
         const cleaned = String(value).replace(/,/g, '').replace(/[^\d.-]/g, '');
@@ -608,8 +623,8 @@ const BNPLFlow = () => {
     const sizeOptions = useMemo(() => {
         const sizeSet = new Set();
         bundlesMeetingMinLoan.forEach((bundle) => {
-            const size = extractSystemSize(bundle);
-            if (size && Number.isFinite(size)) {
+            const size = extractKvaFromBundle(bundle);
+            if (size > 0 && Number.isFinite(size)) {
                 // Round to 1 decimal place to normalize
                 const rounded = Number(size.toFixed(1));
                 sizeSet.add(rounded);
@@ -623,25 +638,41 @@ const BNPLFlow = () => {
         return [{ label: "All Sizes", value: "all" }, ...options];
     }, [bundlesMeetingMinLoan]);
 
-    // Filter bundles based on selected system size
+    // Filter by size, then top deal / highly recommended first, then ascending kVA (same as /solar-bundles).
     const filteredBundles = useMemo(() => {
         const sourceBundles = bundlesMeetingMinLoan;
+        let list;
         if (selectedSystemSize === "all") {
-            return sourceBundles;
+            list = sourceBundles;
+        } else {
+            const targetSize = parseFloat(selectedSystemSize);
+            if (isNaN(targetSize)) {
+                list = sourceBundles;
+            } else {
+                list = sourceBundles.filter((bundle) => {
+                    const bundleSize = extractKvaFromBundle(bundle);
+                    if (bundleSize <= 0) return false;
+                    const tolerance = 0.3;
+                    return Math.abs(bundleSize - targetSize) <= tolerance;
+                });
+            }
         }
-        
-        const targetSize = parseFloat(selectedSystemSize);
-        if (isNaN(targetSize)) return sourceBundles;
-        
-        return sourceBundles.filter((bundle) => {
-            const bundleSize = extractSystemSize(bundle);
-            if (bundleSize === null) return false;
-            
-            // Match within ±0.3kW tolerance
-            const tolerance = 0.3;
-            return Math.abs(bundleSize - targetSize) <= tolerance;
-        });
+        return sortBundlesFeaturedThenKvaAsc(list);
     }, [bundlesMeetingMinLoan, selectedSystemSize]);
+
+    useEffect(() => {
+        setBundleGridPage(1);
+    }, [selectedSystemSize, bundles, bnplMinimumLoanAmount]);
+
+    useEffect(() => {
+        const total = Math.max(1, Math.ceil(filteredBundles.length / BUNDLE_STEP_GRID_PAGE_SIZE));
+        setBundleGridPage((p) => (p > total ? total : p));
+    }, [filteredBundles.length]);
+
+    const orderedCategoryProducts = useMemo(
+        () => sortProductsByPromoFirst(categoryProducts),
+        [categoryProducts]
+    );
 
     // Close size dropdown if clicked outside
     useEffect(() => {
@@ -1098,7 +1129,7 @@ const BNPLFlow = () => {
             'inverter plus battery',
         ],
         'battery-only': ['battery only', 'battery'],
-        'inverter-only': ['inverter only', 'inverter'],
+        'inverter-only': ['inverter only', 'inverters only', 'inverter', 'inverters'],
         'panels-only': ['solar panel only', 'panels only', 'solar panels only', 'panel only'],
     }), []);
 
@@ -1110,7 +1141,7 @@ const BNPLFlow = () => {
                 if (categoryKey === 'full-kit') return 'Solar + Inverter + Battery';
                 if (categoryKey === 'inverter-battery') return 'Inverter + Battery';
                 if (categoryKey === 'battery-only') return 'Battery only';
-                if (categoryKey === 'inverter-only') return 'Inverter only';
+                if (categoryKey === 'inverter-only') return 'Inverters only';
                 if (categoryKey === 'panels-only') return 'Panels only';
             }
         }
@@ -1282,7 +1313,7 @@ const BNPLFlow = () => {
                         return acc;
                     }, {})
                 );
-                setCategoryProducts(uniqueProducts);
+                setCategoryProducts(sortProductsByPromoFirst(uniqueProducts));
             } catch (error) {
                 console.error("Failed to fetch products:", error);
                 alert("Failed to load products. Please try again.");
@@ -1388,7 +1419,7 @@ const BNPLFlow = () => {
                     }
                 }
                 
-                setCategoryProducts(allProducts);
+                setCategoryProducts(sortProductsByPromoFirst(allProducts));
             } catch (error) {
                 console.error("Failed to fetch products:", error);
                 alert("Failed to load products. Please try again.");
@@ -1755,90 +1786,101 @@ const BNPLFlow = () => {
     );
 
     const renderStep2 = () => {
-        // Predefined category groups that map to API categories
         const categoryGroups = [
             {
                 id: 'full-kit',
                 name: 'Solar panels, inverter, and battery solution',
-                icon: Sun,
-                description: 'Complete solar system solution'
+                icon: Layers,
+                description: 'Complete solar system solution',
             },
             {
                 id: 'inverter-battery',
                 name: 'Inverter and battery solution',
-                icon: Zap,
-                description: 'Power backup solution'
+                icon: BatteryCharging,
+                description: 'Power backup solution',
             },
             {
                 id: 'battery-only',
                 name: 'Battery only',
                 icon: Battery,
                 description: 'Choose battery capacity',
-                subtitle: 'Choose battery capacity'
+                subtitle: 'Choose battery capacity',
             },
             {
                 id: 'inverter-only',
-                name: 'Inverter only',
-                icon: Monitor,
+                name: 'Inverters Only',
+                icon: PlugZap,
                 description: 'Choose inverter capacity',
-                subtitle: 'Choose inverter capacity'
+                subtitle: 'Choose inverter capacity',
             },
             {
                 id: 'panels-only',
                 name: 'Solar panels only',
-                icon: Sun,
+                icon: PanelsTopLeft,
                 description: 'Choose solar panel capacity',
-                subtitle: 'Choose solar panel capacity'
-            }
+                subtitle: 'Choose solar panel capacity',
+            },
         ];
+        const byId = Object.fromEntries(categoryGroups.map((g) => [g.id, g]));
+
+        const renderCategoryCard = (group) => {
+            if (!group) return null;
+            const IconComponent = group.icon;
+            return (
+                <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => handleCategorySelect(group.id)}
+                    className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1 w-full"
+                >
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]" />
+                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-5 rounded-full mb-4 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300 flex items-center justify-center min-h-[72px] w-[72px]">
+                        <IconComponent size={36} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-800 mb-1 group-hover:text-[#273e8e] transition-colors">{group.name}</h3>
+                    {group.subtitle ? <p className="text-sm text-gray-500 italic">{group.subtitle}</p> : null}
+                </button>
+            );
+        };
 
         return (
-        <div className="animate-fade-in">
-                <button onClick={() => setStep(1)} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e] transition-colors">
-                <ArrowLeft size={16} className="mr-2" /> Back
-            </button>
-                {/* BNPL Badge */}
+            <>
+                <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e] transition-colors"
+                >
+                    <ArrowLeft size={16} className="mr-2" /> Back
+                </button>
                 <div className="flex justify-center mb-6">
                     <span className="inline-flex items-center px-5 py-2.5 rounded-full text-sm font-bold bg-gradient-to-r from-[#273e8e] to-[#1a2b6b] text-white shadow-lg">
                         <CreditCard size={16} className="mr-2" />
                         Buy Now Pay Later
                     </span>
                 </div>
-            <h2 className="text-3xl font-bold text-center mb-10 text-[#273e8e]">
-                Select Product Category
-            </h2>
+                <h2 className="text-3xl font-bold text-center mb-10 text-[#273e8e]">Select Product Category</h2>
                 {categories.length === 0 ? (
                     <div className="text-center py-12">
                         <Loader className="animate-spin mx-auto text-[#273e8e]" size={48} />
                         <p className="mt-4 text-gray-600">Loading categories...</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                        {categoryGroups.map((group) => {
-                            const IconComponent = group.icon;
-                            const matchingCategoryIds = getCategoryIdsForGroup(group.id);
-                            
-                            return (
-                    <button
-                                    key={group.id}
-                                    onClick={() => handleCategorySelect(group.id)}
-                                    className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1"
-                    >
-                                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]"></div>
-                                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-5 rounded-full mb-4 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300 flex items-center justify-center min-h-[72px] w-[72px]">
-                                        <IconComponent size={36} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
+                    <div className="max-w-6xl mx-auto w-full space-y-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {renderCategoryCard(byId['full-kit'])}
+                            {renderCategoryCard(byId['inverter-battery'])}
                         </div>
-                                    <h3 className="text-lg font-bold text-gray-800 mb-1 group-hover:text-[#273e8e] transition-colors">{group.name}</h3>
-                                    {group.subtitle && (
-                                        <p className="text-sm text-gray-500 italic">{group.subtitle}</p>
-                                    )}
-                    </button>
-                            );
-                        })}
-            </div>
+                        <div className="flex justify-center px-2">
+                            <div className="w-full max-w-md">{renderCategoryCard(byId['inverter-only'])}</div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:max-w-4xl md:mx-auto">
+                            {renderCategoryCard(byId['panels-only'])}
+                            {renderCategoryCard(byId['battery-only'])}
+                        </div>
+                    </div>
                 )}
-        </div>
-    );
+            </>
+        );
     };
 
     const renderStep2_5 = () => {
@@ -1888,7 +1930,7 @@ const BNPLFlow = () => {
                             <p className="mt-2 text-sm text-gray-500">Please wait while we fetch available products</p>
                         </div>
                     </div>
-                ) : categoryProducts.length === 0 ? (
+                ) : orderedCategoryProducts.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-2xl border border-gray-200">
                         <p className="text-gray-600">No products available in this category.</p>
                         <button
@@ -1901,7 +1943,7 @@ const BNPLFlow = () => {
                 ) : (
                     <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                        {categoryProducts.map((product) => {
+                        {orderedCategoryProducts.map((product) => {
                             const price = Number(product.discount_price || product.price || 0);
                             const oldPrice = product.discount_price && product.price && product.discount_price < product.price 
                                 ? Number(product.price) 
@@ -1912,8 +1954,9 @@ const BNPLFlow = () => {
                             
                             // Check if product is selected
                             const isSelected = formData.selectedProducts.some(p => p.id === product.id);
-                            const isRec = apiFlagTrue(product.is_most_popular);
-                            const isHot = apiFlagTrue(product.top_deal);
+                            const isRec = entityHighlyRecommended(product);
+                            const isHot = entityTopDeal(product);
+                            const isPromoHighlight = isRec || isHot;
                             
                             return (
                                 <div
@@ -1921,7 +1964,7 @@ const BNPLFlow = () => {
                                     className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 cursor-pointer ${
                                         isSelected 
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
-                                            : isRec
+                                            : isPromoHighlight
                                             ? 'border-[#FCD28A] ring-2 ring-[#F8A91D] shadow-md hover:border-[#F8A91D]'
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
@@ -2062,7 +2105,7 @@ const BNPLFlow = () => {
                             <p className="mt-2 text-sm text-gray-500">Please wait while we fetch available products</p>
                         </div>
                     </div>
-                ) : categoryProducts.length === 0 ? (
+                ) : orderedCategoryProducts.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-2xl border border-gray-200">
                         <p className="text-gray-600">No products available at the moment.</p>
                         <button
@@ -2075,7 +2118,7 @@ const BNPLFlow = () => {
                 ) : (
                     <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                        {categoryProducts.map((product) => {
+                        {orderedCategoryProducts.map((product) => {
                             const price = Number(product.discount_price || product.price || 0);
                             const oldPrice = product.discount_price && product.price && product.discount_price < product.price 
                                 ? Number(product.price) 
@@ -2086,8 +2129,9 @@ const BNPLFlow = () => {
                             
                             // Check if product is selected
                             const isSelected = formData.selectedProducts.some(p => p.id === product.id);
-                            const isRec = apiFlagTrue(product.is_most_popular);
-                            const isHot = apiFlagTrue(product.top_deal);
+                            const isRec = entityHighlyRecommended(product);
+                            const isHot = entityTopDeal(product);
+                            const isPromoHighlight = isRec || isHot;
                             
                             return (
                                 <div
@@ -2095,7 +2139,7 @@ const BNPLFlow = () => {
                                     className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 cursor-pointer ${
                                         isSelected 
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
-                                            : isRec
+                                            : isPromoHighlight
                                             ? 'border-[#FCD28A] ring-2 ring-[#F8A91D] shadow-md hover:border-[#F8A91D]'
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
@@ -2239,6 +2283,14 @@ const BNPLFlow = () => {
         };
 
         const selectedSizeLabel = sizeOptions.find((o) => o.value === selectedSystemSize)?.label || "All Sizes";
+        const totalBundlePages = Math.max(1, Math.ceil(filteredBundles.length / BUNDLE_STEP_GRID_PAGE_SIZE));
+        const bundleGridStart = (bundleGridPage - 1) * BUNDLE_STEP_GRID_PAGE_SIZE;
+        const paginatedBundles = filteredBundles.slice(bundleGridStart, bundleGridStart + BUNDLE_STEP_GRID_PAGE_SIZE);
+        const handleBundlePageChange = (page) => {
+            if (page < 1 || page > totalBundlePages) return;
+            setBundleGridPage(page);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
 
         return (
             <div className="animate-fade-in">
@@ -2318,7 +2370,7 @@ const BNPLFlow = () => {
                 ) : (
                     <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                        {filteredBundles.map((bundle) => {
+                        {paginatedBundles.map((bundle) => {
                             const price = Number(bundle.discount_price || bundle.total_price || 0);
                             const oldPrice = bundle.discount_price && bundle.total_price && bundle.discount_price < bundle.total_price 
                                 ? Number(bundle.total_price) 
@@ -2329,6 +2381,9 @@ const BNPLFlow = () => {
                             
                             // Check if bundle is selected
                             const isSelected = formData.selectedBundles.some(b => b.id === bundle.id);
+                            const isRec = entityHighlyRecommended(bundle);
+                            const isHot = entityTopDeal(bundle);
+                            const isPromoHighlight = isRec || isHot;
                             
                             return (
                                 <div
@@ -2336,6 +2391,8 @@ const BNPLFlow = () => {
                                     className={`group bg-white border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 ${
                                         isSelected 
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
+                                            : isPromoHighlight
+                                            ? 'border-[#FCD28A] ring-2 ring-[#F8A91D] shadow-md hover:border-[#F8A91D]'
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
                                 >
@@ -2352,23 +2409,35 @@ const BNPLFlow = () => {
                                                     }
                                                 }}
                                             />
+                                            <div className="absolute top-2 left-2 z-[15] flex flex-col gap-1.5 items-start pointer-events-none max-w-[min(100%,14rem)]">
+                                                {getBundleInverterRating(bundle) ? (
+                                                    <span className="bg-[#E8A91D] text-white text-[11px] px-2 py-1 rounded-full font-semibold shadow">
+                                                        {String(getBundleInverterRating(bundle)).includes('kVA')
+                                                            ? String(getBundleInverterRating(bundle))
+                                                            : `${getBundleInverterRating(bundle)}kVA`}
+                                                    </span>
+                                                ) : null}
+                                            </div>
                                             {isSelected && (
-                                                <div className="absolute top-2 right-2 bg-[#273e8e] text-white rounded-full p-2">
+                                                <div className="absolute top-2 right-2 z-[16] bg-[#273e8e] text-white rounded-full p-2">
                                                     <CheckCircle size={20} />
                                                 </div>
-                                            )}
-                                            {getBundleInverterRating(bundle) && (
-                                                <span className="absolute top-2 left-2 bg-[#E8A91D] text-white text-[11px] px-2 py-1 rounded-full font-semibold shadow">
-                                                    {String(getBundleInverterRating(bundle)).includes('kVA')
-                                                        ? String(getBundleInverterRating(bundle))
-                                                        : `${getBundleInverterRating(bundle)}kVA`}
-                                                </span>
                                             )}
                                         </div>
                                         <h3 className="font-bold text-lg mb-2 text-gray-800 group-hover:text-[#273e8e] transition-colors">
                                             {bundle.title || bundle.name || `Bundle #${bundle.id}`}
                                         </h3>
                                         <p className="text-sm text-gray-500 mb-2">{getBundleCategoryLabel(bundle)}</p>
+                                        {(isRec || isHot) && (
+                                            <div className="mb-3">
+                                                <ProductPromoBadges
+                                                    layout="row"
+                                                    size="large"
+                                                    isRecommended={isRec}
+                                                    isHotDeal={isHot}
+                                                />
+                                            </div>
+                                        )}
                                         <div className="flex items-center justify-between mb-3">
                                             <div>
                                                 <p className="font-bold text-[#273e8e] text-lg">
@@ -2441,6 +2510,62 @@ const BNPLFlow = () => {
                             );
                         })}
                     </div>
+
+                    {!bundlesLoading && totalBundlePages > 1 && (
+                        <div className="flex justify-center items-center gap-2 mt-8">
+                            <button
+                                type="button"
+                                onClick={() => handleBundlePageChange(bundleGridPage - 1)}
+                                disabled={bundleGridPage === 1}
+                                className="p-2 rounded-lg border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                                aria-label="Previous page"
+                            >
+                                <ChevronLeft size={20} className="text-gray-700" />
+                            </button>
+                            <div className="flex gap-1">
+                                {Array.from({ length: Math.min(5, totalBundlePages) }, (_, i) => {
+                                    let pageNum;
+                                    if (totalBundlePages <= 5) {
+                                        pageNum = i + 1;
+                                    } else if (bundleGridPage <= 3) {
+                                        pageNum = i + 1;
+                                    } else if (bundleGridPage >= totalBundlePages - 2) {
+                                        pageNum = totalBundlePages - 4 + i;
+                                    } else {
+                                        pageNum = bundleGridPage - 2 + i;
+                                    }
+                                    return (
+                                        <button
+                                            type="button"
+                                            key={pageNum}
+                                            onClick={() => handleBundlePageChange(pageNum)}
+                                            className={`min-w-[2.5rem] px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                                bundleGridPage === pageNum
+                                                    ? 'bg-[#273e8e] text-white'
+                                                    : 'border border-gray-300 bg-white hover:bg-gray-50 text-gray-700'
+                                            }`}
+                                        >
+                                            {pageNum}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => handleBundlePageChange(bundleGridPage + 1)}
+                                disabled={bundleGridPage === totalBundlePages}
+                                className="p-2 rounded-lg border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                                aria-label="Next page"
+                            >
+                                <ChevronRight size={20} className="text-gray-700" />
+                            </button>
+                        </div>
+                    )}
+                    {!bundlesLoading && filteredBundles.length > 0 && (
+                        <p className="text-center text-sm text-gray-500 mt-4">
+                            Showing {bundleGridStart + 1} - {Math.min(bundleGridStart + BUNDLE_STEP_GRID_PAGE_SIZE, filteredBundles.length)} of {filteredBundles.length} {isInverterFlow ? 'solutions' : 'bundles'}
+                        </p>
+                    )}
                     
                     {/* Continue Button - Show when at least one bundle is selected */}
                     {formData.selectedBundles.length > 0 && (
@@ -3075,12 +3200,12 @@ const BNPLFlow = () => {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources *</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources and Capacity *</label>
                                 <input
                                     type="text"
                                     required
                                     className="w-full p-3 border rounded-lg"
-                                    placeholder="e.g. grid, diesel generator, inverter"
+                                    placeholder="e.g., grid, diesel generator(kVA), inverter(kVA/kW)"
                                     value={formData.landmark}
                                     onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
                                 />
@@ -3144,12 +3269,12 @@ const BNPLFlow = () => {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources *</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources and Capacity *</label>
                                 <input
                                     type="text"
                                     required
                                     className="w-full p-3 border rounded-lg"
-                                    placeholder="e.g. grid, diesel generator, inverter"
+                                    placeholder="e.g., grid, diesel generator(kVA), inverter(kVA/kW)"
                                     value={formData.landmark}
                                     onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
                                 />
@@ -3252,11 +3377,11 @@ const BNPLFlow = () => {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources *</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Current Power Sources and Capacity *</label>
                                 <input
                                     type="text"
                                     required
-                                    placeholder="e.g. grid, diesel generator, inverter"
+                                    placeholder="e.g., grid, diesel generator(kVA), inverter(kVA/kW)"
                                     className="w-full p-3 border rounded-lg"
                                     value={formData.landmark}
                                     onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
@@ -3394,6 +3519,13 @@ const BNPLFlow = () => {
 
     const extractBundleLineItems = (bundle) => {
         const toNumber = (v) => typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.]/g, '')) || 0;
+        const stripFeeVisibilityPrefix = (title) => {
+            const t = String(title || '');
+            if (t.startsWith(FEE_VIS_TROO_PREFIX)) return t.slice(FEE_VIS_TROO_PREFIX.length).trim();
+            if (t.startsWith(FEE_VIS_OWN_PREFIX)) return t.slice(FEE_VIS_OWN_PREFIX.length).trim();
+            if (t.startsWith(FEE_VIS_BOTH_PREFIX)) return t.slice(FEE_VIS_BOTH_PREFIX.length).trim();
+            return t;
+        };
         const parseQuantityApplies = (value) => {
             if (value === undefined || value === null || value === '') return true;
             if (typeof value === 'boolean') return value;
@@ -3520,7 +3652,7 @@ const BNPLFlow = () => {
             } else {
                 const qtyMeta = resolveQtyAndUnit([s], 1, /inspection/i.test(rawTitle) ? 'Lots' : 'Nos');
                 serviceRows.push({
-                    description: rawTitle,
+                    description: stripFeeVisibilityPrefix(rawTitle),
                     quantity: qtyMeta.quantity,
                     unit: qtyMeta.unit,
                     quantityApplies: qtyMeta.quantityApplies,
@@ -4151,7 +4283,7 @@ const BNPLFlow = () => {
                                 </tbody>
                                 <tfoot>
                                     <tr className="border-t-2 border-gray-300">
-                                        <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Net-Total</td>
+                                        <td colSpan={4} className="py-3 px-2 font-bold text-gray-800">Sum-Total</td>
                                         <td className="py-3 px-2 text-right font-bold">₦{Number(section.netTotal).toLocaleString()}</td>
                                     </tr>
                                 </tfoot>
@@ -4198,7 +4330,7 @@ const BNPLFlow = () => {
                 {/* Overall Grand Total (across all bundles) */}
                 <div className="bg-[#273e8e]/5 border border-[#273e8e]/20 rounded-lg p-4 mb-6">
                     <div className="flex justify-between items-center text-sm text-gray-700 mb-1">
-                        <span>Overall Net-Total</span>
+                        <span>Sum-Total</span>
                         <span className="font-semibold">₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(overallNetTotal || 0)}</span>
                     </div>
                     <div className="flex justify-between items-center text-sm text-gray-700 mb-2">
@@ -4206,7 +4338,7 @@ const BNPLFlow = () => {
                         <span className="font-semibold">₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(overallVat || 0)}</span>
                     </div>
                     <div className="flex justify-between items-center border-t border-[#273e8e]/20 pt-2">
-                        <span className="font-bold text-lg text-[#273e8e]">Overall Grand-Total</span>
+                        <span className="font-bold text-lg text-[#273e8e]">Grand Total</span>
                         <span className="font-bold text-xl text-[#273e8e]">₦{new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(overallGrandTotal || 0)}</span>
                     </div>
                 </div>
@@ -5442,6 +5574,10 @@ const BNPLFlow = () => {
                     alert("Please fill in all required fields");
                     return;
                 }
+                if (!isValidSocialMediaIdentity(formData.socialMedia)) {
+                    alert("Please enter a verifiable social media identity (Instagram @handle or Facebook/Instagram profile link).");
+                    return;
+                }
                 if (formData.isGatedEstate && (!formData.estateName || !formData.estateAddress)) {
                     alert("Please fill in Estate Name and Estate Address");
                     return;
@@ -5465,9 +5601,22 @@ const BNPLFlow = () => {
                                 value={formData.socialMedia}
                                 onChange={e => setFormData({ ...formData, socialMedia: e.target.value })} 
                             />
-                            <p className="text-xs text-gray-500 mt-1">* Social media handle is required for verification (e.g., @username or facebook.com/username)</p>
+                            <p className="text-xs text-gray-500 mt-1">Social media handle is required for verification (e.g., Instagram handle or Facebook username).</p>
                             {formData.socialMedia && formData.socialMedia.trim().length === 0 && (
                                 <p className="text-xs text-red-600 mt-1">Social media handle cannot be empty</p>
+                            )}
+                            {formData.socialMedia && formData.socialMedia.trim().length > 0 && !isValidSocialMediaIdentity(formData.socialMedia) && (
+                                <p className="text-xs text-red-600 mt-1">Provide a verifiable handle: @username or a full Instagram/Facebook profile link.</p>
+                            )}
+                            {isValidSocialMediaIdentity(formData.socialMedia) && (
+                                <a
+                                    href={getSocialMediaVerificationUrl(formData.socialMedia)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-block text-xs text-[#273e8e] mt-1 underline"
+                                >
+                                    Verify profile link
+                                </a>
                             )}
                         </div>
                     </div>
@@ -5496,7 +5645,7 @@ const BNPLFlow = () => {
                             <input type="text" placeholder="State" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, state: e.target.value })} />
                         )}
                         <input type="text" placeholder="Address" required className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, address: e.target.value })} />
-                        <input type="text" placeholder="Current power sources" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, landmark: e.target.value })} />
+                        <input type="text" placeholder="e.g., grid, diesel generator(kVA), inverter(kVA/kW)" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, landmark: e.target.value })} />
                         <input type="number" placeholder="Floors" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, floors: e.target.value })} />
                         <input type="number" placeholder="Rooms" className="p-3 border rounded-lg" onChange={e => setFormData({ ...formData, rooms: e.target.value })} />
                     </div>
@@ -6412,6 +6561,24 @@ const BNPLFlow = () => {
         );
     };
 
+    const renderBnplProgressStrip = () => (
+        <div className="mb-12 max-w-xl mx-auto">
+            <div className="flex justify-between text-sm font-medium text-gray-400 mb-2">
+                <span className={step >= 1 ? "text-[#273e8e]" : ""}>Type</span>
+                <span className={step >= 2 ? "text-[#273e8e]" : ""}>Product</span>
+                <span className={step >= 11 ? "text-[#273e8e]" : ""}>Apply</span>
+                <span className={step >= 12 ? "text-[#273e8e]" : ""}>Approval</span>
+                <span className={step >= 21 ? "text-[#273e8e]" : ""}>Finish</span>
+            </div>
+            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                    className="h-full bg-[#273e8e] transition-all duration-500 ease-out"
+                    style={{ width: `${(step / 21) * 100}%` }}
+                />
+            </div>
+        </div>
+    );
+
     if (!bnplTermsAccepted) return renderTermsGate();
 
     return (
@@ -6432,30 +6599,22 @@ const BNPLFlow = () => {
                 </div>
             )}
 
-            {/* Main Content */}
+            {step === 2 ? (
+                <div className="animate-fade-in flex-1 w-full px-6 py-6 overflow-y-auto">
+                    <div className="w-full max-w-6xl mx-auto">
+                        {renderBnplProgressStrip()}
+                        {renderStep2()}
+                    </div>
+                </div>
+            ) : (
+            /* Main Content */
             < div className="flex-grow flex items-center justify-center p-6" >
                 <div className="w-full max-w-6xl">
                     {step !== 9 && (
                         <>
-                            {/* Progress Bar */}
-                            <div className="mb-12 max-w-xl mx-auto">
-                                <div className="flex justify-between text-sm font-medium text-gray-400 mb-2">
-                                    <span className={step >= 1 ? "text-[#273e8e]" : ""}>Type</span>
-                                    <span className={step >= 2 ? "text-[#273e8e]" : ""}>Product</span>
-                                    <span className={step >= 11 ? "text-[#273e8e]" : ""}>Apply</span>
-                                    <span className={step >= 12 ? "text-[#273e8e]" : ""}>Approval</span>
-                                    <span className={step >= 21 ? "text-[#273e8e]" : ""}>Finish</span>
-                                </div>
-                                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-[#273e8e] transition-all duration-500 ease-out"
-                                        style={{ width: `${(step / 21) * 100}%` }}
-                                    />
-                                </div>
-                            </div>
+                            {renderBnplProgressStrip()}
 
                             {step === 1 && renderStep1()}
-                            {step === 2 && renderStep2()}
                             {step === 2.5 && renderStep2_5()}
                             {step === 3 && renderStep3()}
                             {step === 3.5 && renderStep3_5()}
@@ -6484,6 +6643,7 @@ const BNPLFlow = () => {
                     )}
                 </div>
             </div>
+            )}
             {showBundleSelectPrompt && (
                 <div className="fixed inset-0 bg-black/50 z-[120] flex items-center justify-center p-4">
                     <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6">

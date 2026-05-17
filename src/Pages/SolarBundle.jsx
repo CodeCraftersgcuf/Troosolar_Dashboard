@@ -7,7 +7,13 @@ import SearchBar from "../Component/SearchBar";
 import SolarBundleComponent from "../Component/SolarBundleComponent";
 import API, { BASE_URL } from "../config/api.config";
 import { assets } from "../assets/data";
-import { apiFlagTrue } from "../utils/apiFlags";
+import {
+  extractKvaFromBundle,
+  sortBundlesFeaturedThenKvaAsc,
+  sortMappedBundleCards,
+  entityTopDeal,
+  entityHighlyRecommended,
+} from "../utils/bundleSort";
 import { ChevronLeft, ChevronRight, Edit } from "lucide-react";
 import Loading from "../Component/Loading";
 
@@ -69,8 +75,8 @@ const mapBundle = (b) => {
     bundleTitle: b?.bundle_type || "",
     inverterRating: b?.inver_rating ?? b?.inverter_rating ?? b?.inverterRating ?? "",
     borderColor: "#273e8e", // theme color frame
-    isHotDeal: apiFlagTrue(b?.top_deal),
-    isRecommended: apiFlagTrue(b?.is_most_popular),
+    isHotDeal: entityTopDeal(b),
+    isRecommended: entityHighlyRecommended(b),
   };
 };
 
@@ -144,16 +150,9 @@ const SolarBundle = () => {
 
   // Filter/sort display bundles
   useEffect(() => {
-    const parseKva = (value) => {
-      const n = Number(String(value ?? "").replace(/[^\d.]/g, ""));
-      return Number.isFinite(n) ? n : 0;
-    };
-
     let list = rawBundles.filter((b) => {
       const bundleType = String(b?.bundle_type || "").trim();
-      const inverterRating = parseKva(
-        b?.inver_rating ?? b?.inverter_rating ?? b?.inverterRating ?? ""
-      );
+      const inverterRating = extractKvaFromBundle(b);
 
       const typeMatch =
         selectedBundleType === "all" ||
@@ -176,15 +175,8 @@ const SolarBundle = () => {
         return priceSort === "low-high" ? aPrice - bPrice : bPrice - aPrice;
       });
     } else {
-      // Same as home featured cards: hot / recommended bundles first when not sorting by price
-      list = [...list].sort((a, b) => {
-        const ah =
-          apiFlagTrue(a?.top_deal) || apiFlagTrue(a?.is_most_popular) ? 1 : 0;
-        const bh =
-          apiFlagTrue(b?.top_deal) || apiFlagTrue(b?.is_most_popular) ? 1 : 0;
-        if (bh !== ah) return bh - ah;
-        return Number(a?.id ?? 0) - Number(b?.id ?? 0);
-      });
+      // Default: top deal / highly recommended first, then ascending kVA (same as BNPL / Buy Now).
+      list = sortBundlesFeaturedThenKvaAsc(list);
     }
 
     setDisplayBundles(list.map(mapBundle));
@@ -258,7 +250,7 @@ const SolarBundle = () => {
                 categories={[]}
                 products={searchBarProducts}
                 onFilteredResults={(results) => {
-                  setDisplayBundles(results);
+                  setDisplayBundles(sortMappedBundleCards(results));
                   setCurrentPage(1);
                 }}
               />
