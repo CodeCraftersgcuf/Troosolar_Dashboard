@@ -2,7 +2,7 @@ import React from "react";
 
 const ProfileTabs = ({ activeTab, onTabChange }) => {
   return (
-    <div className="bg-white rounded-full p-1 flex mb-6 max-w-[250px]">
+    <div className="bg-white rounded-full p-1 flex mb-6 max-w-[380px] overflow-x-auto">
       <button
         onClick={() => onTabChange("profile")}
         className={`px-3 py-2 rounded-full text-xs font-medium transition-all ${
@@ -22,6 +22,16 @@ const ProfileTabs = ({ activeTab, onTabChange }) => {
         }`}
       >
         Update Address
+      </button>
+      <button
+        onClick={() => onTabChange("bankAccount")}
+        className={`px-3 py-2 rounded-full text-xs font-medium transition-all ${
+          activeTab === "bankAccount"
+            ? "bg-[#273e8e] text-white shadow-sm"
+            : "text-gray-600 hover:text-gray-800"
+        }`}
+      >
+        Bank Account
       </button>
     </div>
   );

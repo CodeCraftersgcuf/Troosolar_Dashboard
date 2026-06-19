@@ -2,9 +2,11 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { ChevronRight } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { Input } from "../Input";
 import ProfileTabs from "./ProfileTabs";
 import UpdateAddress from "./UpdateAddress";
+import MonoBankAccountSection from "./MonoBankAccountSection";
 import API, { BASE_URL } from "../../config/api.config";
 
 // turn BASE_URL (http://localhost:8000/api) into origin (http://localhost:8000)
@@ -39,6 +41,7 @@ const getInitials = (name) => {
 };
 
 const EditProfile = () => {
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("profile");
   const [form, setForm] = useState({
     first_name: "",
@@ -65,6 +68,13 @@ const EditProfile = () => {
     });
     if (u.profile_picture) setAvatarPreview(toAbsolute(u.profile_picture));
   }, []);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "bankAccount" || tab === "address" || tab === "profile") {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   const onChange = (e) =>
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
@@ -232,8 +242,10 @@ const EditProfile = () => {
             {saving ? "Saving..." : "Save"}
           </button>
         </form>
-      ) : (
+      ) : activeTab === "address" ? (
         <UpdateAddress />
+      ) : (
+        <MonoBankAccountSection />
       )}
     </div>
   );
