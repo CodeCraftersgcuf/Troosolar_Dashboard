@@ -1,17 +1,18 @@
-// src/components/PrivateRoute.jsx
 import React from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
+import { loginPathWithReturn } from "../utils/authRedirect";
 
 const PrivateRoute = ({ children }) => {
-  // simple check: is there a token?
+  const location = useLocation();
   const token = localStorage.getItem("access_token");
 
   if (!token) {
-    // not logged in → go to login page
-    return <Navigate to="/login" replace />;
+    const returnPath = `${location.pathname}${location.search}`;
+    return (
+      <Navigate to={loginPathWithReturn(returnPath)} replace state={{ from: location }} />
+    );
   }
 
-  // logged in → render child
   return children;
 };
 

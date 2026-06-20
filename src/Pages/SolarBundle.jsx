@@ -175,7 +175,7 @@ const SolarBundle = () => {
         return priceSort === "low-high" ? aPrice - bPrice : bPrice - aPrice;
       });
     } else {
-      // Default: top deal / highly recommended first, then ascending kVA (same as BNPL / Buy Now).
+      // Default: Top Deal / Highly Recommended first, then ascending kVA.
       list = sortBundlesFeaturedThenKvaAsc(list);
     }
 

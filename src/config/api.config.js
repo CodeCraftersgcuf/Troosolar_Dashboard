@@ -41,6 +41,7 @@ const API = {
     TICKETS: `${BASE_URL}/website/tickets`,
     LOGOUT: `${BASE_URL}/logout`,
     CATEGORY_BRANDS: (id) => `${BASE_URL}/categories/${id}/brands`,
+    BRANDS: `${BASE_URL}/brands`,
     BRAND_PRODUCTS: (idsCsv) => `${BASE_URL}/brands/${idsCsv}/products`,
     PRODUCT_REVIEWS: `${BASE_URL}/product-reviews`,
     Fund_Wallet: `${BASE_URL}/fund-wallet`,

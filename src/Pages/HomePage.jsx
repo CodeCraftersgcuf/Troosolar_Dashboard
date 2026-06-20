@@ -4,14 +4,31 @@ import SideBar from "../Component/SideBar";
 import SearchBar from "../Component/SearchBar";
 import Items from "../Component/Items";
 import Product from "../Component/Product";
+import SolarBundleComponent from "../Component/SolarBundleComponent";
 import { Link } from "react-router-dom";
 import { ContextApi } from "../Context/AppContext";
 import TopNavbar from "../Component/TopNavbar";
 import HrLine from "../Component/MobileSectionResponsive/HrLine";
 import { ShoppingCart, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
-import API from "../config/api.config";
+import API, { BASE_URL } from "../config/api.config";
 import { apiFlagTrue } from "../utils/apiFlags";
 import PriceDropDown from "../Component/PriceDropDown";
+import {
+  extractKvaFromBundle,
+  sortStoreCatalogItems,
+  resolveBundleInverterRatingDisplay,
+} from "../utils/bundleSort";
+import { getBundleStoreCategoryLabel, normalizeBrandFilterSelection, catalogItemMatchesBrandFilter } from "../utils/storeCatalog";
+
+const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, "");
+
+const toAbsolute = (path) => {
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path;
+  if (path.startsWith("/")) return `${API_ORIGIN}${path}`;
+  const cleaned = String(path).replace(/^public\//, "");
+  return `${API_ORIGIN}/storage/${cleaned}`;
+};
 
 // ₦ formatter
 const formatNGN = (n) => {
@@ -115,8 +132,107 @@ const mapApiProductToCard = (p) => {
     stock: stockQty,
     isHotDeal: apiFlagTrue(p?.top_deal),
     isRecommended: apiFlagTrue(p?.is_most_popular),
+    _price_numeric: effectivePrice,
+    itemType: "product",
+    itemableId: p?.id,
   };
 };
+
+const mapApiBundleToCard = (b) => {
+  const image = b?.featured_image ? toAbsolute(b.featured_image) : FALLBACK_IMAGE;
+  const heading = b?.title || `Bundle #${b?.id ?? ""}`;
+  const total = Number(b?.total_price ?? 0);
+  const discount = Number(b?.discount_price ?? 0);
+  const showDiscount = discount > 0 && discount < total;
+  const price = formatNGN(showDiscount ? discount : total);
+  const oldPrice = showDiscount ? formatNGN(total) : "";
+  const pct = showDiscount && total > 0 ? Math.round((1 - discount / total) * 100) : 0;
+
+  return {
+    id: `bundle-${b?.id}`,
+    itemableId: b?.id,
+    itemType: "bundle",
+    image,
+    heading,
+    price,
+    oldPrice,
+    discount: showDiscount ? `-${pct}%` : "",
+    ratingAvg: 0,
+    ratingCount: 0,
+    categoryId: null,
+    categoryName: getBundleStoreCategoryLabel(b),
+    stock: b?.is_available === false ? 0 : 1,
+    isHotDeal: apiFlagTrue(b?.top_deal),
+    isRecommended: apiFlagTrue(b?.is_most_popular),
+    bundle: b,
+    inver_rating: b?.inver_rating,
+    bundle_type: b?.bundle_type,
+    bundleTitle: b?.bundle_type || "",
+    inverterRating: resolveBundleInverterRatingDisplay(b),
+  };
+};
+
+const renderCatalogCard = (item, className = "w-full") => {
+  const isBundle = item.itemType === "bundle" || Boolean(item.bundle);
+
+  if (isBundle) {
+    return (
+      <div key={item.id} className={className}>
+        <SolarBundleComponent
+          id={item.itemableId ?? item.id}
+          image={item.image}
+          heading={item.heading}
+          price={item.price}
+          oldPrice={item.oldPrice}
+          discount={item.discount}
+          bundleTitle={item.bundleTitle || item.bundle_type || ""}
+          inverterRating={
+            item.inverterRating ||
+            resolveBundleInverterRatingDisplay(item.bundle || item)
+          }
+          isHotDeal={item.isHotDeal}
+          isRecommended={item.isRecommended}
+          borderColor={
+            item.isRecommended
+              ? "#16a34a"
+              : item.isHotDeal
+                ? "#fbbf24"
+                : "#273e8e"
+          }
+        />
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      key={item.id}
+      to={getCatalogItemLink(item)}
+      className={className}
+    >
+      <Product
+        id={item.itemableId ?? item.id}
+        itemType={item.itemType}
+        image={item.image}
+        heading={item.heading}
+        price={item.price}
+        oldPrice={item.oldPrice}
+        discount={item.discount}
+        ratingAvg={item.ratingAvg}
+        ratingCount={item.ratingCount}
+        categoryName={item.categoryName}
+        isHotDeal={item.isHotDeal}
+        isRecommended={item.isRecommended}
+        stock={item.stock}
+      />
+    </Link>
+  );
+};
+
+const getCatalogItemLink = (item) =>
+  item.itemType === "bundle"
+    ? `/productBundle/details/${item.itemableId}`
+    : `/homePage/product/${item.itemableId ?? item.id}`;
 
 const HomePage = () => {
   const { registerProducts, filteredResults, setFilteredResults } =
@@ -127,10 +243,18 @@ const HomePage = () => {
   const [catError, setCatError] = useState("");
 
   const [apiProducts, setApiProducts] = useState([]);
-  const [rawProducts, setRawProducts] = useState([]); // Store raw API products for filtering
+  const [apiBundles, setApiBundles] = useState([]);
+  const [rawProducts, setRawProducts] = useState([]);
+  const [rawBundles, setRawBundles] = useState([]);
   const [prodLoading, setProdLoading] = useState(false);
   const [prodError, setProdError] = useState("");
+
+  const catalogItems = useMemo(
+    () => [...(apiProducts || []), ...(apiBundles || [])],
+    [apiProducts, apiBundles]
+  );
   const [isFiltering, setIsFiltering] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState("all");
   const [searchBarKey, setSearchBarKey] = useState(0); // Key to force SearchBar re-render
   const [selectedSize, setSelectedSize] = useState(null);
   const [priceRange, setPriceRange] = useState({ min: null, max: null });
@@ -194,96 +318,108 @@ const HomePage = () => {
     fetchCategories();
   }, []);
 
-  // Fetch products
+  // Fetch products and bundles for Solar Store catalog
   useEffect(() => {
-    const fetchProducts = async () => {
+    const fetchCatalog = async () => {
       setProdLoading(true);
       setProdError("");
       try {
         const token = localStorage.getItem("access_token");
-        const { data } = await axios.get(API.PRODUCTS, {
-          headers: {
-            Accept: "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-        });
-        const list = (Array.isArray(data?.data) ? data.data : []).filter(
-          (product) => parseStockQuantity(product?.stock) > 0
-        );
+        const headers = {
+          Accept: "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        };
+
+        const [productsRes, bundlesRes] = await Promise.allSettled([
+          axios.get(API.PRODUCTS, { headers }),
+          axios.get(API.BUNDLES, { headers }),
+        ]);
+
+        const list =
+          productsRes.status === "fulfilled" &&
+          Array.isArray(productsRes.value.data?.data)
+            ? productsRes.value.data.data.filter(
+                (product) => parseStockQuantity(product?.stock) > 0
+              )
+            : [];
+
+        const bundleList =
+          bundlesRes.status === "fulfilled" &&
+          Array.isArray(bundlesRes.value.data?.data)
+            ? bundlesRes.value.data.data.filter(
+                (bundle) => bundle?.is_available !== false
+              )
+            : [];
+
+        if (productsRes.status === "rejected" && bundlesRes.status === "rejected") {
+          throw productsRes.reason || bundlesRes.reason;
+        }
+
         const mappedProducts = list.map(mapApiProductToCard);
+        const mappedBundles = bundleList.map(mapApiBundleToCard);
+        const sortedCatalog = sortStoreCatalogItems(
+          [...mappedProducts, ...mappedBundles]
+        );
+
         setApiProducts(mappedProducts);
-        setRawProducts(list); // Store raw products for filtering
-        // Initialize filtered results with all products
-        setFilteredResults(mappedProducts);
-        setIsFiltering(false); // Reset filtering state
-        setCurrentPage(1); // Reset to first page when products load
-        // keep raw list in context if you use it elsewhere
+        setApiBundles(mappedBundles);
+        setRawProducts(list);
+        setRawBundles(bundleList);
+        setFilteredResults(sortedCatalog);
+        setSelectedCategoryId("all");
+        setIsFiltering(false);
+        setCurrentPage(1);
         registerProducts?.(list);
       } catch (err) {
         setProdError(
           err?.response?.data?.message ||
             err?.message ||
-            "Failed to load products."
+            "Failed to load catalog."
         );
       } finally {
         setProdLoading(false);
       }
     };
-    fetchProducts();
+    fetchCatalog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run once on mount - removed registerProducts and setFilteredResults to prevent infinite loops
+  }, []);
 
-  // Fetch all brands used by currently loaded products (via category brands endpoints)
+  // Fetch brands with admin-assigned categories (brand_category pivot)
   useEffect(() => {
     let mounted = true;
     const fetchBrands = async () => {
       try {
-        const categoryIds = Array.from(
-          new Set(
-            (rawProducts || [])
-              .map((p) => p?.category_id)
-              .filter((id) => id != null)
-              .map((id) => String(id))
-          )
-        );
-
-        if (!categoryIds.length) {
-          if (mounted) setBrandOptions([]);
-          return;
-        }
-
         const token = localStorage.getItem("access_token");
-        const responses = await Promise.all(
-          categoryIds.map((categoryId) =>
-            axios
-              .get(API.CATEGORY_BRANDS(categoryId), {
-                headers: {
-                  Accept: "application/json",
-                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                },
-              })
-              .catch(() => null)
-          )
-        );
-
-        const brandMap = new Map();
-        responses.forEach((res) => {
-          const brands = Array.isArray(res?.data?.data)
-            ? res.data.data
-            : Array.isArray(res?.data)
-            ? res.data
-            : [];
-          brands.forEach((b) => {
-            const id = b?.id;
-            if (id == null) return;
-            if (!brandMap.has(String(id))) {
-              brandMap.set(String(id), b?.name || b?.title || `Brand #${id}`);
-            }
-          });
+        const { data } = await axios.get(API.BRANDS, {
+          headers: {
+            Accept: "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
         });
 
-        const options = Array.from(brandMap.entries())
-          .map(([id, name]) => ({ id, name }))
+        const brands = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+          ? data
+          : [];
+
+        const options = brands
+          .map((b) => {
+            const id = b?.id;
+            if (id == null) return null;
+            const categoryIds = Array.isArray(b.category_ids)
+              ? b.category_ids.map(String)
+              : b.category_id != null
+              ? [String(b.category_id)]
+              : [];
+            return {
+              id: String(id),
+              name: b.title || b.name || `Brand #${id}`,
+              ids: [String(id)],
+              categoryIds,
+            };
+          })
+          .filter(Boolean)
           .sort((a, b) => a.name.localeCompare(b.name));
 
         if (mounted) setBrandOptions(options);
@@ -296,7 +432,7 @@ const HomePage = () => {
     return () => {
       mounted = false;
     };
-  }, [rawProducts]);
+  }, []);
 
   // Build a quick id->name map for categories
   const catMap = useMemo(() => {
@@ -347,113 +483,119 @@ const HomePage = () => {
 
   // Apply size and price filters
   const filteredBySizeAndPrice = useMemo(() => {
-    // Start with the base product list (either from search or all products)
-    let products = isFiltering ? filteredResults : apiProducts || [];
-    let rawProductsList = rawProducts || [];
-    
-    // Create a map of product ID to raw product for filtering
+    let items = isFiltering ? filteredResults : catalogItems;
+
     const rawProductMap = {};
-    rawProductsList.forEach(raw => {
-      if (raw?.id) {
-        rawProductMap[raw.id] = raw;
-      }
+    (rawProducts || []).forEach((raw) => {
+      if (raw?.id) rawProductMap[raw.id] = raw;
     });
-    
-    // Create a map of mapped product ID to mapped product for quick lookup
-    const mappedProductMap = {};
-    products.forEach(p => {
-      if (p?.id) {
-        mappedProductMap[p.id] = p;
-      }
+
+    const rawBundleMap = {};
+    (rawBundles || []).forEach((raw) => {
+      if (raw?.id) rawBundleMap[raw.id] = raw;
     });
-    
-    // Apply size filter - extract size from product titles
+
     if (selectedSize !== null && selectedSize !== undefined) {
-      const filteredProductIds = new Set();
-      
-      // Check each raw product for size match
-      rawProductsList.forEach(raw => {
-        if (!raw?.id) return;
-        
-        const title = raw?.title || raw?.name || "";
+      const tolerance = 0.3;
+      items = items.filter((item) => {
+        if (item.itemType === "bundle") {
+          const kva = extractKvaFromBundle(item.bundle || item);
+          return kva > 0 && Math.abs(kva - selectedSize) <= tolerance;
+        }
+
+        const title = item.heading || item.title || item.name || "";
         const productSize = extractSizeFromTitle(title);
-        
-        let matches = false;
-        
-        if (productSize !== null) {
-          // Match product size with selected size (within ±0.3kW tolerance)
-          const tolerance = 0.3;
-          matches = Math.abs(productSize - selectedSize) <= tolerance;
-        } else {
-          // If no size found in title, check for bundle properties (for backward compatibility)
-          const mappedProduct = mappedProductMap[raw.id];
-          if (mappedProduct) {
-            const bundle = mappedProduct.bundle || mappedProduct;
-            const totalLoad = parseFloat(bundle.total_load || bundle.totalLoad || 0);
-            const inverterRating = parseFloat(bundle.inver_rating || bundle.inverterRating || bundle.inverter_rating || 0);
-            const totalOutput = parseFloat(bundle.total_output || bundle.totalOutput || 0);
-            
-            // Convert to kW if needed
-            const loadkW = totalLoad > 1000 ? totalLoad / 1000 : totalLoad;
-            const inverterkW = inverterRating > 1000 ? inverterRating / 1000 : inverterRating;
-            const outputkW = totalOutput > 1000 ? totalOutput / 1000 : totalOutput;
-            
-            // Check if any of these values match the selected size (within ±0.3kW range)
-            const tolerance = 0.3;
-            const matchesLoad = loadkW > 0 && Math.abs(loadkW - selectedSize) <= tolerance;
-            const matchesInverter = inverterkW > 0 && Math.abs(inverterkW - selectedSize) <= tolerance;
-            const matchesOutput = outputkW > 0 && Math.abs(outputkW - selectedSize) <= tolerance;
-            
-            matches = matchesLoad || matchesInverter || matchesOutput;
-          }
-        }
-        
-        if (matches) {
-          filteredProductIds.add(raw.id);
-        }
+        return (
+          productSize !== null &&
+          Math.abs(productSize - selectedSize) <= tolerance
+        );
       });
-      
-      // Filter products to only include those that match the size
-      products = products.filter(item => filteredProductIds.has(item.id));
     }
-    
-    // Apply price filter - use raw price values from API (supports min-only e.g. 5M+)
+
     const hasPriceFilter = priceRange.min != null || priceRange.max != null;
     if (hasPriceFilter) {
-      products = products.filter((item) => {
-        const rawProduct = rawProductMap[item.id];
-        if (!rawProduct) return false;
-        
-        const discountPrice = rawProduct.discount_price != null ? Number(rawProduct.discount_price) : null;
-        const regularPrice = rawProduct.price != null ? Number(rawProduct.price) : 0;
-        const actualPrice = discountPrice !== null && discountPrice > 0 ? discountPrice : regularPrice;
-        
+      items = items.filter((item) => {
+        let actualPrice = 0;
+        if (item.itemType === "bundle") {
+          const raw = rawBundleMap[item.itemableId];
+          if (!raw) return false;
+          const discountPrice =
+            raw.discount_price != null ? Number(raw.discount_price) : null;
+          const regularPrice = Number(raw.total_price ?? 0);
+          actualPrice =
+            discountPrice !== null && discountPrice > 0
+              ? discountPrice
+              : regularPrice;
+        } else {
+          const rawProduct = rawProductMap[item.itemableId ?? item.id];
+          if (!rawProduct) return false;
+          const discountPrice =
+            rawProduct.discount_price != null
+              ? Number(rawProduct.discount_price)
+              : null;
+          const regularPrice =
+            rawProduct.price != null ? Number(rawProduct.price) : 0;
+          actualPrice =
+            discountPrice !== null && discountPrice > 0
+              ? discountPrice
+              : regularPrice;
+        }
+
         const minOk = priceRange.min == null || actualPrice >= priceRange.min;
         const maxOk = priceRange.max == null || actualPrice <= priceRange.max;
         return minOk && maxOk;
       });
     }
 
-    // Apply brand filter
     if (selectedBrandId != null) {
-      products = products.filter((item) => {
-        const rawProduct = rawProductMap[item.id];
-        return String(rawProduct?.brand_id ?? "") === String(selectedBrandId);
+      const selectedBrand = brandOptions.find(
+        (b) => b.id === String(selectedBrandId)
+      );
+      const brandSelection = normalizeBrandFilterSelection(selectedBrand);
+
+      items = items.filter((item) => {
+        const rawProduct = rawProductMap[item.itemableId ?? item.id];
+        return catalogItemMatchesBrandFilter(item, brandSelection, rawProduct);
       });
     }
-    
-    return products;
-  }, [filteredResults, apiProducts, rawProducts, isFiltering, selectedSize, priceRange, selectedBrandId, extractSizeFromTitle]);
 
-  // Enrich cards with category name
+    return items;
+  }, [
+    filteredResults,
+    catalogItems,
+    rawProducts,
+    rawBundles,
+    isFiltering,
+    selectedSize,
+    priceRange,
+    selectedBrandId,
+    brandOptions,
+    extractSizeFromTitle,
+  ]);
+
+  const activeCategoryLabel = useMemo(() => {
+    if (selectedCategoryId === "all") return "";
+    const cat = categories.find((c) => String(c.id) === String(selectedCategoryId));
+    return cat?.title || cat?.name || cat?.category_name || "";
+  }, [categories, selectedCategoryId]);
+
+  const handleCategorySelect = useCallback((categoryId) => {
+    setSelectedCategoryId(String(categoryId));
+    setCurrentPage(1);
+  }, []);
+
+  // Enrich cards with category name and apply storefront sort order
   const gridProducts = useMemo(() => {
-    const sourceProducts = filteredBySizeAndPrice;
-
-    return sourceProducts.map((p) => ({
+    const enriched = filteredBySizeAndPrice.map((p) => ({
       ...p,
-      categoryName: catMap[p.categoryId] || "Inverter",
+      categoryName:
+        p.categoryName || catMap[p.categoryId] || "Solar Product",
     }));
-  }, [filteredBySizeAndPrice, catMap]);
+
+    return sortStoreCatalogItems(enriched, {
+      categoryLabel: activeCategoryLabel,
+    });
+  }, [filteredBySizeAndPrice, catMap, activeCategoryLabel]);
 
   // Pagination calculations
   const totalItems = gridProducts.length;
@@ -465,7 +607,7 @@ const HomePage = () => {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedSize, priceRange, selectedBrandId, isFiltering]);
+  }, [selectedSize, priceRange, selectedBrandId, isFiltering, selectedCategoryId]);
 
   // Handle page change
   const handlePageChange = useCallback((page) => {
@@ -474,12 +616,6 @@ const HomePage = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  const baseUrl = "https://troosolar.hmstech.org/";
-
-  categories.forEach((category) => {
-    const iconUrl = `${baseUrl}${category.icon}`;
-    console.log("Category Icon:", iconUrl);
-  });
   return (
     <>
       {/* Desktop view */}
@@ -501,16 +637,25 @@ const HomePage = () => {
               <SearchBar 
                 key={searchBarKey}
                 categories={categories} 
-                products={apiProducts} 
+                products={catalogItems} 
                 onFilteringChange={handleFilteringChange}
                 showSizeFilter={false}
+                categoryValue={selectedCategoryId}
+                onCategoryChange={setSelectedCategoryId}
               />
             </div>
 
             {catError && (
               <p className="text-red-200 text-sm mb-2">{catError}</p>
             )}
-            <Items categories={categories} loading={catLoading} />
+            <Items
+              categories={categories}
+              loading={catLoading}
+              onCategorySelect={handleCategorySelect}
+              activeCategoryId={
+                selectedCategoryId !== "all" ? selectedCategoryId : null
+              }
+            />
           </div>
 
           <div className="px-6 py-6 w-full overflow-x-hidden">
@@ -576,28 +721,9 @@ const HomePage = () => {
             ) : gridProducts.length > 0 ? (
               <>
                 <div className="grid xl:grid-cols-4 lg:grid-cols-4 md:grid-cols-2 grid-cols-1 gap-4">
-                  {paginatedProducts.map((item) => (
-                    <Link
-                      key={item.id}
-                      to={`/homePage/product/${item.id}`}
-                      className="w-full"
-                    >
-                      <Product
-                        id={item.id}
-                        image={item.image}
-                        heading={item.heading}
-                        price={item.price}
-                        oldPrice={item.oldPrice}
-                        discount={item.discount}
-                        ratingAvg={item.ratingAvg}
-                        ratingCount={item.ratingCount}
-                        categoryName={item.categoryName}
-                        isHotDeal={item.isHotDeal}
-                        isRecommended={item.isRecommended}
-                        stock={item.stock}
-                      />
-                    </Link>
-                  ))}
+                  {paginatedProducts.map((item) =>
+                    renderCatalogCard(item, "w-full")
+                  )}
                 </div>
 
                 {/* Pagination */}
@@ -655,7 +781,7 @@ const HomePage = () => {
                 {/* Results Info */}
                 {totalItems > 0 && (
                   <div className="text-center text-sm text-gray-500 mt-4">
-                    Showing {startIndex + 1} - {Math.min(endIndex, totalItems)} of {totalItems} products
+                    Showing {startIndex + 1} - {Math.min(endIndex, totalItems)} of {totalItems} items
                   </div>
                 )}
               </>
@@ -676,7 +802,10 @@ const HomePage = () => {
                       // Reset filters by re-rendering SearchBar
                       setSearchBarKey(prev => prev + 1);
                       setIsFiltering(false);
-                      setFilteredResults(apiProducts);
+                      setSelectedCategoryId("all");
+                      setFilteredResults(
+                        sortStoreCatalogItems([...catalogItems])
+                      );
                       setSelectedSize(null);
                       setPriceRange({ min: null, max: null });
                       setCurrentPage(1);
@@ -734,9 +863,11 @@ const HomePage = () => {
               <SearchBar 
                 key={searchBarKey}
                 categories={categories} 
-                products={apiProducts} 
+                products={catalogItems} 
                 onFilteringChange={handleFilteringChange}
-                      showSizeFilter={false}
+                showSizeFilter={false}
+                categoryValue={selectedCategoryId}
+                onCategoryChange={setSelectedCategoryId}
               />
             </div>
           </div>
@@ -745,7 +876,14 @@ const HomePage = () => {
           <div className="px-5 pt-5">
             <HrLine text={"Categories"} />
           </div>
-          <Items categories={categories} loading={catLoading} />
+          <Items
+            categories={categories}
+            loading={catLoading}
+            onCategorySelect={handleCategorySelect}
+            activeCategoryId={
+              selectedCategoryId !== "all" ? selectedCategoryId : null
+            }
+          />
 
           {/* Products */}
           <div className="px-5 py-6 w-full">
@@ -811,28 +949,12 @@ const HomePage = () => {
             ) : gridProducts.length > 0 ? (
               <>
                 <div className="grid grid-cols-2 gap-4 max-sm:gap-5 max-sm:ml-[-10px] max-[320px]:grid-cols-2">
-                  {paginatedProducts.map((item) => (
-                    <Link
-                      key={item.id}
-                      to={`/homePage/product/${item.id}`}
-                      className="w-full  max-[380px]:w-[160px] min-sm:w-[190px]  "
-                    >
-                      <Product
-                        id={item.id}
-                        image={item.image}
-                        heading={item.heading}
-                        price={item.price}
-                        oldPrice={item.oldPrice}
-                        discount={item.discount}
-                        ratingAvg={item.ratingAvg}
-                        ratingCount={item.ratingCount}
-                        categoryName={item.categoryName}
-                        isHotDeal={item.isHotDeal}
-                        isRecommended={item.isRecommended}
-                        stock={item.stock}
-                      />
-                    </Link>
-                  ))}
+                  {paginatedProducts.map((item) =>
+                    renderCatalogCard(
+                      item,
+                      "w-full max-[380px]:w-[160px] min-sm:w-[190px]"
+                    )
+                  )}
                 </div>
 
                 {/* Pagination */}
@@ -890,7 +1012,7 @@ const HomePage = () => {
                 {/* Results Info */}
                 {totalItems > 0 && (
                   <div className="text-center text-sm text-gray-500 mt-3">
-                    Showing {startIndex + 1} - {Math.min(endIndex, totalItems)} of {totalItems} products
+                    Showing {startIndex + 1} - {Math.min(endIndex, totalItems)} of {totalItems} items
                   </div>
                 )}
               </>
@@ -911,7 +1033,10 @@ const HomePage = () => {
                       // Reset filters by re-rendering SearchBar
                       setSearchBarKey(prev => prev + 1);
                       setIsFiltering(false);
-                      setFilteredResults(apiProducts);
+                      setSelectedCategoryId("all");
+                      setFilteredResults(
+                        sortStoreCatalogItems([...catalogItems])
+                      );
                       setSelectedSize(null);
                       setPriceRange({ min: null, max: null });
                       setCurrentPage(1);

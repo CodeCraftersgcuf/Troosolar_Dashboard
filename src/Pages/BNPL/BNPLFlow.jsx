@@ -4959,8 +4959,8 @@ const BNPLFlow = () => {
                             {userMonoAccount.bank_label ? `: ${userMonoAccount.bank_label}` : ''}.
                             No need to connect again during this application.
                         </p>
-                        <Link to="/more?tab=bankAccount" className="text-sm text-[#273e8e] underline mt-2 inline-block">
-                            Change bank in Profile → Bank Account
+                        <Link to="/more?section=bankAccount" className="text-sm text-[#273e8e] underline mt-2 inline-block">
+                            Change bank in More → Bank Account
                         </Link>
                     </div>
                 )}
@@ -4969,7 +4969,7 @@ const BNPLFlow = () => {
                     <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
                         <p className="text-sm text-blue-800">
                             No bank linked yet. You can connect in{' '}
-                            <Link to="/more?tab=bankAccount" className="underline font-medium">Profile → Bank Account</Link>
+                            <Link to="/more?section=bankAccount" className="underline font-medium">More → Bank Account</Link>
                             {' '}to skip linking during future BNPL applications.
                         </p>
                     </div>

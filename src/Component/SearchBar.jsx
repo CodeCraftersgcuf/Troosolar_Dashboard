@@ -1,6 +1,16 @@
 import React, { useState, useEffect, useRef, useContext, useMemo } from "react";
 import { ChevronDown, Search, X } from "lucide-react";
 import { ContextApi } from "../Context/AppContext";
+import {
+  getItemSearchText,
+  itemMatchesStoreCategory,
+} from "../utils/storeCatalog";
+import {
+  sortStoreCatalogItems,
+  parseKvaFromSearchQuery,
+  catalogItemMatchesKva,
+  normalizeKvaValue,
+} from "../utils/bundleSort";
 
 const Z_DROPDOWN_BACKDROP = 9999;
 const Z_DROPDOWN_PANEL = 10000;
@@ -18,8 +28,22 @@ const SearchBar = ({
   onFilteringChange,
   onFilteredResults,
   showSizeFilter = true,
+  categoryValue,
+  onCategoryChange,
 }) => {
   const { setFilteredResults } = useContext(ContextApi);
+
+  const isCategoryControlled = categoryValue !== undefined;
+  const [internalCategoryValue, setInternalCategoryValue] = useState("all");
+  const selectedValue = isCategoryControlled ? categoryValue : internalCategoryValue;
+
+  const setSelectedValue = (value) => {
+    if (isCategoryControlled) {
+      onCategoryChange?.(value);
+    } else {
+      setInternalCategoryValue(value);
+    }
+  };
 
   // Build dropdown options from API cats
   const dropdownOptions = useMemo(() => {
@@ -37,7 +61,6 @@ const SearchBar = ({
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
 
   // value = "all" | "<categoryId>"
-  const [selectedValue, setSelectedValue] = useState("all");
   const [query, setQuery] = useState("");
   const [selectedSize, setSelectedSize] = useState("all");
 
@@ -66,32 +89,13 @@ const SearchBar = ({
   const selectedLabel =
     dropdownOptions.find((o) => o.value === selectedValue)?.label || "All";
 
-  /**
-   * Fallback: infer if product belongs to category by title/heading.
-   * Ensures inverters show under Inverters, panels under Panels, batteries under Lithium Batteries, etc.,
-   * even when product.category_id is wrong in the API.
-   */
-  const productTitleMatchesCategory = (heading, categoryLabel) => {
-    if (!heading || !categoryLabel) return false;
-    const h = String(heading).toLowerCase();
-    const c = String(categoryLabel).toLowerCase();
-    // Inverters / Solar Inverters
-    if (c.includes("inverter")) return /inverter|inv\b|kva|hybrid\s*inv/i.test(h);
-    // Solar Panels / Panels
-    if (c.includes("panel") || c === "solar panels") return /panel|monofacial|bifacial|solar\s*pv|jinko|longi|canadian|trina|watt\s*\d|^\d+w\b/i.test(h) && !/inverter|battery|lithium/i.test(h);
-    // Lithium Batteries / Batteries
-    if (c.includes("battery") || c.includes("lithium")) return /battery|batteries|lithium|li-ion|li-ion|kwh\s*battery/i.test(h);
-    // All In One Systems
-    if (c.includes("all in one") || c.includes("system")) return /all\s*in\s*one|system|hybrid\s*system/i.test(h);
-    // Accessories, Cables, etc. - optional keyword match
-    if (c.includes("accessor")) return /cable|wire|connector|meter|stick|wifi/i.test(h);
-    if (c.includes("cable") || c.includes("wiring")) return /cable|wire|flexible|dc\s*cable|ac\s*cable/i.test(h);
-    if (c.includes("mounting") || c.includes("installation")) return /mount|rack|structure|installation/i.test(h);
-    if (c.includes("electrical")) return /breaker|combiner|surge|bypass|switch|busbar|earth/i.test(h);
-    return false;
-  };
+  const normalizeSearchText = (text) =>
+    String(text || "")
+      .toLowerCase()
+      .replace(/\s+/g, "")
+      .replace(/kv(?!a)/g, "kva");
 
-  // Position dropdown below trigger when open (for fixed positioning so it's not clipped by overflow)
+  // Position dropdown below trigger when open
   useEffect(() => {
     if (!isDropdownOpen || !triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
@@ -110,31 +114,6 @@ const SearchBar = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isDropdownOpen]);
 
-  // Extract size from query (e.g., "1.2kW" or "1.2 kw")
-  const extractSizeFromQuery = (q) => {
-    const raw = String(q ?? "").trim();
-    if (!raw) return null;
-
-    const qLower = raw.toLowerCase();
-
-    // Match explicit kVA/kW inputs first (e.g. "1.2kVA", "1.2 kW", "4kVA/24V")
-    const kvaMatch = qLower.match(/(\d+(?:\.\d+)?)\s*kva/i);
-    if (kvaMatch) return parseFloat(kvaMatch[1]);
-
-    const kwMatch = qLower.match(/(\d+(?:\.\d+)?)\s*kw/i);
-    if (kwMatch) return parseFloat(kwMatch[1]);
-
-    // If the query is ONLY a number like "1.2" treat it as kVA size.
-    // Keep it bounded so we don't accidentally parse unrelated numbers (e.g. battery kWh like "1.3").
-    const numericOnlyMatch = qLower.match(/^(\d+(?:\.\d+)?)$/);
-    if (numericOnlyMatch) {
-      const n = parseFloat(numericOnlyMatch[1]);
-      if (Number.isFinite(n) && n > 0 && n <= 30) return n;
-    }
-
-    return null;
-  };
-
   // Filter logic (debounced for search, immediate for dropdown selections)
   useEffect(() => {
     // Use shorter delay for dropdown selections, longer for search input
@@ -150,76 +129,62 @@ const SearchBar = ({
       }
 
       let results = [...products]; // Start with all products
-      const querySize = showSizeFilter ? extractSizeFromQuery(query) : null;
+      // Always parse kVA from query (Solar Store hides size dropdown but search must still work).
+      const querySize = parseKvaFromSearchQuery(query);
       const sizeToFilter =
-        showSizeFilter && selectedSize !== "all" ? parseFloat(selectedSize) : querySize;
-      const normalizeKva = (val) => {
-        const n = typeof val === "number" ? val : parseFloat(val);
-        if (!Number.isFinite(n)) return null;
-        // Inverter table uses 1-decimal steps (e.g. 3.6, 4.0, 6.5). Normalize to match exactly.
-        return Math.round(n * 10) / 10;
-      };
-      const sizeToFilterNorm = sizeToFilter ? normalizeKva(sizeToFilter) : null;
+        showSizeFilter && selectedSize !== "all"
+          ? parseFloat(selectedSize)
+          : querySize;
+      const sizeToFilterNorm = sizeToFilter != null ? normalizeKvaValue(sizeToFilter) : null;
       const isFilteringActive =
         selectedValue !== "all" || query.trim() !== "" || (showSizeFilter && selectedSize !== "all");
 
-      // Category filtering: by category_id first, then fallback by product title so
-      // inverters show under Inverters, panels under Panels, batteries under Lithium Batteries, etc.
+      // Category filter: strict category_id from admin (dropdown + strip).
+      // Bundles only appear for Solar Bundles / Inverter Bundles categories.
       if (selectedValue !== "all") {
-        const catId = Number(selectedValue);
-        const categoryLabel = dropdownOptions.find((o) => o.value === selectedValue)?.label || "";
-        results = results.filter((item) => {
-          const itemCategoryId = Number(item.categoryId);
-          const matchesId = !isNaN(itemCategoryId) && itemCategoryId === catId;
-          const matchesTitle = productTitleMatchesCategory(item.heading || item.title || item.name, categoryLabel);
-          return matchesId || matchesTitle;
-        });
+        const categoryLabel =
+          dropdownOptions.find((o) => o.value === selectedValue)?.label || "";
+        results = results.filter((item) =>
+          itemMatchesStoreCategory(item, categoryLabel, selectedValue, {
+            strict: true,
+          })
+        );
       }
 
-      // Size filtering (for bundles)
+      const qLower = query.trim().toLowerCase();
+      const qNormalized = normalizeSearchText(qLower);
+
+      // Capacity search (4kv, 1.5, 1.5kva, etc.)
       if (sizeToFilterNorm !== null) {
         results = results.filter((item) => {
-          // Check if it's a bundle (has bundle properties)
-          const bundle = item.bundle || item;
-          
-          // Try to extract size from various bundle properties
-          const totalLoad = parseFloat(bundle.total_load || bundle.totalLoad || 0);
-          const inverterRating = parseFloat(bundle.inver_rating || bundle.inverterRating || bundle.inverter_rating || 0);
-          const totalOutput = parseFloat(bundle.total_output || bundle.totalOutput || 0);
-          
-          // Convert to kW if needed (assuming values might be in W)
-          const loadkW = totalLoad > 1000 ? totalLoad / 1000 : totalLoad;
-          const inverterkW = inverterRating > 1000 ? inverterRating / 1000 : inverterRating;
-          const outputkW = totalOutput > 1000 ? totalOutput / 1000 : totalOutput;
-
-          const inverterNorm = normalizeKva(inverterkW);
-          const loadNorm = normalizeKva(loadkW);
-          const outputNorm = normalizeKva(outputkW);
-
-          // For bundles, `inver_rating` is the source of truth.
-          // If it's present, only match by inverter rating to avoid "extra irrelevant sizes".
-          if (inverterNorm !== null && inverterNorm > 0) {
-            return inverterNorm === sizeToFilterNorm;
+          const matchesSize = catalogItemMatchesKva(item, sizeToFilterNorm);
+          const matchesQueryText =
+            qNormalized.length > 0 &&
+            normalizeSearchText(getItemSearchText(item)).includes(qNormalized);
+          return matchesSize || matchesQueryText;
+        });
+      } else if (qLower) {
+        results = results.filter((item) => {
+          if (normalizeSearchText(getItemSearchText(item)).includes(qNormalized)) {
+            return true;
           }
 
-          // Fallback: try matching by load/output if inverter rating is missing.
-          return (
-            (loadNorm !== null && loadNorm > 0 && loadNorm === sizeToFilterNorm) ||
-            (outputNorm !== null && outputNorm > 0 && outputNorm === sizeToFilterNorm)
-          );
-        });
-      }
+          const queryNum = parseKvaFromSearchQuery(qLower);
+          if (queryNum != null) {
+            return catalogItemMatchesKva(item, queryNum);
+          }
 
-      // Search filtering (excluding size if already filtered by size)
-      if (query.trim() && !querySize) {
-        const q = query.trim().toLowerCase();
-        results = results.filter((item) => {
-          // Check the heading field (which is the mapped title)
-          const title = item.heading || item.title || item.name || "";
-          return String(title).toLowerCase().includes(q);
+          return false;
         });
       }
       
+      const categoryLabel =
+        selectedValue !== "all"
+          ? dropdownOptions.find((o) => o.value === selectedValue)?.label || ""
+          : "";
+
+      results = sortStoreCatalogItems(results, { categoryLabel });
+
       // Update filtered results in context
       setFilteredResults(results);
       // Notify parent with filtered array (e.g. SolarBundle can display these)
@@ -367,7 +332,8 @@ const SearchBar = ({
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search products or bundles"
+          placeholder="Search by name or capacity (e.g. 4kVA, 1.5)"
+          inputMode="decimal"
           className="w-full px-2 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none"
           aria-label="Search products and bundles"
         />

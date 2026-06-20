@@ -6,7 +6,6 @@ import { useSearchParams } from "react-router-dom";
 import { Input } from "../Input";
 import ProfileTabs from "./ProfileTabs";
 import UpdateAddress from "./UpdateAddress";
-import MonoBankAccountSection from "./MonoBankAccountSection";
 import API, { BASE_URL } from "../../config/api.config";
 
 // turn BASE_URL (http://localhost:8000/api) into origin (http://localhost:8000)
@@ -71,7 +70,7 @@ const EditProfile = () => {
 
   useEffect(() => {
     const tab = searchParams.get("tab");
-    if (tab === "bankAccount" || tab === "address" || tab === "profile") {
+    if (tab === "address" || tab === "profile") {
       setActiveTab(tab);
     }
   }, [searchParams]);
@@ -242,10 +241,8 @@ const EditProfile = () => {
             {saving ? "Saving..." : "Save"}
           </button>
         </form>
-      ) : activeTab === "address" ? (
-        <UpdateAddress />
       ) : (
-        <MonoBankAccountSection />
+        <UpdateAddress />
       )}
     </div>
   );

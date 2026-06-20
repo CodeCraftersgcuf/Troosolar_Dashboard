@@ -8,5 +8,9 @@ export default defineConfig({
   server: {
     host: true, // This allows external connections
     port: 5176, // Default Vite port
+    // Let Mono's embedded widget (connect.mono.co) use the camera for facial verification
+    headers: {
+      'Permissions-Policy': 'camera=(self "https://connect.mono.co"), microphone=(self "https://connect.mono.co")',
+    },
   },
 })

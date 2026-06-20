@@ -100,15 +100,15 @@ const MonoBankAccountSection = () => {
     }
 
     return (
-        <div className="space-y-4">
-            <div className="rounded-xl border border-gray-200 bg-white p-5">
-                <div className="flex items-start gap-3">
-                    <div className="rounded-full bg-blue-50 p-2 text-[#273e8e]">
+        <div className="space-y-4 w-full">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+                    <div className="rounded-full bg-blue-50 p-2 text-[#273e8e] w-fit shrink-0">
                         <Building2 size={22} />
                     </div>
-                    <div className="flex-1">
-                        <h3 className="font-bold text-gray-800">Mono bank account</h3>
-                        <p className="text-sm text-gray-500 mt-1">
+                    <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-gray-800 text-base sm:text-lg">Mono bank account</h3>
+                        <p className="text-sm text-gray-500 mt-1 leading-relaxed">
                             Connect your bank once here. BNPL credit checks will use this account automatically.
                             You can change your bank anytime.
                         </p>
@@ -142,7 +142,7 @@ const MonoBankAccountSection = () => {
                     type="button"
                     onClick={handleConnect}
                     disabled={linking}
-                    className="mt-4 w-full flex items-center justify-center gap-2 bg-[#273e8e] text-white text-sm py-4 rounded-full disabled:opacity-60"
+                    className="mt-4 w-full flex items-center justify-center gap-2 bg-[#273e8e] text-white text-sm sm:text-base py-3.5 sm:py-4 rounded-full disabled:opacity-60 min-h-[48px] touch-manipulation"
                 >
                     {linking ? (
                         <>

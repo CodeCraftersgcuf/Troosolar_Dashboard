@@ -45,7 +45,7 @@ export default function ProductPromoBadges({
     >
       {isRecommended ? (
         <span
-          className={`${pillBase} bg-gradient-to-r from-[#F8A91D] to-[#E09618] text-white`}
+          className={`${pillBase} bg-gradient-to-r from-green-600 to-emerald-600 text-white`}
         >
           <StarIcon className={starClass} />
           Highly recommended

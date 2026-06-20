@@ -70,7 +70,9 @@ const Product = ({
   isHotDeal,
   isRecommended,
   id,
+  itemType = "product",
   stock,
+  inverterRatingLabel,
 }) => {
   const { addToCart, fetchCartCount, showCartNotificationModal } =
     useContext(ContextApi);
@@ -99,7 +101,7 @@ const Product = ({
   const isOutOfStock = Number(stock ?? 0) <= 0;
 
   const cardHighlight = isRecommended
-    ? "ring-2 ring-[#F8A91D]/90 border-[#F8A91D] shadow-lg"
+    ? "ring-2 ring-green-500/90 border-green-500 shadow-lg"
     : isHotDeal
       ? "ring-2 ring-amber-400/90"
       : "";
@@ -125,7 +127,11 @@ const Product = ({
       setAdding(true);
       await axios.post(
         API.CART,
-        { itemable_type: "product", itemable_id: Number(id), quantity: 1 },
+        {
+          itemable_type: itemType === "bundle" ? "bundle" : "product",
+          itemable_id: Number(id),
+          quantity: 1,
+        },
         {
           headers: {
             Accept: "application/json",
@@ -149,7 +155,7 @@ const Product = ({
     <div
       className={`relative w-full h-full sm:h-full sm:w-full bg-white border ${
         isRecommended
-          ? "border-[#F8A91D]"
+          ? "border-green-500"
           : isHotDeal
             ? "border-amber-300"
             : "border-gray-200"
@@ -169,11 +175,16 @@ const Product = ({
 
       {/* Image: locked height so grid cards don't collapse on mobile */}
       <div className="relative bg-gray-100 h-[140px] sm:h-[180px] flex rounded-2xl overflow-hidden items-center justify-center">
-        <div className="absolute top-2 left-2 z-20 pointer-events-none">
+        <div className="absolute top-2 left-2 z-20 pointer-events-none flex flex-col gap-1.5 items-start max-w-[55%]">
           <ProductPromoBadges
             isRecommended={isRecommended}
             isHotDeal={isHotDeal}
           />
+          {inverterRatingLabel ? (
+            <span className="bg-[#F8A91D] text-white text-[10px] sm:text-[11px] px-2 py-1 rounded-full font-semibold shadow whitespace-nowrap">
+              {inverterRatingLabel}
+            </span>
+          ) : null}
         </div>
         {/* Loading Indicator - Shows while image is loading */}
         {imageLoading && !imageError && (

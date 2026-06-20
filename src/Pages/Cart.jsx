@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useContext } from "react";
 import axios from "axios";
 import { LucideSquarePlus, ChevronLeft } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import CartItems from "../Component/CartItems";
 import SideBar from "../Component/SideBar";
 import { RxCrossCircled } from "react-icons/rx";
@@ -152,6 +152,7 @@ const SectionHeading = ({ children }) => (
 
 const Cart = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { fetchCartCount } = useContext(ContextApi);
 
   // desktop flags
@@ -326,7 +327,65 @@ const Cart = () => {
     };
   }, [token]);
 
+  // Custom order email links: /cart?token=…&type=buy_now|bnpl
   useEffect(() => {
+    const accessToken = searchParams.get("token");
+    const orderType = searchParams.get("type");
+    if (!accessToken || (orderType !== "buy_now" && orderType !== "bnpl")) {
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setErr("");
+      try {
+        const userToken = localStorage.getItem("access_token");
+        const { data } = await axios.get(API.CART_ACCESS(accessToken), {
+          headers: {
+            Accept: "application/json",
+            ...(userToken ? { Authorization: `Bearer ${userToken}` } : {}),
+          },
+        });
+        if (cancelled) return;
+        if (data?.status !== "success") {
+          setErr(data?.message || "Invalid or expired cart link");
+          setLoading(false);
+          return;
+        }
+        const payload = data.data;
+        if (payload?.requires_login) {
+          const returnPath = `/cart?token=${encodeURIComponent(accessToken)}&type=${encodeURIComponent(orderType)}`;
+          navigate(`/login?return=${encodeURIComponent(returnPath)}`, { replace: true });
+          return;
+        }
+        if (orderType === "bnpl") {
+          navigate(
+            `/bnpl?token=${encodeURIComponent(accessToken)}&type=bnpl`,
+            { replace: true }
+          );
+          return;
+        }
+        await loadCart();
+      } catch (e) {
+        if (!cancelled) {
+          setErr(
+            e?.response?.data?.message ||
+              e?.message ||
+              "Invalid or expired cart link"
+          );
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, navigate]);
+
+  useEffect(() => {
+    if (searchParams.get("token")) return;
     loadCart();
     const syncAddresses = async () => {
       if (!token) {

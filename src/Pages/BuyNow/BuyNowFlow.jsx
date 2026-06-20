@@ -1,13 +1,19 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader, CheckCircle2, XCircle, AlertCircle, CreditCard, Minus, Plus, X, Info, ChevronDown, ChevronLeft, ChevronRight, User, MapPin, Phone, Layers, BatteryCharging, PlugZap, PanelsTopLeft } from 'lucide-react';
+import { Home, Building2, Factory, ArrowRight, ArrowLeft, Zap, Wrench, FileText, CheckCircle, Battery, Sun, Monitor, Shield, Calendar, Loader, CheckCircle2, XCircle, AlertCircle, CreditCard, Minus, Plus, X, Info, ChevronDown, ChevronLeft, ChevronRight, User, MapPin, Phone } from 'lucide-react';
 import axios from 'axios';
 import API, { BASE_URL } from '../../config/api.config';
 import ProductPromoBadges from '../../Component/ProductPromoBadges';
+import GridPagination from '../../Component/GridPagination';
+import ProductCategoryGrid from '../../Component/ProductCategoryGrid';
+import { filterBillableInvoiceFees } from '../../utils/invoiceFees';
 import {
     extractKvaFromBundle,
+    sortBundlesByKvaAsc,
     sortBundlesFeaturedThenKvaAsc,
+    sortCategoryProducts,
     sortProductsByPromoFirst,
+    dedupeProductsById,
     entityTopDeal,
     entityHighlyRecommended,
 } from '../../utils/bundleSort';
@@ -312,6 +318,7 @@ const BuyNowFlow = () => {
     const [bundleDetailTab, setBundleDetailTab] = useState('description'); // 'description' | 'specs'
     const [selectedSystemSize, setSelectedSystemSize] = useState("all"); // System size filter
     const [bundleGridPage, setBundleGridPage] = useState(1);
+    const [productGridPage, setProductGridPage] = useState(1);
     const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false);
     const sizeDropdownRef = useRef(null);
     const [showBundleSelectPrompt, setShowBundleSelectPrompt] = useState(false);
@@ -347,12 +354,12 @@ const BuyNowFlow = () => {
         if (token && (type === 'buy_now' || type === 'bnpl')) {
             setCartToken(token);
             setCartOrderType(type);
-            verifyCartAccess(token);
+            verifyCartAccess(token, type);
         }
     }, [searchParams]);
 
     // Verify cart access and load cart items
-    const verifyCartAccess = async (token) => {
+    const verifyCartAccess = async (token, orderType = 'buy_now') => {
         setCartLoading(true);
         setCartError(null);
         try {
@@ -369,7 +376,7 @@ const BuyNowFlow = () => {
                 
                 // Check if login is required
                 if (cartData.requires_login) {
-                    const returnUrl = `/buy-now?token=${token}&type=${cartOrderType || 'buy_now'}`;
+                    const returnUrl = `/cart?token=${encodeURIComponent(token)}&type=${encodeURIComponent(orderType)}`;
                     alert('Please login to access your cart');
                     navigate(`/login?return=${encodeURIComponent(returnUrl)}`);
                     return;
@@ -384,19 +391,23 @@ const BuyNowFlow = () => {
                     const bundles = [];
                     
                     cartData.cart_items.forEach(item => {
-                        if (item.itemable_type === 'App\\Models\\Product' && item.itemable) {
+                        const qty = Math.max(1, Number(item.quantity || 1));
+                        const sub = Number(item.subtotal) || 0;
+                        const unit = Number(item.unit_price) || 0;
+                        const unitPrice = sub > 0 ? sub / qty : unit;
+                        if (item.type === 'product' && item.itemable) {
                             products.push({
                                 id: item.itemable_id,
                                 product: item.itemable,
-                                price: Number(item.unit_price || item.itemable.discount_price || item.itemable.price || 0),
-                                quantity: Number(item.quantity || 1)
+                                price: unitPrice,
+                                quantity: qty,
                             });
-                        } else if (item.itemable_type === 'App\\Models\\Bundle' && item.itemable) {
+                        } else if (item.type === 'bundle' && item.itemable) {
                             bundles.push({
                                 id: item.itemable_id,
                                 bundle: item.itemable,
-                                price: Number(item.unit_price || item.itemable.discount_price || item.itemable.total_price || 0),
-                                quantity: Number(item.quantity || 1)
+                                price: unitPrice,
+                                quantity: qty,
                             });
                         }
                     });
@@ -410,6 +421,11 @@ const BuyNowFlow = () => {
                             selectedProductPrice: totalPrice
                         }));
                     }
+                }
+
+                if (orderType === 'buy_now') {
+                    navigate('/cart', { replace: true });
+                    return;
                 }
             } else {
                 setCartError(response.data.message || 'Failed to access cart');
@@ -719,14 +735,8 @@ const BuyNowFlow = () => {
                 // Intentionally no category/product fallback for individual-component cards.
                 // These flows must rely only on the grouped endpoint to avoid mismatched records.
 
-                // Deduplicate by product id
-                const uniqueProducts = Object.values(
-                    (allProducts || []).reduce((acc, product) => {
-                        if (product?.id != null) acc[product.id] = product;
-                        return acc;
-                    }, {})
-                );
-                setCategoryProducts(sortProductsByPromoFirst(uniqueProducts));
+                const uniqueProducts = dedupeProductsById(allProducts);
+                setCategoryProducts(uniqueProducts);
             } catch (error) {
                 console.error("Failed to fetch products:", error);
                 alert("Failed to load products. Please try again.");
@@ -876,7 +886,7 @@ const BuyNowFlow = () => {
                 const allProducts = Array.isArray(allProductsRes.data?.data) ? allProductsRes.data.data : [];
                 products = allProducts.filter(p => String(p.category_id) === String(categoryId));
             }
-            setCategoryProducts(sortProductsByPromoFirst(products));
+            setCategoryProducts(dedupeProductsById(products));
         } catch (error) {
             console.error("Failed to fetch products:", error);
             alert("Failed to load products. Please try again.");
@@ -906,7 +916,7 @@ const BuyNowFlow = () => {
         return [{ label: "All Sizes", value: "all" }, ...options];
     }, [bundles]);
 
-    // Filter by size, then promo-first order (same as /solar-bundles).
+    // Filter by size, then ascending kVA (smallest → largest).
     const filteredBundles = useMemo(() => {
         let list;
         if (selectedSystemSize === "all") {
@@ -937,13 +947,22 @@ const BuyNowFlow = () => {
     }, [filteredBundles.length]);
 
     const orderedCategoryProducts = useMemo(
-        () => sortProductsByPromoFirst(categoryProducts),
-        [categoryProducts]
+        () => sortCategoryProducts(categoryProducts, formData.productCategory),
+        [categoryProducts, formData.productCategory]
     );
     const orderedCategoryMaterials = useMemo(
         () => sortProductsByPromoFirst(categoryMaterials),
         [categoryMaterials]
     );
+
+    useEffect(() => {
+        setProductGridPage(1);
+    }, [formData.productCategory, categoryProducts.length]);
+
+    useEffect(() => {
+        const total = Math.max(1, Math.ceil(orderedCategoryProducts.length / BUNDLE_STEP_GRID_PAGE_SIZE));
+        setProductGridPage((p) => (p > total ? total : p));
+    }, [orderedCategoryProducts.length]);
 
     // Close size dropdown if clicked outside
     useEffect(() => {
@@ -1956,63 +1975,6 @@ const BuyNowFlow = () => {
 
     // NEW: Render Step 2 - Solar Solution Selection (5 predefined options, same as BNPL)
     const renderStep2 = () => {
-        const categoryGroups = [
-            {
-                id: 'full-kit',
-                name: 'Solar panels, inverter, and battery solution',
-                icon: Layers,
-                description: 'Complete solar system solution',
-            },
-            {
-                id: 'inverter-battery',
-                name: 'Inverter and battery solution',
-                icon: BatteryCharging,
-                description: 'Power backup solution',
-            },
-            {
-                id: 'battery-only',
-                name: 'Battery only',
-                icon: Battery,
-                description: 'Choose battery capacity',
-                subtitle: 'Choose battery capacity',
-            },
-            {
-                id: 'inverter-only',
-                name: 'Inverters Only',
-                icon: PlugZap,
-                description: 'Choose inverter capacity',
-                subtitle: 'Choose inverter capacity',
-            },
-            {
-                id: 'panels-only',
-                name: 'Solar panels only',
-                icon: PanelsTopLeft,
-                description: 'Choose solar panel capacity',
-                subtitle: 'Choose solar panel capacity',
-            },
-        ];
-        const byId = Object.fromEntries(categoryGroups.map((g) => [g.id, g]));
-
-        const renderCategoryCard = (group) => {
-            if (!group) return null;
-            const IconComponent = group.icon;
-            return (
-                <button
-                    key={group.id}
-                    type="button"
-                    onClick={() => handleCategorySelect(group.id)}
-                    className="group bg-white border-2 border-gray-200 hover:border-[#273e8e] rounded-2xl p-6 hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden transform hover:-translate-y-1 w-full"
-                >
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#273e8e] to-[#E8A91D]" />
-                    <div className="bg-gradient-to-br from-[#273e8e]/10 to-[#E8A91D]/10 p-5 rounded-full mb-4 group-hover:from-[#273e8e]/20 group-hover:to-[#E8A91D]/20 transition-all duration-300 flex items-center justify-center min-h-[72px] w-[72px]">
-                        <IconComponent size={36} className="text-[#273e8e] group-hover:scale-110 transition-transform" />
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-800 mb-1 group-hover:text-[#273e8e] transition-colors">{group.name}</h3>
-                    {group.subtitle ? <p className="text-sm text-gray-500 italic">{group.subtitle}</p> : null}
-                </button>
-            );
-        };
-
         return (
             <>
                 <button type="button" onClick={() => navigate('/')} className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e] transition-colors">
@@ -2031,19 +1993,7 @@ const BuyNowFlow = () => {
                         <p className="mt-4 text-gray-600">Loading categories...</p>
                     </div>
                 ) : (
-                    <div className="max-w-6xl mx-auto w-full space-y-8">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {renderCategoryCard(byId['full-kit'])}
-                            {renderCategoryCard(byId['inverter-battery'])}
-                        </div>
-                        <div className="flex justify-center px-2">
-                            <div className="w-full max-w-md">{renderCategoryCard(byId['inverter-only'])}</div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:max-w-4xl md:mx-auto">
-                            {renderCategoryCard(byId['panels-only'])}
-                            {renderCategoryCard(byId['battery-only'])}
-                        </div>
-                    </div>
+                    <ProductCategoryGrid onSelect={handleCategorySelect} />
                 )}
             </>
         );
@@ -2212,6 +2162,12 @@ const BuyNowFlow = () => {
             return FALLBACK_IMAGE;
         };
 
+        const productGridStart = (productGridPage - 1) * BUNDLE_STEP_GRID_PAGE_SIZE;
+        const paginatedProducts = orderedCategoryProducts.slice(
+            productGridStart,
+            productGridStart + BUNDLE_STEP_GRID_PAGE_SIZE
+        );
+
         return (
             <div className="animate-fade-in">
                 <button 
@@ -2219,6 +2175,7 @@ const BuyNowFlow = () => {
                         // Clear products when going back
                         setCategoryProducts([]);
                         setProductsLoading(false);
+                        setProductGridPage(1);
                         setStep(2);
                     }} 
                     className="mb-6 flex items-center text-gray-500 hover:text-[#273e8e]"
@@ -2253,7 +2210,7 @@ const BuyNowFlow = () => {
                 ) : (
                     <>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                            {orderedCategoryProducts.map((product) => {
+                            {paginatedProducts.map((product) => {
                                 const price = Number(product.discount_price || product.price || 0);
                                 const oldPrice = product.discount_price && product.price && product.discount_price < product.price 
                                     ? Number(product.price) 
@@ -2274,7 +2231,7 @@ const BuyNowFlow = () => {
                                             isSelected 
                                                 ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
                                                 : isPromoHighlight
-                                                ? 'border-[#FCD28A] ring-2 ring-[#F8A91D] shadow-md hover:border-[#F8A91D]'
+                                                ? 'border-green-400 ring-2 ring-green-500 shadow-md hover:border-green-600'
                                                 : 'border-gray-100 hover:border-[#273e8e]'
                                         }`}
                                         onClick={() => {
@@ -2348,6 +2305,14 @@ const BuyNowFlow = () => {
                                 );
                             })}
                         </div>
+
+                        <GridPagination
+                            currentPage={productGridPage}
+                            totalItems={orderedCategoryProducts.length}
+                            pageSize={BUNDLE_STEP_GRID_PAGE_SIZE}
+                            onPageChange={setProductGridPage}
+                            itemLabel="products"
+                        />
                         
                         {/* Continue Button - Show when at least one product is selected */}
                         {formData.selectedProducts.length > 0 && (
@@ -2463,7 +2428,7 @@ const BuyNowFlow = () => {
                                         isSelected 
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]' 
                                             : isPromoHighlight
-                                            ? 'border-[#FCD28A] ring-2 ring-[#F8A91D] shadow-md hover:border-[#F8A91D]'
+                                            ? 'border-green-400 ring-2 ring-green-500 shadow-md hover:border-green-600'
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
                                     onClick={() => {
@@ -2848,7 +2813,7 @@ const BuyNowFlow = () => {
                                         isSelected
                                             ? 'border-[#273e8e] bg-blue-50 ring-2 ring-[#273e8e]'
                                             : isPromoHighlight
-                                            ? 'border-[#FCD28A] ring-2 ring-[#F8A91D] shadow-md hover:border-[#F8A91D]'
+                                            ? 'border-green-400 ring-2 ring-green-500 shadow-md hover:border-green-600'
                                             : 'border-gray-100 hover:border-[#273e8e]'
                                     }`}
                                 >
@@ -2865,6 +2830,10 @@ const BuyNowFlow = () => {
                                             }}
                                         />
                                         <div className="absolute top-2 left-2 z-[15] flex flex-col gap-1.5 items-start pointer-events-none max-w-[min(100%,14rem)]">
+                                            <ProductPromoBadges
+                                                isRecommended={isRec}
+                                                isHotDeal={isHot}
+                                            />
                                             {getBundleInverterRating(bundle) ? (
                                                 <span className="bg-[#E8A91D] text-white text-[11px] px-2 py-1 rounded-full font-semibold shadow">
                                                     {String(getBundleInverterRating(bundle)).includes('kVA')
@@ -2888,16 +2857,6 @@ const BuyNowFlow = () => {
                                         {bundle.title || `Bundle #${bundle.id}`}
                                     </h3>
                                     <p className="text-sm text-gray-500 mb-2">{getBundleCategoryLabel(bundle)}</p>
-                                    {(isRec || isHot) && (
-                                        <div className="mb-3">
-                                            <ProductPromoBadges
-                                                layout="row"
-                                                size="large"
-                                                isRecommended={isRec}
-                                                isHotDeal={isHot}
-                                            />
-                                        </div>
-                                    )}
                                     <div className="flex items-baseline gap-2 mb-4">
                                         <span className="text-2xl font-bold text-[#273e8e]">
                                             {formatPrice(price)}
@@ -3797,20 +3756,13 @@ const BuyNowFlow = () => {
                 }
             }
         });
-        // Do not inject material-derived fee rows when API fees were filtered out for "own installer" (same rules as API fees)
-        if (serviceRows.length === 0 && fallbackServiceRows.length > 0) {
-            fallbackServiceRows.forEach((row) => {
-                const vis = parseFeeVisibility(row.description);
-                if (feeVisibleForInstaller(vis, installerChoice)) {
-                    serviceRows.push(row);
-                }
-            });
-        }
+        // Invoice fees come only from admin-configured custom_services (never material fallbacks).
+        const billableServiceRows = filterBillableInvoiceFees(serviceRows);
 
         const orderListItems = customOrderItems.length > 0 ? [...customOrderItems] : [...productRows];
-        const invoiceItems = [...orderListItems, ...serviceRows];
+        const invoiceItems = [...orderListItems, ...billableServiceRows];
         const orderListTotal = orderListItems.reduce((s, i) => s + (i.rate * i.quantity), 0);
-        return { orderListItems, invoiceItems, serviceRows, productRows, itemsTotal: orderListTotal, hasCustomServiceFeeRows };
+        return { orderListItems, invoiceItems, serviceRows: billableServiceRows, productRows, itemsTotal: orderListTotal, hasCustomServiceFeeRows };
     };
 
     // Fetch full bundle details (with custom_services) before showing Order Summary
@@ -4107,9 +4059,6 @@ const BuyNowFlow = () => {
             ? (productPriceForInsurance * 3) / 100
             : 0;
 
-        const installationFee = 50000;
-        const deliveryFee = 25000;
-        const inspectionFee = 10000;
         const vatPercent = 7.5;
 
         const bundleInvoiceSections = formData.selectedBundles.map((sb) => {
@@ -4117,11 +4066,25 @@ const BuyNowFlow = () => {
             const bundleObj = sb.bundle;
             const bundleName = bundleObj?.title || bundleObj?.name || `Bundle #${sb.id}`;
             const bundleTotalPrice = (sb.price || 0) * bundleQty;
-            const { invoiceItems, serviceRows, hasCustomServiceFeeRows } = extractBundleLineItems(bundleObj);
+            const { invoiceItems, serviceRows, orderListItems } = extractBundleLineItems(bundleObj);
+            const pricedOrderLines = orderListItems.filter((i) => i.rate > 0);
+            let displayItems = invoiceItems;
+            if (pricedOrderLines.length === 0 && serviceRows.length > 0) {
+                displayItems = [
+                    {
+                        description: bundleName,
+                        quantity: 1,
+                        unit: 'Nos',
+                        quantityApplies: true,
+                        rate: sb.price || 0,
+                    },
+                    ...serviceRows,
+                ];
+            }
 
             let allRows;
-            if (invoiceItems.length > 0) {
-                allRows = invoiceItems.map((item, idx) => ({
+            if (displayItems.length > 0) {
+                allRows = displayItems.map((item, idx) => ({
                     id: `inv-${sb.id}-${idx}`,
                     description: item.description,
                     quantity: item.quantityApplies === false
@@ -4145,27 +4108,11 @@ const BuyNowFlow = () => {
                 }];
             }
 
-            // Only use legacy placeholder fees when the bundle has no fee rows in custom_services (avoids duplicating after installer filter)
-            if (serviceRows.length === 0 && !hasCustomServiceFeeRows) {
-                if (formData.installerChoice === 'own') {
-                    allRows.push(
-                        { id: `inv-${sb.id}-delivery`, description: `Delivery Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: deliveryFee, totalCost: deliveryFee },
-                    );
-                } else {
-                    allRows.push(
-                        { id: `inv-${sb.id}-install`, description: `Installation Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: installationFee, totalCost: installationFee },
-                        { id: `inv-${sb.id}-delivery`, description: `Delivery Fees for ${bundleName}`, quantity: 1, unit: 'Nos', rate: deliveryFee, totalCost: deliveryFee },
-                        { id: `inv-${sb.id}-inspection`, description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: inspectionFee, totalCost: inspectionFee },
-                    );
-                }
-            }
-
-            const feesTotal = serviceRows.length > 0
-                ? serviceRows.reduce((s, r) => s + (r.rate * (r.quantityApplies === false ? 1 : r.quantity)), 0)
-                : (!hasCustomServiceFeeRows
-                    ? (formData.installerChoice === 'own' ? deliveryFee : (installationFee + deliveryFee + inspectionFee))
-                    : 0);
-            const sectionNetTotal = bundleTotalPrice + feesTotal;
+            const feesSum = serviceRows.reduce(
+                (s, r) => s + (r.rate * (r.quantityApplies === false ? 1 : r.quantity)),
+                0
+            );
+            const sectionNetTotal = bundleTotalPrice + feesSum;
 
             return { bundleName, allRows, netTotal: sectionNetTotal };
         });
@@ -4956,11 +4903,8 @@ const BuyNowFlow = () => {
             );
         }
 
-        // Non-audit: show confirmed invoice using extractBundleLineItems + real API fees, then calendar + payment
+        // Non-audit: show confirmed invoice using extractBundleLineItems + admin-configured fees only
         const vatPercent = 7.5;
-        const apiInstall = invoiceDetails?.installation_fee ? Number(invoiceDetails.installation_fee) : 50000;
-        const apiDelivery = invoiceDetails?.delivery_fee ? Number(invoiceDetails.delivery_fee) : 25000;
-        const apiInspect = invoiceDetails?.inspection_fee ? Number(invoiceDetails.inspection_fee) : 10000;
         const apiInsurance = invoiceDetails?.insurance_fee ? Number(invoiceDetails.insurance_fee) : 0;
         const outrightDiscount = Number(invoiceDetails?.outright_discount_amount || 0);
         const outrightDiscountPct = Number(invoiceDetails?.outright_discount_percentage || 0);
@@ -4970,11 +4914,25 @@ const BuyNowFlow = () => {
             const bundleObj = sb.bundle;
             const bundleName = bundleObj?.title || bundleObj?.name || `Bundle #${sb.id}`;
             const bundleTotalPrice = (sb.price || 0) * bundleQty;
-            const { invoiceItems, serviceRows, hasCustomServiceFeeRows } = extractBundleLineItems(bundleObj);
+            const { invoiceItems, serviceRows, orderListItems } = extractBundleLineItems(bundleObj);
+            const pricedOrderLines = orderListItems.filter((i) => i.rate > 0);
+            let displayItems = invoiceItems;
+            if (pricedOrderLines.length === 0 && serviceRows.length > 0) {
+                displayItems = [
+                    {
+                        description: bundleName,
+                        quantity: 1,
+                        unit: 'Nos',
+                        quantityApplies: true,
+                        rate: sb.price || 0,
+                    },
+                    ...serviceRows,
+                ];
+            }
 
             let allRows;
-            if (invoiceItems.length > 0) {
-                allRows = invoiceItems.map((item, idx) => ({
+            if (displayItems.length > 0) {
+                allRows = displayItems.map((item, idx) => ({
                     id: `inv5-${sb.id}-${idx}`,
                     description: item.description,
                     quantity: item.quantityApplies === false
@@ -4997,48 +4955,23 @@ const BuyNowFlow = () => {
                 }];
             }
 
-            if (serviceRows.length === 0 && !hasCustomServiceFeeRows) {
-                if (formData.installerChoice === 'own') {
-                    allRows.push(
-                        { id: `inv5-${sb.id}-delivery`, description: 'Delivery/Logistics Fees', quantity: 1, unit: 'Nos', rate: apiDelivery, totalCost: apiDelivery },
-                    );
-                } else {
-                    allRows.push(
-                        { id: `inv5-${sb.id}-install`, description: 'Installation Fees', quantity: 1, unit: 'Nos', rate: apiInstall, totalCost: apiInstall },
-                        { id: `inv5-${sb.id}-delivery`, description: 'Delivery/Logistics Fees', quantity: 1, unit: 'Nos', rate: apiDelivery, totalCost: apiDelivery },
-                        { id: `inv5-${sb.id}-inspect`, description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: apiInspect, totalCost: apiInspect },
-                    );
-                }
-            }
-
-            const feesTotal = serviceRows.length > 0
-                ? serviceRows.reduce((s, r) => s + (r.rate * (r.quantityApplies === false ? 1 : r.quantity)), 0)
-                : (!hasCustomServiceFeeRows
-                    ? (formData.installerChoice === 'own' ? apiDelivery : (apiInstall + apiDelivery + apiInspect))
-                    : 0);
-            const sectionNetTotal = bundleTotalPrice + feesTotal;
+            const feesSum = serviceRows.reduce(
+                (s, r) => s + (r.rate * (r.quantityApplies === false ? 1 : r.quantity)),
+                0
+            );
+            const sectionNetTotal = bundleTotalPrice + feesSum;
             return { bundleName, allRows, netTotal: sectionNetTotal };
         });
 
         if (bundleInvoiceSections5.length === 0) {
             const label = invoiceDetails?.bundle_title || formData.selectedBundle?.title || formData.selectedBundle?.name || 'Solar System';
             const price = Number(invoiceDetails?.product_price || formData.selectedProductPrice || 0);
-            const netTotal = formData.installerChoice === 'own'
-                ? price + apiDelivery
-                : price + apiInstall + apiDelivery + apiInspect;
             bundleInvoiceSections5.push({
                 bundleName: label,
                 allRows: [
                     { id: 'inv5-main', description: label, quantity: 1, unit: 'Nos', rate: price, totalCost: price },
-                    { id: 'inv5-delivery', description: 'Delivery/Logistics Fees', quantity: 1, unit: 'Nos', rate: apiDelivery, totalCost: apiDelivery },
-                    ...(formData.installerChoice === 'own'
-                        ? []
-                        : [
-                            { id: 'inv5-install', description: 'Installation Fees', quantity: 1, unit: 'Nos', rate: apiInstall, totalCost: apiInstall },
-                            { id: 'inv5-inspect', description: 'Inspection Fees', quantity: 1, unit: 'Lots', rate: apiInspect, totalCost: apiInspect },
-                        ]),
                 ],
-                netTotal,
+                netTotal: price,
             });
         }
 

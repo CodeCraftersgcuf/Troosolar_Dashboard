@@ -17,6 +17,11 @@ import { assets } from "../assets/data";
 import { SearchIcon, ShoppingCart, ChevronLeft, ChevronRight } from "lucide-react";
 import SolarBundleComponent from "../Component/SolarBundleComponent";
 import { apiFlagTrue } from "../utils/apiFlags";
+import {
+  sortMappedBundleCards,
+  sortMappedProductCards,
+} from "../utils/bundleSort";
+import { isProductPriceSortCategory, isSolarInverterBatteryBundle, isInverterBatteryBundle } from "../utils/storeCatalog";
 
 const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, "");
 
@@ -45,31 +50,6 @@ const toAbsoluteBundleImage = (path) => {
 
 const BUNDLE_FALLBACK_IMAGE =
   "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
-
-const normalizeBundleTypeKey = (s) =>
-  String(s || "")
-    .toLowerCase()
-    .replace(/\s+/g, "");
-
-/** Matches Buy Solar Bundles "Solar+Inverter+Battery" and minor spacing variants. */
-const isSolarInverterBatteryBundle = (b) => {
-  const key = normalizeBundleTypeKey(b?.bundle_type);
-  return (
-    key === "solar+inverter+battery" ||
-    key === "solarinverterbattery" ||
-    /solar.*inverter.*battery/i.test(String(b?.bundle_type || ""))
-  );
-};
-
-/** Matches Buy Solar Bundles "Inverter + Battery" and minor spacing variants. */
-const isInverterBatteryBundle = (b) => {
-  const key = normalizeBundleTypeKey(b?.bundle_type);
-  return (
-    key === "inverter+battery" ||
-    key === "inverterbattery" ||
-    /inverter.*battery/i.test(String(b?.bundle_type || ""))
-  );
-};
 
 const normalizeBundlesResponse = (data) => {
   const root = data?.data ?? data;
@@ -421,15 +401,25 @@ const SpecificProduct = () => {
     return category?.name || category?.title || `Category #${id}`;
   }, [category, id]);
 
-  const totalItems = specificProduct.length;
+  const sortedProducts = useMemo(() => {
+    if (!specificProduct.length) return specificProduct;
+    if (bundleCategoryShop) {
+      return sortMappedBundleCards(specificProduct);
+    }
+    return sortMappedProductCards(specificProduct, {
+      priceFirst: isProductPriceSortCategory(displayCategoryName),
+    });
+  }, [specificProduct, bundleCategoryShop, displayCategoryName]);
+
+  const totalItems = sortedProducts.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
 
   const paginatedProducts = useMemo(() => {
-    if (!bundleCategoryShop) return specificProduct;
+    if (!bundleCategoryShop) return sortedProducts;
     const start = (currentPage - 1) * itemsPerPage;
     const end = start + itemsPerPage;
-    return specificProduct.slice(start, end);
-  }, [bundleCategoryShop, currentPage, itemsPerPage, specificProduct]);
+    return sortedProducts.slice(start, end);
+  }, [sortedProducts, bundleCategoryShop, currentPage, itemsPerPage]);
 
   useEffect(() => {
     setCurrentPage(1);

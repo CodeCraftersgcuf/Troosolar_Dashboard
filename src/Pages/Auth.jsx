@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import API from "../config/api.config";
 import { assets } from "../assets/data";
 import { Input } from "../Component/Input";
 import Loading from "../Component/Loading";
+import {
+  authSwitchPath,
+  getSafeReturnPath,
+} from "../utils/authRedirect";
 
 const Auth = () => {
   const location = useLocation();
@@ -24,6 +28,13 @@ const Auth = () => {
   const [hidePassword, setHidePassword] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const returnPath = useMemo(
+    () => getSafeReturnPath(location.search),
+    [location.search]
+  );
+  const registerPath = authSwitchPath("/register", location.search);
+  const loginPath = authSwitchPath("/login", location.search);
 
   useEffect(() => {
     if (isLogin) return;
@@ -136,8 +147,8 @@ const Auth = () => {
           localStorage.setItem("user", JSON.stringify(updatedUser));
         }
 
-        // Go somewhere after login
-        navigate("/");
+        // Go somewhere after login — honor ?return= from custom order / cart links
+        navigate(returnPath || "/");
       }
     } catch (err) {
       const msg =
@@ -202,7 +213,9 @@ const Auth = () => {
                 </h2>
                 <p className="text-sm text-gray-600 mt-2">
                   {isLogin
-                    ? "Login to access your account"
+                    ? returnPath
+                      ? "Login to continue to your order"
+                      : "Login to access your account"
                     : "Provide your personal information to help us know you better"}
                 </p>
               </div>
@@ -310,7 +323,7 @@ const Auth = () => {
               )}
               </div>
               <Link
-                to={isLogin ? "/register" : "/login"}
+                to={isLogin ? registerPath : loginPath}
                 className="block text-center w-full bg-[#e8a91d] text-white py-3 rounded-lg transition duration-200"
               >
                 {isLogin ? "Register" : "Login"}
@@ -335,7 +348,9 @@ const Auth = () => {
           </h1>
           <p className="text-[10px] text-white mt-3">
             {isLogin
-              ? "Login to access your account"
+              ? returnPath
+                ? "Login to continue to your order"
+                : "Login to access your account"
               : "Provide your personal information to help us know you better"}
           </p>
         </div>
@@ -437,7 +452,7 @@ const Auth = () => {
             {isLogin ? "I don't have an account" : "I already have an account"}
           </p>
           <Link
-            to={isLogin ? "/register" : "/login"}
+            to={isLogin ? registerPath : loginPath}
             className="block text-center w-full bg-[#e8a91d] text-white py-3 rounded-lg transition duration-200"
           >
             {isLogin ? "Register" : "Login"}

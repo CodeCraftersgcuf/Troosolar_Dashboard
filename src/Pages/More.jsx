@@ -18,6 +18,7 @@ import NewPasswordPopup from "../Component/MoreSectionComponent/NewPasswordPopup
 import TransactionHistory from "../Component/MoreSectionComponent/TransctionHistroy";
 import Referrals from "../Component/MoreSectionComponent/Referrals";
 import EditProfile from "../Component/MoreSectionComponent/EditProfileSection";
+import MonoBankAccountSection from "../Component/MoreSectionComponent/MonoBankAccountSection";
 import KycDetails from "../Component/MoreSectionComponent/KycDetails";
 import Support from "../Component/MoreSectionComponent/Support";
 import MyOrders from "../Component/MoreSectionComponent/MyOrders"; // <-- NEW
@@ -37,6 +38,7 @@ import {
   Settings,
   HelpCircle,
   ClipboardList,
+  Building2,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -117,6 +119,7 @@ const getInitials = (name) => {
 // add this near your other state/handlers (above the return)
 const sectionTitles = {
   editProfile: "Edit Profile",
+  bankAccount: "Bank Account",
   myOrders: "My Orders",
   auditRequests: "Audit requests",
   transactionHistory: "Transaction History",
@@ -145,9 +148,13 @@ const More = () => {
   // Handle URL parameter for section navigation
   useEffect(() => {
     const section = searchParams.get("section");
+    const tab = searchParams.get("tab");
     if (section === "notifications") {
       setActiveSection("maintenance");
-    } else if (section === "myOrders") {
+    } else if (section === "bankAccount" || tab === "bankAccount") {
+      setActiveSection("bankAccount");
+      setMobileViewSection("content");
+    } else if (section === "myOrders" || tab === "myOrders") {
       setActiveSection("myOrders");
     } else if (section === "auditRequests") {
       setActiveSection("auditRequests");
@@ -223,6 +230,12 @@ const More = () => {
         return <Notifications onBack={() => setMobileViewSection("sidebar")} />;
       case "creditScore":
         return <CreditScore />;
+      case "bankAccount":
+        return (
+          <div className="w-full max-w-xl mx-auto px-1 sm:px-0 pb-6">
+            <MonoBankAccountSection />
+          </div>
+        );
       case "editProfile":
       default:
         return <EditProfile />;
@@ -278,6 +291,15 @@ const More = () => {
                       icon={LuUserRound}
                       label="Profile Settings"
                       isSelected={activeSection === "editProfile"}
+                    />
+                  </div>
+
+                  <div onClick={() => setActiveSection("bankAccount")}>
+                    <SidebarOption
+                      colorBg="bg-[#1e4d6b]"
+                      icon={Building2}
+                      label="Bank Account"
+                      isSelected={activeSection === "bankAccount"}
                     />
                   </div>
 
@@ -449,6 +471,22 @@ const More = () => {
                 <ChevronRight className="text-gray-400" size={16} />
               </div>
 
+              {/* Bank Account */}
+              <div
+                className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-between cursor-pointer"
+                onClick={() => handleMobileSectionChange("bankAccount")}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#1e4d6b] rounded-full flex items-center justify-center">
+                    <Building2 className="text-white" size={20} />
+                  </div>
+                  <span className="text-sm font-medium text-gray-700">
+                    Bank Account
+                  </span>
+                </div>
+                <ChevronRight className="text-gray-400" size={16} />
+              </div>
+
               {/* My Orders */}
               <div
                 className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-between cursor-pointer"
@@ -597,10 +635,10 @@ const More = () => {
           </div>
         ) : (
           <div
-            className={`w-full ${
+            className={`w-full min-h-screen ${
               activeSection === "creditScore"
                 ? "bg-[#243a84] p-0"
-                : "bg-[#F5F7FF] p-4"
+                : "bg-[#F5F7FF] p-4 pb-8"
             }`}
           >
             {/* Back Button */}
