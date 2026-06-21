@@ -56,7 +56,7 @@ const formatTitle = (t) => {
 };
 
 // Fallback image URL
-const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
+const FALLBACK_IMAGE = "https://api.troosolar.com/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
 
 const Product = ({
   image,
@@ -84,7 +84,7 @@ const Product = ({
   const Image_url = image || FALLBACK_IMAGE;
   const title = useMemo(() => formatTitle(heading), [heading]);
 
-  const starting_base_url = "https://troosolar.hmstech.org/";
+  const starting_base_url = "https://api.troosolar.com/";
   const safeImage = useMemo(() => {
     if (!Image_url) return FALLBACK_IMAGE;
     // If already absolute URL, return as is

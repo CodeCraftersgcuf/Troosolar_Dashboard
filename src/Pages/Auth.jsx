@@ -140,7 +140,7 @@ const Auth = () => {
           const updatedUser = {
             ...user,
             first_name: capitalizedFirstName,
-            profile_picture: `https://troosolar.hmstech.org/public/users/${user.profile_picture}`,
+            profile_picture: `https://api.troosolar.com/public/users/${user.profile_picture}`,
           };
 
           // Store the updated user object in localStorage

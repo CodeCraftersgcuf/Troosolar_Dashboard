@@ -52,7 +52,7 @@ const ensureFlutterwave = () =>
     });
 
 // Fallback image URL
-const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
+const FALLBACK_IMAGE = "https://api.troosolar.com/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
 const FEE_VIS_TROO_PREFIX = "[FEE:TROOSOLAR]";
 const FEE_VIS_OWN_PREFIX = "[FEE:OWN]";
 const FEE_VIS_BOTH_PREFIX = "[FEE]";

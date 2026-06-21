@@ -657,5 +657,5 @@ For questions or clarifications:
 
 **Last Updated:** November 26, 2025  
 **Frontend Version:** Current codebase  
-**Backend Base URL:** `http://127.0.0.1:8000/api` (development) / `https://troosolar.hmstech.org/api` (production)
+**Backend Base URL:** `http://127.0.0.1:8000/api` (development) / `https://api.troosolar.com/api` (production)
 

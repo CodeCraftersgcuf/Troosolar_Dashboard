@@ -7,7 +7,7 @@ const Items = ({
   onCategorySelect,
   activeCategoryId = null,
 }) => {
-  const baseUrl = "https://troosolar.hmstech.org";
+  const baseUrl = "https://api.troosolar.com";
   const useInlineFilter = typeof onCategorySelect === "function";
 
   const renderCategoryTile = (cat, variant) => {

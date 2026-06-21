@@ -7,7 +7,7 @@ import axios from "axios";
 import Loading from "../Loading";
 
 /** Fallback image when item has no featured_image */
-const PLACEHOLDER_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
+const PLACEHOLDER_IMAGE = "https://api.troosolar.com/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
 
 /** Parse API money (handles numbers, "25000.00", "25,000", etc.) */
 const parseMoney = (v) => {

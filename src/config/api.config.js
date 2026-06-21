@@ -1,5 +1,6 @@
 // src/config/api.config.js
-export const BASE_URL = 'https://troosolar.hmstech.org/api';
+export const BASE_URL = 'https://api.troosolar.com/api';
+export const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, '');
 
 // export const BASE_URL = 'http://127.0.0.1:8000/api';
 

@@ -49,7 +49,7 @@ const toAbsoluteBundleImage = (path) => {
 };
 
 const BUNDLE_FALLBACK_IMAGE =
-  "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
+  "https://api.troosolar.com/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
 
 const normalizeBundlesResponse = (data) => {
   const root = data?.data ?? data;

@@ -625,7 +625,7 @@ export default function ProductDetails() {
                         : [{ image: product.image }]
                     }
                     productTitle={product.heading}
-                    baseUrl="https://troosolar.hmstech.org"
+                    baseUrl="https://api.troosolar.com"
                   />
                 </div>
 
@@ -958,7 +958,7 @@ export default function ProductDetails() {
                   : [{ image: product.image }]
               }
               productTitle={product.heading}
-              baseUrl="https://troosolar.hmstech.org"
+              baseUrl="https://api.troosolar.com"
             />
           </div>
 

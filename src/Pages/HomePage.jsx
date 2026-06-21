@@ -43,7 +43,7 @@ const formatNGN = (n) => {
 };
 
 // Fallback image URL
-const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
+const FALLBACK_IMAGE = "https://api.troosolar.com/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
 
 const parseStockQuantity = (stockValue) => {
   if (stockValue == null) return 0;

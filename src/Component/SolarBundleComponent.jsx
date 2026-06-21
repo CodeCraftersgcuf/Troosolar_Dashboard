@@ -25,7 +25,7 @@ const SolarBundleComponent = ({
   const location = useLocation();
 
   // Fallback image URL
-  const FALLBACK_IMAGE = "https://troosolar.hmstech.org/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
+  const FALLBACK_IMAGE = "https://api.troosolar.com/storage/products/d5c7f116-57ed-46ef-a659-337c94c308a9.png";
 
   // Use fallback if original image failed, otherwise use the provided image
   const imageUrl = useFallback ? FALLBACK_IMAGE : (image || FALLBACK_IMAGE);

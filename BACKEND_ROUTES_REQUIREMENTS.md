@@ -525,5 +525,5 @@ For questions or clarifications:
 
 **Last Updated:** December 2024  
 **Frontend Version:** Current codebase  
-**Backend Base URL:** `https://troosolar.hmstech.org/api` (production)
+**Backend Base URL:** `https://api.troosolar.com/api` (production)
 

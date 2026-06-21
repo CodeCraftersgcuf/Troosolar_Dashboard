@@ -13,7 +13,7 @@ const OrderDetails = ({ order, onBack }) => {
     orderDate: "15 May, 25 - 09:22 AM",
     productImage:
       order?.productImage ||
-      "https://troosolar.hmstech.org/storage/products/gallery/87177e7f-3879-4aba-9952-3a9e989dc0c0.png", // Dummy image placeholder
+      "https://api.troosolar.com/storage/products/gallery/87177e7f-3879-4aba-9952-3a9e989dc0c0.png", // Dummy image placeholder
     description:
       "High-quality AGM solar inverter with advanced features for residential and commercial use.",
     specifications: [
